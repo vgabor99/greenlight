@@ -11,9 +11,7 @@
 #include "esp_log.h"
 
 #define EPD_UPDATE_PARTIAL 0xFF  /* load temp+LUT, display mode 2 (partial waveform), ~440 ms */
-#define EPD_BLACK_PASSES   12    /* passes to black in each cycle of epd_clear(); ~12 reach full black */
-#define EPD_WHITE_PASSES   2     /* passes to white in each cycle of epd_clear() */
-#define EPD_CLEAR_CYCLES   1     /* black-white cycles in epd_clear() */
+#define EPD_WHITE_PASSES   1     /* passes to white in epd_clear(); more passes make the white grainier */
 
 static const char *TAG = "epd";
 static spi_device_handle_t spi;
@@ -137,24 +135,20 @@ static esp_err_t drive_pass(const uint8_t *img)
     return wait_busy();
 }
 
-/* Software "full refresh" to white. The panel's own full-refresh waveform (mode 1) hangs, so emulate
- * it with the working mode-2 waveform: drive the whole screen black, then white (the visible flash
- * that clears ghosting). More passes make the white grainier, not cleaner. */
+/* Software "full refresh" to white. The panel's own full-refresh waveform (mode 1) hangs, so drive every
+ * pixel to white with the working mode-2 waveform. Going to black first, or doing more passes, only made
+ * the white background grainier. */
 esp_err_t epd_clear(void)
 {
     cmd_data(0x21, (uint8_t[]){0x40, 0x00}, 2); /* as in init */
     cmd_data(0x3C, (uint8_t[]){0x05}, 1);
 
-    static uint8_t solid[EPD_STRIDE * EPD_HEIGHT];
-    for (int cycle = 0; cycle < EPD_CLEAR_CYCLES; cycle++) {
-        for (int white = 0; white < 2; white++) {  /* black first, always end on white */
-            memset(solid, white ? 0xFF : 0x00, sizeof(solid));
-            for (int i = 0; i < (white ? EPD_WHITE_PASSES : EPD_BLACK_PASSES); i++) {
-                esp_err_t err = drive_pass(solid);
-                if (err != ESP_OK) {
-                    return err;
-                }
-            }
+    static uint8_t white[EPD_STRIDE * EPD_HEIGHT];
+    memset(white, 0xFF, sizeof(white));
+    for (int i = 0; i < EPD_WHITE_PASSES; i++) {
+        esp_err_t err = drive_pass(white);
+        if (err != ESP_OK) {
+            return err;
         }
     }
     return ESP_OK;
