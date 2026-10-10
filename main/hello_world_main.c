@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "epd.h"
 
@@ -9,15 +11,16 @@ static uint8_t fb[EPD_STRIDE * EPD_HEIGHT];
 
 /* 5x7 font, column-major, bit 0 = top row. Only the glyphs we use. */
 static const struct { char c; uint8_t col[5]; } font[] = {
-    {' ', {0x00, 0x00, 0x00, 0x00, 0x00}}, {'-', {0x08, 0x08, 0x08, 0x08, 0x08}},
-    {'!', {0x00, 0x00, 0x5F, 0x00, 0x00}}, {'2', {0x42, 0x61, 0x51, 0x49, 0x46}},
-    {'3', {0x21, 0x41, 0x45, 0x4B, 0x31}}, {'6', {0x3C, 0x4A, 0x49, 0x49, 0x30}},
-    {'C', {0x3E, 0x41, 0x41, 0x41, 0x22}}, {'D', {0x7F, 0x41, 0x41, 0x22, 0x1C}},
-    {'E', {0x7F, 0x49, 0x49, 0x49, 0x41}}, {'H', {0x7F, 0x08, 0x08, 0x08, 0x7F}},
-    {'L', {0x7F, 0x40, 0x40, 0x40, 0x40}}, {'O', {0x3E, 0x41, 0x41, 0x41, 0x3E}},
-    {'P', {0x7F, 0x09, 0x09, 0x09, 0x06}}, {'R', {0x7F, 0x09, 0x19, 0x29, 0x46}},
-    {'S', {0x46, 0x49, 0x49, 0x49, 0x31}}, {'W', {0x3F, 0x40, 0x38, 0x40, 0x3F}},
+    {'E', {0x7F, 0x49, 0x49, 0x49, 0x41}}, {'F', {0x7F, 0x09, 0x09, 0x09, 0x01}},
+    {'H', {0x7F, 0x08, 0x08, 0x08, 0x7F}}, {'I', {0x00, 0x41, 0x7F, 0x41, 0x00}},
+    {'N', {0x7F, 0x04, 0x08, 0x10, 0x7F}}, {'O', {0x3E, 0x41, 0x41, 0x41, 0x3E}},
+    {'R', {0x7F, 0x09, 0x19, 0x29, 0x46}}, {'T', {0x01, 0x01, 0x7F, 0x01, 0x01}},
+    {'U', {0x3F, 0x40, 0x40, 0x40, 0x3F}}, {'V', {0x1F, 0x20, 0x40, 0x20, 0x1F}},
+    {'W', {0x3F, 0x40, 0x38, 0x40, 0x3F}},
 };
+
+static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE"};
+#define TEXT_SCALE 10  /* longest word: 5 chars * 60px - 10px gap = 290px wide */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -60,7 +63,7 @@ static void draw_text(int x, int y, const char *s, int scale)
     }
 }
 
-void app_main(void)
+static void draw_frame(const char *word)
 {
     memset(fb, 0xFF, sizeof(fb));  /* all white */
 
@@ -74,13 +77,25 @@ void app_main(void)
     fill_rect(12, 12, 2, EPD_HEIGHT - 24, 1);
     fill_rect(EPD_WIDTH - 14, 12, 2, EPD_HEIGHT - 24, 1);
 
-    draw_text(40, 80, "HELLO WORLD!", 5);   /* 12 chars * 30px = 360px wide */
-    draw_text(88, 170, "ESP32-C6", 6);      /*  8 chars * 36px = 288px wide */
+    int w = (int)strlen(word) * 6 * TEXT_SCALE - TEXT_SCALE;
+    draw_text((EPD_WIDTH - w) / 2, (EPD_HEIGHT - 7 * TEXT_SCALE) / 2, word, TEXT_SCALE);
+}
 
-    if (epd_init() != ESP_OK || epd_display(fb) != ESP_OK) {
-        ESP_LOGE(TAG, "e-paper update failed");
+void app_main(void)
+{
+    /* epd_init() sets up the SPI bus, so call it once; the panel stays awake between updates
+     * (no epd_sleep(), which would need a hardware reset to wake). */
+    if (epd_init() != ESP_OK) {
+        ESP_LOGE(TAG, "e-paper init failed");
         return;
     }
-    epd_sleep();
-    ESP_LOGI(TAG, "display updated");
+    for (size_t i = 0;; i = (i + 1) % (sizeof(words) / sizeof(words[0]))) {
+        draw_frame(words[i]);
+        if (epd_display(fb) != ESP_OK) {
+            ESP_LOGE(TAG, "e-paper update failed");
+            return;
+        }
+        ESP_LOGI(TAG, "showing %s", words[i]);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
