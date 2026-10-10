@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "epd.h"
 
 static const char *TAG = "greenlight";
@@ -22,7 +23,8 @@ static const struct { char c; uint8_t col[5]; } font[] = {
 
 static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"};
 #define TEXT_SCALE 11  /* longest word: 5 chars * 66px - 11px gap = 319px wide */
-#define TEXT_ROWS  3   /* rows of 77px with ~17px gaps fill the 300px height */
+#define TEXT_ROWS  3   /* rows of 77px, one in each 100px band of the 300px height */
+#define CLEAR_EVERY 100  /* updates between full white resets */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -80,12 +82,15 @@ static void draw_frame(const char *word)
     fill_rect(EPD_WIDTH - 14, 12, 2, EPD_HEIGHT - 24, 1);
     */
 
-    /* The word, TEXT_ROWS times, stacked and centred */
+    /* The word, TEXT_ROWS times, one per horizontal band of the screen. Each copy sits at a random
+     * position inside its band, so over many updates the whole screen area gets exercised. */
     int w = (int)strlen(word) * 6 * TEXT_SCALE - TEXT_SCALE;
     int row_h = 7 * TEXT_SCALE;
-    int gap = (EPD_HEIGHT - TEXT_ROWS * row_h) / (TEXT_ROWS + 1);
+    int band_h = EPD_HEIGHT / TEXT_ROWS;
     for (int r = 0; r < TEXT_ROWS; r++) {
-        draw_text((EPD_WIDTH - w) / 2, gap + r * (row_h + gap), word, TEXT_SCALE);
+        int x = esp_random() % (EPD_WIDTH - w + 1);
+        int y = r * band_h + esp_random() % (band_h - row_h + 1);
+        draw_text(x, y, word, TEXT_SCALE);
     }
 }
 
@@ -97,14 +102,16 @@ void app_main(void)
         ESP_LOGE(TAG, "e-paper init failed");
         return;
     }
-    /* One software full refresh to white, then only partial refreshes, back to back, to see how the
-     * panel holds up (ghosting, contrast) over many updates. */
-    if (epd_clear() != ESP_OK) {
-        ESP_LOGE(TAG, "e-paper clear failed");
-        return;
-    }
-    ESP_LOGI(TAG, "cleared");
+    /* Partial refreshes back to back, to see how the panel holds up (ghosting, contrast) over many
+     * updates, with a software full refresh to white first and then every CLEAR_EVERY updates. */
     for (uint32_t n = 1;; n++) {
+        if ((n - 1) % CLEAR_EVERY == 0) {
+            if (epd_clear() != ESP_OK) {
+                ESP_LOGE(TAG, "e-paper clear failed");
+                return;
+            }
+            ESP_LOGI(TAG, "cleared");
+        }
         const char *word = words[(n - 1) % (sizeof(words) / sizeof(words[0]))];
         draw_frame(word);
         TickType_t start = xTaskGetTickCount();
