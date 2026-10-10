@@ -13,14 +13,16 @@ static uint8_t fb[EPD_STRIDE * EPD_HEIGHT];
 static const struct { char c; uint8_t col[5]; } font[] = {
     {'E', {0x7F, 0x49, 0x49, 0x49, 0x41}}, {'F', {0x7F, 0x09, 0x09, 0x09, 0x01}},
     {'H', {0x7F, 0x08, 0x08, 0x08, 0x7F}}, {'I', {0x00, 0x41, 0x7F, 0x41, 0x00}},
-    {'N', {0x7F, 0x04, 0x08, 0x10, 0x7F}}, {'O', {0x3E, 0x41, 0x41, 0x41, 0x3E}},
-    {'R', {0x7F, 0x09, 0x19, 0x29, 0x46}}, {'T', {0x01, 0x01, 0x7F, 0x01, 0x01}},
+    {'G', {0x3E, 0x41, 0x49, 0x49, 0x7A}}, {'N', {0x7F, 0x04, 0x08, 0x10, 0x7F}},
+    {'O', {0x3E, 0x41, 0x41, 0x41, 0x3E}}, {'R', {0x7F, 0x09, 0x19, 0x29, 0x46}},
+    {'S', {0x46, 0x49, 0x49, 0x49, 0x31}}, {'T', {0x01, 0x01, 0x7F, 0x01, 0x01}},
     {'U', {0x3F, 0x40, 0x40, 0x40, 0x3F}}, {'V', {0x1F, 0x20, 0x40, 0x20, 0x1F}},
-    {'W', {0x3F, 0x40, 0x38, 0x40, 0x3F}},
+    {'W', {0x3F, 0x40, 0x38, 0x40, 0x3F}}, {'X', {0x63, 0x14, 0x08, 0x14, 0x63}},
 };
 
-static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE"};
-#define TEXT_SCALE 10  /* longest word: 5 chars * 60px - 10px gap = 290px wide */
+static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"};
+#define TEXT_SCALE 11  /* longest word: 5 chars * 66px - 11px gap = 319px wide */
+#define TEXT_ROWS  3   /* rows of 77px with ~17px gaps fill the 300px height */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -67,7 +69,7 @@ static void draw_frame(const char *word)
 {
     memset(fb, 0xFF, sizeof(fb));  /* all white */
 
-    /* Double border */
+    /* Double border (disabled)
     fill_rect(0, 0, EPD_WIDTH, 4, 1);
     fill_rect(0, EPD_HEIGHT - 4, EPD_WIDTH, 4, 1);
     fill_rect(0, 0, 4, EPD_HEIGHT, 1);
@@ -76,9 +78,15 @@ static void draw_frame(const char *word)
     fill_rect(12, EPD_HEIGHT - 14, EPD_WIDTH - 24, 2, 1);
     fill_rect(12, 12, 2, EPD_HEIGHT - 24, 1);
     fill_rect(EPD_WIDTH - 14, 12, 2, EPD_HEIGHT - 24, 1);
+    */
 
+    /* The word, TEXT_ROWS times, stacked and centred */
     int w = (int)strlen(word) * 6 * TEXT_SCALE - TEXT_SCALE;
-    draw_text((EPD_WIDTH - w) / 2, (EPD_HEIGHT - 7 * TEXT_SCALE) / 2, word, TEXT_SCALE);
+    int row_h = 7 * TEXT_SCALE;
+    int gap = (EPD_HEIGHT - TEXT_ROWS * row_h) / (TEXT_ROWS + 1);
+    for (int r = 0; r < TEXT_ROWS; r++) {
+        draw_text((EPD_WIDTH - w) / 2, gap + r * (row_h + gap), word, TEXT_SCALE);
+    }
 }
 
 void app_main(void)
@@ -89,13 +97,22 @@ void app_main(void)
         ESP_LOGE(TAG, "e-paper init failed");
         return;
     }
-    for (size_t i = 0;; i = (i + 1) % (sizeof(words) / sizeof(words[0]))) {
-        draw_frame(words[i]);
-        if (epd_display(fb) != ESP_OK) {
+    /* One software full refresh to white, then only partial refreshes, back to back, to see how the
+     * panel holds up (ghosting, contrast) over many updates. */
+    if (epd_clear() != ESP_OK) {
+        ESP_LOGE(TAG, "e-paper clear failed");
+        return;
+    }
+    ESP_LOGI(TAG, "cleared");
+    for (uint32_t n = 1;; n++) {
+        const char *word = words[(n - 1) % (sizeof(words) / sizeof(words[0]))];
+        draw_frame(word);
+        TickType_t start = xTaskGetTickCount();
+        if (epd_display_partial(fb) != ESP_OK) {
             ESP_LOGE(TAG, "e-paper update failed");
             return;
         }
-        ESP_LOGI(TAG, "showing %s", words[i]);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)n, word,
+                 (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
     }
 }

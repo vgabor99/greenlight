@@ -1,9 +1,8 @@
 /* Driver for the Waveshare 4.2" e-paper module (400x300, SSD1683 controller).
- *
- * This panel hangs (BUSY stays high forever) on the full-refresh update (display mode 1, 0x22 = 0xF7),
- * so we use the quick mode-2 update (0x22 = 0xFF, ~420 ms) instead. That waveform drives black only
- * weakly, so epd_display() repeats it EPD_REFRESH_PASSES times; ~10-12 passes reach full black. */
+ * Partial refresh follows Waveshare's EPD_4IN2_V2 example code. The panel's own full-refresh waveform
+ * hangs (BUSY never releases), so epd_clear() emulates it with repeated partial updates. */
 
+#include <string.h>
 #include "epd.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -11,8 +10,10 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-#define EPD_REFRESH_PASSES 12
-#define EPD_UPDATE_MODE2   0xFF  /* enable clock+analog, load temp+LUT, display mode 2, display, power down */
+#define EPD_UPDATE_PARTIAL 0xFF  /* load temp+LUT, display mode 2 (partial waveform), ~440 ms */
+#define EPD_BLACK_PASSES   12    /* passes to black in each cycle of epd_clear(); ~12 reach full black */
+#define EPD_WHITE_PASSES   2     /* passes to white in each cycle of epd_clear() */
+#define EPD_CLEAR_CYCLES   1     /* black-white cycles in epd_clear() */
 
 static const char *TAG = "epd";
 static spi_device_handle_t spi;
@@ -100,6 +101,8 @@ esp_err_t epd_init(void)
     if ((err = wait_busy()) != ESP_OK) {
         return err;
     }
+    cmd_data(0x01, (uint8_t[]){(EPD_HEIGHT - 1) & 0xFF, (EPD_HEIGHT - 1) >> 8, 0x00}, 3); /* driver output control: 300 gate lines */
+    cmd_data(0x18, (uint8_t[]){0x80}, 1);       /* use the internal temperature sensor */
     cmd_data(0x21, (uint8_t[]){0x40, 0x00}, 2); /* display update control */
     cmd_data(0x3C, (uint8_t[]){0x05}, 1);       /* border waveform */
     cmd_data(0x11, (uint8_t[]){0x03}, 1);       /* data entry mode: X+, Y+ */
@@ -115,28 +118,64 @@ static void set_cursor(void)
     cmd_data(0x4F, (uint8_t[]){0x00, 0x00}, 2);
 }
 
-esp_err_t epd_display(const uint8_t *fb)
+/* One strong mode-2 pass towards `img`. Mode 2 only drives pixels where new (0x24) != old (0x26), and
+ * the controller scrambles its buffers after each update, so both are rewritten every pass with
+ * old = inverse of new, which makes every pixel get driven. */
+static esp_err_t drive_pass(const uint8_t *img)
 {
-    /* Mode 2 only drives pixels where new (0x24) != old (0x26), and the controller scrambles its
-     * buffers after each update, so rewrite both every pass with old = inverse of new. */
     for (size_t i = 0; i < sizeof(old_ram); i++) {
-        old_ram[i] = ~fb[i];
+        old_ram[i] = ~img[i];
     }
-    for (int pass = 0; pass < EPD_REFRESH_PASSES; pass++) {
-        set_cursor();
-        cmd(0x24);
-        data(fb, EPD_STRIDE * EPD_HEIGHT);
-        set_cursor();
-        cmd(0x26);
-        data(old_ram, sizeof(old_ram));
-        cmd_data(0x22, (uint8_t[]){EPD_UPDATE_MODE2}, 1);
-        cmd(0x20);
-        esp_err_t err = wait_busy();
-        if (err != ESP_OK) {
-            return err;
+    set_cursor();
+    cmd(0x24);
+    data(img, sizeof(old_ram));
+    set_cursor();
+    cmd(0x26);
+    data(old_ram, sizeof(old_ram));
+    cmd_data(0x22, (uint8_t[]){EPD_UPDATE_PARTIAL}, 1);
+    cmd(0x20);
+    return wait_busy();
+}
+
+/* Software "full refresh" to white. The panel's own full-refresh waveform (mode 1) hangs, so emulate
+ * it with the working mode-2 waveform: drive the whole screen black, then white (the visible flash
+ * that clears ghosting). More passes make the white grainier, not cleaner. */
+esp_err_t epd_clear(void)
+{
+    cmd_data(0x21, (uint8_t[]){0x40, 0x00}, 2); /* as in init */
+    cmd_data(0x3C, (uint8_t[]){0x05}, 1);
+
+    static uint8_t solid[EPD_STRIDE * EPD_HEIGHT];
+    for (int cycle = 0; cycle < EPD_CLEAR_CYCLES; cycle++) {
+        for (int white = 0; white < 2; white++) {  /* black first, always end on white */
+            memset(solid, white ? 0xFF : 0x00, sizeof(solid));
+            for (int i = 0; i < (white ? EPD_WHITE_PASSES : EPD_BLACK_PASSES); i++) {
+                esp_err_t err = drive_pass(solid);
+                if (err != ESP_OK) {
+                    return err;
+                }
+            }
         }
     }
     return ESP_OK;
+}
+
+/* Partial refresh, as in Waveshare's EPD_4IN2_V2_Display_Partial(): only the new image (0x24) is
+ * written; the controller diffs it against the previous frame (0x26) and drives just the changed
+ * pixels (0x22 = 0xFF). <1 s, no flash, but ghosting builds up; epd_clear() resets it. */
+esp_err_t epd_display_partial(const uint8_t *fb)
+{
+    cmd_data(0x21, (uint8_t[]){0x00, 0x00}, 2); /* normal compare of both RAMs */
+    /* Border (outside the active area): Waveshare uses 0x80 here (border floats at VCOM), which fades to
+     * grey over many updates. 0x05 drives it to white on every update like the init/clear settings, but
+     * touches all rows and columns each time. With 0x80 the border degraded to black, so keep 0x05. */
+    cmd_data(0x3C, (uint8_t[]){0x05}, 1);
+    set_cursor();
+    cmd(0x24);
+    data(fb, EPD_STRIDE * EPD_HEIGHT);
+    cmd_data(0x22, (uint8_t[]){EPD_UPDATE_PARTIAL}, 1);
+    cmd(0x20);
+    return wait_busy();
 }
 
 void epd_sleep(void)

@@ -16,7 +16,7 @@
 #define EPD_PIN_BUSY 21  /* D3 */
 
 esp_err_t epd_init(void);
-/* Push a 1-bit framebuffer (EPD_STRIDE * EPD_HEIGHT bytes, 1 = white, 0 = black) and refresh.
- * Takes ~6 s: it repeats a quick refresh several times to reach full black (see epd.c). */
-esp_err_t epd_display(const uint8_t *fb);
+/* Push a 1-bit framebuffer (EPD_STRIDE * EPD_HEIGHT bytes, 1 = white, 0 = black) and refresh. */
+esp_err_t epd_clear(void);                         /* software full refresh to white: black, then white (~7 s); clears ghosting */
+esp_err_t epd_display_partial(const uint8_t *fb);  /* ~0.45 s, no flash, ghosting accumulates */
 void epd_sleep(void);
