@@ -11,12 +11,15 @@
 #define EPD_PIN_SCK  19  /* D8 */
 #define EPD_PIN_MOSI 18  /* D10 */
 #define EPD_PIN_CS   20  /* D9 */
-#define EPD_PIN_DC   1   /* D1 */
-#define EPD_PIN_RST  2   /* D2 */
+#define EPD_PIN_DC   22  /* D4 */
+#define EPD_PIN_RST  23  /* D5 */
 #define EPD_PIN_BUSY 21  /* D3 */
 
 /* Push button between this pin and GND (internal pull-up, active low) */
-#define BUTTON_PIN   0   /* D0 */
+#define BUTTON_PIN   0   /* D0, deep-sleep wake pin (PIR input later) */
+
+/* Pair button between this pin and GND (internal pull-up, active low); deep-sleep wake pin (GPIO0-7) */
+#define PAIR_BUTTON_PIN 1  /* D1 */
 
 esp_err_t epd_init(void);
 /* Push a 1-bit framebuffer (EPD_STRIDE * EPD_HEIGHT bytes, 1 = white, 0 = black) and refresh. */
