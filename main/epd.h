@@ -15,11 +15,15 @@
 #define EPD_PIN_RST  23  /* D5 */
 #define EPD_PIN_BUSY 21  /* D3 */
 
-/* Push button between this pin and GND (internal pull-up, active low) */
-#define BUTTON_PIN   0   /* D0, deep-sleep wake pin (PIR input later) */
+/* "Somebody is around" input. A push button between the pin and GND stands in for the PIR for now
+ * (internal pull-up, active low); a real PIR output is active high: set PIR_ACTIVE_LEVEL to 1.
+ * Deep-sleep wake pin. */
+#define PIR_PIN          0   /* D0 */
+#define PIR_ACTIVE_LEVEL 0
 
 /* Pair button between this pin and GND (internal pull-up, active low); deep-sleep wake pin (GPIO0-7) */
-#define PAIR_BUTTON_PIN 1  /* D1 */
+#define PAIR_BUTTON_PIN          1  /* D1 */
+#define PAIR_BUTTON_ACTIVE_LEVEL 0
 
 esp_err_t epd_init(void);
 /* Push a 1-bit framebuffer (EPD_STRIDE * EPD_HEIGHT bytes, 1 = white, 0 = black) and refresh. */
