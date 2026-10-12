@@ -24,8 +24,7 @@ static const struct { char c; uint8_t col[5]; } font[] = {
 static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"};
 #define TEXT_SCALE 11  /* longest word: 5 chars * 66px - 11px gap = 319px wide */
 #define TEXT_ROWS  3   /* rows of 77px, one in each 100px band of the 300px height */
-#define CLEAR_EVERY 100  /* updates between full white resets */
-#define POWEROFF_TEST_AFTER 20  /* power-off diagnostic: after this many updates sleep the panel and idle (0 = off) */
+#define RUN_MS 10000  /* how long the screen updates run before the final clean refresh and power-off */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -103,16 +102,14 @@ void app_main(void)
         ESP_LOGE(TAG, "e-paper init failed");
         return;
     }
-    /* Partial refreshes back to back, to see how the panel holds up (ghosting, contrast) over many
-     * updates, with a software full refresh to white first and then every CLEAR_EVERY updates. */
-    for (uint32_t n = 1;; n++) {
-        if ((n - 1) % CLEAR_EVERY == 0) {
-            if (epd_clear() != ESP_OK) {
-                ESP_LOGE(TAG, "e-paper clear failed");
-                return;
-            }
-            ESP_LOGI(TAG, "cleared");
-        }
+    /* 1) Initial full white screen, so the controller has a valid previous frame. 2) Partial refreshes
+     * back to back for RUN_MS. */
+    if (epd_clear() != ESP_OK) {
+        ESP_LOGE(TAG, "e-paper clear failed");
+        return;
+    }
+    TickType_t run_start = xTaskGetTickCount();
+    for (uint32_t n = 1; pdTICKS_TO_MS(xTaskGetTickCount() - run_start) < RUN_MS; n++) {
         const char *word = words[(n - 1) % (sizeof(words) / sizeof(words[0]))];
         draw_frame(word);
         TickType_t start = xTaskGetTickCount();
@@ -122,12 +119,18 @@ void app_main(void)
         }
         ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)n, word,
                  (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
-#if POWEROFF_TEST_AFTER
-        if (n == POWEROFF_TEST_AFTER) {
-            epd_poweroff();
-            ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
-            vTaskDelay(portMAX_DELAY);
-        }
-#endif
     }
+
+    /* 3) Cleanest state for power-off: full white reset, then render the last image (still in fb)
+     * on the clean panel. */
+    if (epd_clear() != ESP_OK || epd_display_partial(fb) != ESP_OK) {
+        ESP_LOGE(TAG, "e-paper final refresh failed");
+        return;
+    }
+    ESP_LOGI(TAG, "final refresh done");
+
+    /* 4) Sleep the panel, hold the pins low and wait for power to be cut. */
+    epd_poweroff();
+    ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
+    vTaskDelay(portMAX_DELAY);
 }
