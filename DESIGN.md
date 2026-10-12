@@ -45,12 +45,12 @@ Principles:
 | Input | Pin | Meaning |
 |---|---|---|
 | PIR | D0 (GPIO0) | "somebody is around". The button on D0 simulates it: pressed = PIR active. Active-low button vs. active-high PIR: polarity behind one macro. A deep-sleep wake pin (GPIO0-7). |
-| Pair button | D1 (GPIO1), see 10 | also a deep-sleep wake source. Active-low, internal pull-up. Unpaired: a short press starts pairing. Paired: a 3 s hold clears the network and starts pairing (no feedback while holding). |
+| Pair button | D1 (GPIO1), see 10 | also a deep-sleep wake source. Active-low, internal pull-up. A 3 s hold (`RESET_HOLD_MS`) does the one thing it is for, with no feedback while holding: unpaired, it starts pairing; paired, it clears the network and starts pairing. Short presses only wake the device. |
 
 "Activity" below means: PIR active **or** pair button pressed. Either one wakes the device from sleep, and
-either one holds the `RUN_MS` timeout. Pressing the pair button to wake the device counts as the press: if
-it is still down when BOOT finishes, it is handled like any other press (so an unpaired device starts
-pairing right away, and a paired device can be reset with one continuous 3 s hold from sleep).
+either one holds the `RUN_MS` timeout. The 3 s hold is measured from when the button went down; a button
+still held from the wake-up counts from boot. So one continuous 3 s hold from sleep is enough, both to
+start pairing (unpaired) and to reset the network (paired).
 
 ### 3.2 Timeouts
 
@@ -59,14 +59,14 @@ pairing right away, and a paired device can be reset with one continuous 3 s hol
 | `RUN_MS` | 5 s | activity timeout. Held at full while the PIR is active or the pair button is pressed, counts down after it is released, re-armed by any new activation. At 0 the device shuts down. |
 | `PAIR_MS` | 180 s | length of the pairing window. |
 | `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
-| `RESET_HOLD_MS` | 3 s | pair button hold to clear the network while paired. |
+| `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
 | `REJOIN_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
 
 ### 3.3 State machine
 
 Pairing comes before PIR-driven behaviour. At every boot or wake the device first asks "am I paired?".
 Only a paired device runs the PIR-driven part. An unpaired device only waits for the pair button; activity
-(PIR or button) just keeps it awake while it waits, and the button press that woke it counts.
+(PIR or button) just keeps it awake while it waits. Pairing starts on a 3 s hold, same as the network reset.
 
 ```mermaid
 stateDiagram-v2
@@ -75,7 +75,7 @@ stateDiagram-v2
     BOOT --> REJOIN: paired
     BOOT --> PAIRING: unpaired and pair_now
     BOOT --> UNPAIRED_WAIT: unpaired
-    UNPAIRED_WAIT --> PAIRING: pair button
+    UNPAIRED_WAIT --> PAIRING: pair button held 3 s
     UNPAIRED_WAIT --> SHUTDOWN: RUN_MS expired
     PAIRING --> INTERVIEW: joined
     PAIRING --> UNPAIRED_WAIT: PAIR_MS over
@@ -97,7 +97,7 @@ States and transitions:
 |---|---|---|
 | **SLEEP** | nothing runs | PIR active or pair button pressed -> BOOT |
 | **BOOT** | init, read the stored snapshot and `shown_hash` from retained memory (empty after a cold boot: `shown_hash = 0`), check the stack for a stored network | paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
-| **UNPAIRED_WAIT** | shows the "press the pair button" screen; `RUN_MS` runs as usual (activity keeps it awake) | pair button -> PAIRING; `RUN_MS` expired -> SHUTDOWN |
+| **UNPAIRED_WAIT** | shows the "press the pair button" screen; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR; shows the pairing screen | joined -> INTERVIEW; `PAIR_MS` over -> "Pairing failed" screen, back to UNPAIRED_WAIT |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports `awake` and `shown_hash` so HA can already push | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored snapshot is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
@@ -109,7 +109,7 @@ Rules that keep it simple:
 
 - One timer per state, no hidden state elsewhere. The only things that survive SLEEP are the retained
   data (stored snapshot, footer, `shown_hash`, `pair_now`) and the Zigbee network in NVS.
-- The pair button is only acted on in UNPAIRED_WAIT (short press) and ACTIVE (3 s hold). In every other state it is ignored, apart from waking the device.
+- The pair button is only acted on in UNPAIRED_WAIT and ACTIVE, both times as a 3 s hold. In every other state it is ignored, apart from waking the device.
 - A failed pairing never erases anything; the device stays factory new.
 - A failed rejoin never erases the network; only the pair button does.
 
@@ -132,7 +132,7 @@ well under 1 KB) lives in retained RAM, since the 15 KB framebuffer does not fit
 - inputs (D0, D1) are polled and debounced by a task, level based; `RUN_MS` = 5 s;
 - all states exist; Zigbee is stubbed (join succeeds after 3 s, rejoin after 1 s, the pairing-window-over
   path is therefore not exercised); ERASE_NETWORK only clears the NVS flags;
-- `paired`, `pair_now`, `wake_pair` are in NVS; SLEEP is the simulation of 3.6;
+- `paired` and `pair_now` are in NVS; SLEEP is the simulation of 3.6;
 - each state shows a placeholder word (WAIT, PAIR, FAIL, INTERVIEW, REJOIN, ERASE); ACTIVE still runs the
   ONE..TEN refresh test instead of the real content;
 - `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.

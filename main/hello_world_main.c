@@ -131,7 +131,6 @@ static volatile bool pir_active;
 static volatile bool pair_active;
 static volatile TickType_t last_activity;  /* last time any input was active */
 static volatile TickType_t pair_since;     /* when the pair button went down (valid while pair_active) */
-static volatile uint32_t pair_presses;     /* debounced pair button presses so far */
 
 static bool active(void)
 {
@@ -181,7 +180,6 @@ static void input_task(void *arg)
                 pair_n = 0;
                 if (pair) {
                     pair_since = now;
-                    pair_presses++;
                 }
             }
         } else {
@@ -236,8 +234,8 @@ static void nvs_open_state(void)
     ESP_ERROR_CHECK(nvs_open("greenlight", NVS_READWRITE, &nvs));
 }
 
-/* NVS keys: "paired" (stands in for "the Zigbee stack has a stored network"), "pair_now" (start pairing
- * right after the next boot, set by ERASE_NETWORK) and "wake_pair" (the pair button woke the device). */
+/* NVS keys: "paired" (stands in for "the Zigbee stack has a stored network") and "pair_now" (start pairing
+ * right after the next boot, set by ERASE_NETWORK). */
 
 /* ---- State machine (DESIGN.md 3.3) ---- */
 typedef enum {
@@ -249,18 +247,11 @@ static const char *const state_names[] = {
     "BOOT", "UNPAIRED_WAIT", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
 };
 
-static bool wake_by_pair;  /* the pair button woke the device: counts as a press */
-static uint32_t presses_seen;
-
 static state_t st_boot(void)
 {
-    wake_by_pair = nv_get("wake_pair");
-    if (wake_by_pair) {
-        nv_set("wake_pair", 0);
-    }
     bool paired = nv_get("paired");
     bool pair_now = nv_get("pair_now");
-    ESP_LOGI(TAG, "boot: paired=%d pair_now=%d wake_by_pair=%d", paired, pair_now, wake_by_pair);
+    ESP_LOGI(TAG, "boot: paired=%d pair_now=%d", paired, pair_now);
     /* MVP: full clear on every wake (DESIGN.md 3.4). epd_init() also releases the pin hold and recreates
      * the SPI bus left by epd_poweroff(). */
     if (epd_init() != ESP_OK || epd_clear() != ESP_OK) {
@@ -283,10 +274,9 @@ static state_t st_unpaired_wait(void)
     show_word("WAIT", 11);
     touch_activity();
     for (;;) {
-        if (wake_by_pair || pair_active || pair_presses != presses_seen) {
-            wake_by_pair = false;
-            presses_seen = pair_presses;
-            ESP_LOGI(TAG, "pair button");
+        /* Long press, like the network reset in ACTIVE. A button still held from the wake-up counts from boot. */
+        if (pair_held_ms() >= RESET_HOLD_MS) {
+            ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);
             return ST_PAIRING;
         }
         if (idle_ms() >= RUN_MS) {
@@ -392,11 +382,7 @@ static state_t st_sleep(void)
     while (!active()) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
-    bool by_pair = pair_active;
-    ESP_LOGI(TAG, "wake: %s", by_pair ? "pair button" : "PIR");
-    if (by_pair) {
-        nv_set("wake_pair", 1);
-    }
+    ESP_LOGI(TAG, "wake: %s", pair_active ? "pair button" : "PIR");
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
     return ST_BOOT;
