@@ -1,7 +1,7 @@
 # Greenlight: design (draft for review)
 
-Status: draft, 2026-10-12 (rev 3). Nothing in here is implemented yet except the e-paper driver and the
-button/timeout behaviour that stands in for the PIR (see 3.5).
+Status: draft, 2026-10-12 (rev 4). Implemented and tested on the hardware: the e-paper driver, the pin
+move, and plan step 1 (inputs, state machine, simulated sleep; Zigbee stubbed, see 3.5 and 12).
 
 ## 1. Goal
 
@@ -125,15 +125,21 @@ well under 1 KB) lives in retained RAM, since the 15 KB framebuffer does not fit
 - O2: skip the final clean refresh at SHUTDOWN when no partial update happened since the last one.
 - O3: persist the snapshot in NVS so it survives a battery change.
 
-### 3.5 Current code vs. this design
+### 3.5 Current code (plan step 1 done)
 
-`main/hello_world_main.c` already has the restart-on-press window, but:
+`main/hello_world_main.c` implements the state machine of 3.3 and the timeouts of 3.2:
 
-- `RUN_MS` is 10 s (design: 5 s);
-- the ISR is falling-edge only, so *holding* the button does not hold the timeout (the design wants
-  level-based behaviour: track the input level, re-arm while active);
-- the run phase is a loop of constant test refreshes (ONE..TEN); the real device is event-driven;
-- no pair button, no Zigbee, and the "sleep" is a plain wait for a press after `epd_poweroff()`.
+- inputs (D0, D1) are polled and debounced by a task, level based; `RUN_MS` = 5 s;
+- all states exist; Zigbee is stubbed (join succeeds after 3 s, rejoin after 1 s, the pairing-window-over
+  path is therefore not exercised); ERASE_NETWORK only clears the NVS flags;
+- `paired`, `pair_now`, `wake_pair` are in NVS; SLEEP is the simulation of 3.6;
+- each state shows a placeholder word (WAIT, PAIR, FAIL, INTERVIEW, REJOIN, ERASE); ACTIVE still runs the
+  ONE..TEN refresh test instead of the real content;
+- `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
+
+Tested on the board: unpaired start (no press: shutdown, still unpaired; press: pairing), 3 s hold erase and
+re-pair, wake by PIR and by pair button, hold keeps awake, re-arm during the countdown, 2 s hold does not
+erase. A factory-new device: erase the NVS partition (command in CLAUDE.md).
 
 ### 3.6 MVP sleep simulation and rejoin budget
 
@@ -307,7 +313,8 @@ D1 as well (earlier drafts said D4).
 
 Decided: `RUN_MS` 5 s; `PAIR_MS` 180 s; `INTERVIEW_MS` 60 s; 3 s hold, no feedback; MVP full clear; no
 accents and no icons; 6 lines; PIR's own hold time is ignored; deep sleep simulated by a top-level loop;
-PIR and pair button both wake the device; the pair button is on D1 (panel DC/RST moved to D4/D5); retained RAM assumed not to survive a software restart (NVS in the MVP).
+PIR and pair button both wake the device; the pair button is on D1 (panel DC/RST moved to D4/D5, done);
+retained RAM assumed not to survive a software restart (NVS in the MVP).
 
 Open:
 
@@ -317,11 +324,15 @@ Open:
 
 ## 12. Implementation plan
 
-1. Level-based PIR/button timeout (3.2) with `RUN_MS` = 5 s, behind a polarity macro; the state machine
-   skeleton (3.3) with the Zigbee parts stubbed; pair button on D1; top-level sleep simulation (3.6) with NVS for the state that must survive.
-2. Renderer: full-ASCII font, 6 rows plus footer, static screens; a test list on the panel; stored
-   snapshot in retained memory; MVP full clear and redraw on wake.
+1. **Done.** Level-based PIR/button timeout with `RUN_MS` = 5 s, polarity macros, state machine with Zigbee
+   stubbed, pair button on D1, simulated sleep with NVS.
+2. **Next: renderer.** Full-ASCII font (replace the 5x7 test glyphs), 6 rows plus footer strip, static
+   screens (All OK, press the pair button, pairing, pairing failed) replacing the placeholder words, a test
+   list on the panel in ACTIVE instead of the ONE..TEN test (event-driven redraw), stored snapshot and
+   footer kept across sleep (NVS) and redrawn after the MVP full clear in BOOT.
 3. Zigbee: custom cluster, attributes, `SetLines`/`SetFooter` handlers, pairing, interview, rejoin,
-   rx-on-when-idle while awake, ERASE_NETWORK.
-4. Z2M external converter and HA automation; measure rejoin time and end-to-end latency.
-5. Proper deep sleep: wake on D0 and D1, move the retained state to retained RAM. Then the optimizations O1-O3, accents and icons.
+   rx-on-when-idle while awake, ERASE_NETWORK (real leave and erase). Make the stub failures testable first
+   (pairing window over, rejoin failed). Set `INTERVIEW_MS` back to 60 s. Measure the rejoin time.
+4. Z2M external converter and HA automation; measure end-to-end latency.
+5. Proper deep sleep: wake on D0 and D1 (replace `st_sleep`), move the retained state to retained RAM. Then
+   the optimizations O1-O3, accents and icons.
