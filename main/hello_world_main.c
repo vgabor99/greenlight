@@ -100,6 +100,18 @@ static void draw_frame(const char *word)
 static TaskHandle_t main_task;
 static volatile TickType_t last_activity;  /* start of the RUN_MS window; moved forward by every button press */
 
+static volatile uint32_t presses;  /* debounced presses so far, counted in the ISR (no logging there) */
+
+static void log_new_presses(void)
+{
+    static uint32_t logged;
+    uint32_t now = presses;
+    if (now != logged) {
+        ESP_LOGI(TAG, "button pressed (press #%lu)", (unsigned long)now);
+        logged = now;
+    }
+}
+
 /* Falling edge on the button: restart the run window and wake the main task if it is waiting. */
 static void IRAM_ATTR button_isr(void *arg)
 {
@@ -110,6 +122,7 @@ static void IRAM_ATTR button_isr(void *arg)
     }
     last_edge = now;
     last_activity = now;
+    presses++;
     BaseType_t woken = pdFALSE;
     vTaskNotifyGiveFromISR(main_task, &woken);
     portYIELD_FROM_ISR(woken);
@@ -158,6 +171,7 @@ void app_main(void)
             }
             ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)n, word,
                      (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
+            log_new_presses();
         }
 
         /* 3) Cleanest state for power-off: full white reset, then render the last image (still in fb)
@@ -173,6 +187,7 @@ void app_main(void)
         epd_poweroff();
         ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        ESP_LOGI(TAG, "button pressed, restarting");
+        log_new_presses();
+        ESP_LOGI(TAG, "restarting");
     }
 }
