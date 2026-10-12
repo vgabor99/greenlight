@@ -15,6 +15,9 @@
 #define EPD_PIN_RST  2   /* D2 */
 #define EPD_PIN_BUSY 21  /* D3 */
 
+/* Push button between this pin and GND (internal pull-up, active low) */
+#define BUTTON_PIN   0   /* D0 */
+
 esp_err_t epd_init(void);
 /* Push a 1-bit framebuffer (EPD_STRIDE * EPD_HEIGHT bytes, 1 = white, 0 = black) and refresh. */
 esp_err_t epd_clear(void);                         /* software full refresh to white: one white pass (~0.5 s); resets ghosting */

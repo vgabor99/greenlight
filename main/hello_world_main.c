@@ -2,6 +2,8 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "epd.h"
@@ -24,7 +26,8 @@ static const struct { char c; uint8_t col[5]; } font[] = {
 static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"};
 #define TEXT_SCALE 11  /* longest word: 5 chars * 66px - 11px gap = 319px wide */
 #define TEXT_ROWS  3   /* rows of 77px, one in each 100px band of the 300px height */
-#define RUN_MS 10000  /* how long the screen updates run before the final clean refresh and power-off */
+#define BUTTON_DEBOUNCE_MS 50
+#define RUN_MS 10000 /* how long the screen updates run before the final clean refresh and power-off */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -94,43 +97,82 @@ static void draw_frame(const char *word)
     }
 }
 
+static TaskHandle_t main_task;
+static volatile TickType_t last_activity;  /* start of the RUN_MS window; moved forward by every button press */
+
+/* Falling edge on the button: restart the run window and wake the main task if it is waiting. */
+static void IRAM_ATTR button_isr(void *arg)
+{
+    static TickType_t last_edge;
+    TickType_t now = xTaskGetTickCountFromISR();
+    if (pdTICKS_TO_MS(now - last_edge) < BUTTON_DEBOUNCE_MS) {
+        return;
+    }
+    last_edge = now;
+    last_activity = now;
+    BaseType_t woken = pdFALSE;
+    vTaskNotifyGiveFromISR(main_task, &woken);
+    portYIELD_FROM_ISR(woken);
+}
+
+static void button_init(void)
+{
+    main_task = xTaskGetCurrentTaskHandle();
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << BUTTON_PIN,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,  /* button between the pin and GND */
+        .intr_type = GPIO_INTR_NEGEDGE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&cfg));
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_PIN, button_isr, NULL));
+}
+
 void app_main(void)
 {
-    /* epd_init() sets up the SPI bus, so call it once; the panel stays awake between updates
-     * (no epd_sleep(), which would need a hardware reset to wake). */
-    if (epd_init() != ESP_OK) {
-        ESP_LOGE(TAG, "e-paper init failed");
-        return;
-    }
-    /* 1) Initial full white screen, so the controller has a valid previous frame. 2) Partial refreshes
-     * back to back for RUN_MS. */
-    if (epd_clear() != ESP_OK) {
-        ESP_LOGE(TAG, "e-paper clear failed");
-        return;
-    }
-    TickType_t run_start = xTaskGetTickCount();
-    for (uint32_t n = 1; pdTICKS_TO_MS(xTaskGetTickCount() - run_start) < RUN_MS; n++) {
-        const char *word = words[(n - 1) % (sizeof(words) / sizeof(words[0]))];
-        draw_frame(word);
-        TickType_t start = xTaskGetTickCount();
-        if (epd_display_partial(fb) != ESP_OK) {
-            ESP_LOGE(TAG, "e-paper update failed");
+    button_init();
+    /* A button press keeps the lifecycle going: during the run it restarts the RUN_MS window, once the
+     * panel is asleep it restarts the whole cycle. */
+    for (;;) {
+        /* epd_init() also releases the pin hold and recreates the SPI bus left by epd_poweroff(). */
+        if (epd_init() != ESP_OK) {
+            ESP_LOGE(TAG, "e-paper init failed");
             return;
         }
-        ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)n, word,
-                 (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
-    }
+        /* 1) Initial full white screen, so the controller has a valid previous frame. 2) Partial refreshes
+         * back to back until RUN_MS after the start or the last button press. */
+        if (epd_clear() != ESP_OK) {
+            ESP_LOGE(TAG, "e-paper clear failed");
+            return;
+        }
+        ulTaskNotifyTake(pdTRUE, 0);  /* forget the press that started this cycle */
+        last_activity = xTaskGetTickCount();
+        for (uint32_t n = 1; pdTICKS_TO_MS(xTaskGetTickCount() - last_activity) < RUN_MS; n++) {
+            const char *word = words[(n - 1) % (sizeof(words) / sizeof(words[0]))];
+            draw_frame(word);
+            TickType_t start = xTaskGetTickCount();
+            if (epd_display_partial(fb) != ESP_OK) {
+                ESP_LOGE(TAG, "e-paper update failed");
+                return;
+            }
+            ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)n, word,
+                     (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
+        }
 
-    /* 3) Cleanest state for power-off: full white reset, then render the last image (still in fb)
-     * on the clean panel. */
-    if (epd_clear() != ESP_OK || epd_display_partial(fb) != ESP_OK) {
-        ESP_LOGE(TAG, "e-paper final refresh failed");
-        return;
-    }
-    ESP_LOGI(TAG, "final refresh done");
+        /* 3) Cleanest state for power-off: full white reset, then render the last image (still in fb)
+         * on the clean panel. A press from here on is kept and restarts the cycle after power-off. */
+        ulTaskNotifyTake(pdTRUE, 0);
+        if (epd_clear() != ESP_OK || epd_display_partial(fb) != ESP_OK) {
+            ESP_LOGE(TAG, "e-paper final refresh failed");
+            return;
+        }
+        ESP_LOGI(TAG, "final refresh done");
 
-    /* 4) Sleep the panel, hold the pins low and wait for power to be cut. */
-    epd_poweroff();
-    ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
-    vTaskDelay(portMAX_DELAY);
+        /* 4) Sleep the panel, hold the pins low and wait for a button press (or power-off). */
+        epd_poweroff();
+        ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        ESP_LOGI(TAG, "button pressed, restarting");
+    }
 }
