@@ -25,6 +25,7 @@ static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX"
 #define TEXT_SCALE 11  /* longest word: 5 chars * 66px - 11px gap = 319px wide */
 #define TEXT_ROWS  3   /* rows of 77px, one in each 100px band of the 300px height */
 #define CLEAR_EVERY 100  /* updates between full white resets */
+#define POWEROFF_TEST_AFTER 20  /* power-off diagnostic: after this many updates sleep the panel and idle (0 = off) */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -121,5 +122,12 @@ void app_main(void)
         }
         ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)n, word,
                  (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
+#if POWEROFF_TEST_AFTER
+        if (n == POWEROFF_TEST_AFTER) {
+            epd_poweroff();
+            ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
+            vTaskDelay(portMAX_DELAY);
+        }
+#endif
     }
 }

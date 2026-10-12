@@ -58,6 +58,11 @@ static esp_err_t wait_busy(void)
 
 esp_err_t epd_init(void)
 {
+    /* epd_poweroff() holds the pins low; the hold survives a reset and would block the SPI signals. */
+    const int pins[] = { EPD_PIN_SCK, EPD_PIN_MOSI, EPD_PIN_CS, EPD_PIN_DC, EPD_PIN_RST };
+    for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); i++) {
+        gpio_hold_dis(pins[i]);
+    }
     gpio_config_t out = {
         .pin_bit_mask = (1ULL << EPD_PIN_DC) | (1ULL << EPD_PIN_RST),
         .mode = GPIO_MODE_OUTPUT,
@@ -172,7 +177,26 @@ esp_err_t epd_display_partial(const uint8_t *fb)
     return wait_busy();
 }
 
+/* Deep sleep (0x10 = 0x01): the controller stops driving the panel. Only a hardware reset wakes it. */
 void epd_sleep(void)
 {
+    wait_busy();
     cmd_data(0x10, (uint8_t[]){0x01}, 1);
+    vTaskDelay(pdMS_TO_TICKS(100));
+}
+
+/* Put the panel to sleep, release the SPI bus and drive every signal low, so nothing feeds the panel
+ * through its input pins while the supply goes away. The pins stay low through ESP32 deep sleep. */
+void epd_poweroff(void)
+{
+    epd_sleep();
+    spi_bus_remove_device(spi);
+    spi_bus_free(SPI2_HOST);
+    const int pins[] = { EPD_PIN_SCK, EPD_PIN_MOSI, EPD_PIN_CS, EPD_PIN_DC, EPD_PIN_RST };
+    for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); i++) {
+        gpio_reset_pin(pins[i]);
+        gpio_set_direction(pins[i], GPIO_MODE_OUTPUT);
+        gpio_set_level(pins[i], 0);
+        gpio_hold_en(pins[i]);
+    }
 }
