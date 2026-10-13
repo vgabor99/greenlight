@@ -319,8 +319,11 @@ static void core_action_handler(ezb_zcl_core_action_callback_id_t callback_id, v
 {
     switch (callback_id) {
     case EZB_ZCL_CORE_SET_ATTR_VALUE_CB_ID: {
-        /* Tell the stack the write is fine; without this it stops after the first attribute of a multi-attribute write. */
+        /* Tell the stack the write is fine. HA sends one attribute per write (DESIGN.md 6.5): batched writes of long
+         * strings were refused by the coordinator or stopped after the first attribute. */
         ezb_zcl_set_attr_value_message_t *m = message;
+        ESP_LOGI(TAG, "set attr: cluster 0x%04x attr 0x%04x type 0x%02x size %u (stack status 0x%02x)", m->info.cluster_id,
+                 m->in.attribute.id, m->in.attribute.data.type, m->in.attribute.data.size, m->info.status);
         m->out.result = EZB_ZCL_STATUS_SUCCESS;
     } break;
     case EZB_ZCL_CORE_DEFAULT_RSP_CB_ID: {

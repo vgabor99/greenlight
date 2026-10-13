@@ -86,7 +86,7 @@ static void show_word(const char *word, int scale)
 }
 
 /* ---- Timing (DESIGN.md 3.2) ---- */
-#define RUN_MS        30000   /* TEMPORARY for development (time to publish test messages); design value 5000 */
+#define RUN_MS        7200000 /* TEMPORARY for development (2 h, so the device stays awake for tests); design value 5000 */
 #define PAIR_MS       180000  /* pairing window */
 #define INTERVIEW_MS  10000   /* TEMPORARY for development; design value 60000 */
 #define RESET_HOLD_MS 3000    /* pair button hold that clears the network */

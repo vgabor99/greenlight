@@ -337,8 +337,15 @@ Why it looks like this:
 
 - **Plain attribute writes**: the SDK delivers them to the application as "attribute set" events; no
   custom command handler is needed, and Z2M's raw write is a stock feature.
-- **One line per slot, written in any order**: each write is a small separate frame (about 30 bytes of
-  payload), so nothing is fragmented and nothing depends on the order the frames arrive.
+- **One attribute per write, never batched.** Each Z2M `write` message carries exactly one attribute (a line,
+  the footer or the commit), about 30 bytes of payload, so nothing is fragmented and nothing depends on the
+  order the frames arrive. Batching was tried and fails in two ways (tested on the real setup): (1) a write
+  of 3 long attributes (77 bytes) is refused by the Z-Stack coordinator with `MEM_ERROR (0x10)` before it
+  goes on air, every time; (2) a write of 2 long attributes (23 and 21 bytes) reaches the device, but the
+  stack handles only the first attribute and answers `UNSUPPORTED_ATTRIBUTE` for the rest (cause unknown;
+  two short 9-byte attributes did work). Single-attribute writes with values up to 23 bytes arrived 15 times
+  out of 15 in the final tests, when sent about 3 s apart (faster spacing is untested).
+  Z2M reports a failed write on `zigbee2mqtt/bridge/logging` (level error), so the refusal is visible.
 - **The tag and the commit make it safe.** The device keeps the lines it received with their tag. When it
   gets `commit`, it renders only if lines 1 to `count` are all present and tagged with that hash; then it stores the snapshot, reports `shown_hash`
   and redraws. Otherwise it ignores the commit, `shown_hash` does not change and HA resends after 5 s. A
@@ -350,8 +357,8 @@ Why it looks like this:
 Example (HA publishes these to `zigbee2mqtt/<device>/set`; ids in decimal, the format of the Z2M raw write):
 
 ```json
-{"write": {"cluster": 64650, "payload": {"0": {"value": "A1B2C3|Living room door", "type": 66},
-                                         "1": {"value": "A1B2C3|Kitchen window", "type": 66}}}}
+{"write": {"cluster": 64650, "payload": {"0": {"value": "A1B2C3|Living room door", "type": 66}}}}
+{"write": {"cluster": 64650, "payload": {"1": {"value": "A1B2C3|Kitchen window", "type": 66}}}}
 {"write": {"cluster": 64650, "payload": {"7": {"value": 44151491, "type": 35}}}}
 ```
 
@@ -435,8 +442,10 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   - on `awake` becoming true: write the footer (current time); if `shown_hash != current_hash`, also the
     snapshot
   - while `awake` is true and `shown_hash != current_hash`: publish the writes of 6.5 to
-    `zigbee2mqtt/<device>/set` (the tagged lines in a few small writes, then the `commit`); wait about 5 s;
-    if `shown_hash` still differs, resend (a few retries at most)
+    `zigbee2mqtt/<device>/set`, **one attribute per message**, about 3 s apart: line 1 .. line `count`, then the
+    `commit`; wait about 5 s after the commit; if `shown_hash` still differs, resend (a few retries at most).
+    A full 6-line snapshot is 7 writes, about 20 s. The device stays awake while the PIR is active; check
+    this against the 5 s run time (RUN_MS) and shorten the spacing if the tests allow it
   - debounce a few seconds after `current_hash` changes, so a burst of events gives one refresh.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).
