@@ -337,17 +337,18 @@ Why it looks like this:
 
 - **Plain attribute writes**: the SDK delivers them to the application as "attribute set" events; no
   custom command handler is needed, and Z2M's raw write is a stock feature.
-- **One attribute per write, never batched.** Each Z2M `write` message carries exactly one attribute (a line,
-  the footer or the commit), about 30 bytes of payload, so nothing is fragmented and nothing depends on the
-  order the frames arrive. Batching was tried and fails in two ways (tested on the real setup): (1) a write
-  of 3 long attributes (77 bytes) is refused by the Z-Stack coordinator with `MEM_ERROR (0x10)` before it
-  goes on air, every time; (2) a write of 2 long attributes (23 and 21 bytes) reaches the device, but the
-  stack handles only the first attribute and answers `UNSUPPORTED_ATTRIBUTE` for the rest (cause unknown;
-  two short 9-byte attributes did work). Even single-attribute writes fail when they follow another write too
-  closely: sent 0.5 s apart (a burst), every second write was answered `UNSUPPORTED_ATTRIBUTE` by the device
-  (the stack rejects it before the application sees it), and at about 2.7 s apart every second write still
-  failed. Writes about 6 s apart worked 9 times out of 9 (values up to 23 bytes). The real minimum spacing
-  is somewhere between 3 s and 6 s and the cause is not understood; until it is, send at least 6 s apart.
+- **One attribute per write.** Each Z2M `write` message carries exactly one attribute (a line, the footer or
+  the commit), about 30 bytes of payload, so nothing is fragmented and nothing depends on the order the frames
+  arrive. Batched writes were tried and fail: a write of 3 long attributes (77 bytes) is refused by the Z-Stack
+  coordinator with `MEM_ERROR (0x10)` before it goes on air. (A batch of 2 long attributes also failed, but that
+  was most likely the storage-size bug below; it was not retested.)
+- **Register the string slots with a full-length initial value.** The stack takes the storage size of a string
+  attribute from the value it is registered with. With a zero-length initial string, every second write of a
+  string longer than 11 characters was answered `UNSUPPORTED_ATTRIBUTE` by the device (the stack rejects it
+  before the application sees it), however slow or fast the writes came. The firmware registers 40-character
+  placeholders (not valid tags, so a commit rejects them). With that, 10 of 10 writes of 27 bytes arrived in a
+  burst, and a complete snapshot (6 lines, footer, commit) sent without any spacing arrived in 3.5 s and was
+  accepted. No spacing between writes is needed.
   Z2M reports a failed write on `zigbee2mqtt/bridge/logging` (level error), so the refusal is visible.
 - **The tag and the commit make it safe.** The device keeps the lines it received with their tag. When it
   gets `commit`, it renders only if lines 1 to `count` are all present and tagged with that hash; then it stores the snapshot, reports `shown_hash`
@@ -445,10 +446,9 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   - on `awake` becoming true: write the footer (current time); if `shown_hash != current_hash`, also the
     snapshot
   - while `awake` is true and `shown_hash != current_hash`: publish the writes of 6.5 to
-    `zigbee2mqtt/<device>/set`, **one attribute per message**, at least 6 s apart: line 1 .. line `count`, then the
+    `zigbee2mqtt/<device>/set`, **one attribute per message**, back to back: line 1 .. line `count`, then the
     `commit`; wait about 5 s after the commit; if `shown_hash` still differs, resend (a few retries at most).
-    A full 6-line snapshot is 7 writes, about 45 s, much longer than the 5 s run time (RUN_MS): the awake
-    window must stay open while writes arrive, or the spacing problem must be fixed on the device
+    A full 6-line snapshot is 7 to 8 writes and took 3.5 s on the bench, within the 5 s run time (RUN_MS)
   - debounce a few seconds after `current_hash` changes, so a burst of events gives one refresh.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).

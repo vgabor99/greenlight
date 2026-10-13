@@ -391,7 +391,12 @@ static esp_err_t create_device(void)
     ezb_zcl_analog_input_cluster_server_config_t ana_cfg = {.out_of_service = false, .present_value = (float)s_shown_hash, .status_flags = 0};
     ezb_zcl_cluster_desc_t analog = ezb_zcl_analog_input_create_cluster_desc(&ana_cfg, EZB_ZCL_CLUSTER_SERVER);
 
-    /* Custom cluster: the display input slots */
+    /* Custom cluster: the display input slots. The stack takes the storage size of a string attribute from the
+     * initial value, so register full-length placeholders (they are not valid tags, so a commit rejects them). */
+    for (int i = 0; i <= ZB_MAX_LINES; i++) {
+        s_slot[i][0] = SLOT_MAX;
+        memset(&s_slot[i][1], ' ', SLOT_MAX);
+    }
     ezb_zcl_custom_cluster_config_t custom_cfg = {
         .cluster_id  = CUSTOM_CLUSTER_ID,
         .init_func   = custom_cluster_init,
