@@ -17,13 +17,13 @@ comes first: an unpaired device does nothing useful until it is paired.
 ## 2. Overview
 
 ```
-  HA (template sensor: lines + hash)       Zigbee2MQTT (external converter)           device
-  ──────────────────────────────────       ────────────────────────────────           ──────
+  HA (template sensor: lines + hash)       Zigbee2MQTT (generic mapping)               device
+  ──────────────────────────────────       ──────────────────────────────              ──────
   current_hash ─┐                                                                      PIR on -> wake
-                │   awake / shown_hash  <── attribute reports <───────────────────────  rejoin, report
+                │   awake / shown_hash  <── standard cluster reports <───────────────  rejoin, report
   automation:   │                                                                      ...
-  awake && shown_hash != current_hash ─►  /set {hash, lines[], footer} ─► frames ────► buffer, redraw
-                                                                                        report shown_hash
+  awake && shown_hash != current_hash ─►  /set {"write": ...} ─► attribute writes ──► collect lines, commit,
+                                                                                        redraw, report shown_hash
                                                                                        PIR off + timeout
                                          awake=false  <──────────────────────────────  report, deep sleep
 ```
@@ -173,8 +173,8 @@ first thing to measure when Zigbee runs: log the time from boot to the "joined" 
 - **PAIRING** runs BDB network steering with retries for `PAIR_MS`. The user enables "Permit join" in
   Zigbee2MQTT meanwhile. Panel: static "Pairing..." screen.
 - **INTERVIEW**: Z2M reads Basic cluster attributes and so on (several seconds, sometimes tens). The Basic
-  cluster must report a fixed manufacturer name and model id so the external converter can match the
-  device. HA can already push the first snapshot (`shown_hash = 0` differs from `current_hash`).
+  cluster must report the fixed manufacturer name `Greenlight` and model id (6.1); they are what Z2M
+  stores, and what a converter would match later. HA can already push the first snapshot (`shown_hash = 0` differs from `current_hash`).
 - **ERASE_NETWORK**: a polite leave (`esp_zb_bdb_reset_via_local_action()` in the SDK), then erase the
   Zigbee storage (`esp_zb_factory_reset()`, which restarts the chip), after setting `pair_now` so the next
   BOOT goes straight to PAIRING. The SDK function names are from memory; verify when implementing.
@@ -193,8 +193,9 @@ first thing to measure when Zigbee runs: log the time from boot to the "joined" 
   "footer": "Updated 14:32" }
 ```
 
-- `hash`: 32-bit value chosen by HA, identifying the content of `lines` (e.g. CRC32 of icon+text of every
-  line). The device stores and echoes it; it never computes it. The same lines always give the same hash.
+- `hash`: **24-bit** value chosen by HA, identifying the content of `lines` (e.g. the first 6 hex digits of
+  a sha1 / md5 of icon+text of every line; 24 bits so it travels exactly in a float, see 6.4). The device
+  stores and echoes it; it never computes it. The same lines always give the same hash.
   The footer is **not** part of the hash (it changes every minute and must not cause a push by itself).
 - `lines`: **at most 6**, already sorted and truncated by HA; if the list is longer, the sixth is
   "+N more". Text is plain ASCII for the MVP (no accents), about 21 characters at most (see 8).
@@ -209,59 +210,238 @@ The screen is only as fresh as the last wake. The footer is the fix: HA sends a 
 time **every time the device reports `awake = true`** and with every content push. Its meaning is "the last
 time this screen was confirmed in sync with HA". If the time is old, the viewer knows the data may be old.
 
-- The footer is a separate frame (`SetFooter`), not tied to a hash change.
+- The footer is a separate attribute write (`footer`, 6.5), not tied to a hash change.
 - The device stores the footer text with the snapshot and redraws it with the next refresh. Footer and
   lines that arrive close together are coalesced into one refresh (debounce about 300 ms).
 - The footer sits in a reserved strip at the bottom of the screen (about 20 px), also on "All OK".
 
 ### 5.3 State exposed by the device
 
-| Name | Meaning | When reported |
+Section 6.4 defines `awake` and `shown_hash` (standard Binary Input / Analog Input clusters) next to the
+battery and occupancy attributes. `shown_hash` after a redraw is the acknowledgement of a push.
+
+## 6. Zigbee data model (freeze before the first pairing)
+
+Goal: the first pairing is the last one, **and the MVP works with no external converter**. Z2M keeps what
+the interview found in `data/database.db` (endpoints, cluster lists, a few Basic attributes). Everything that
+lives there must be final before the first pairing. Everything else (exposed names, units, custom attributes
+added later) can change without re-pairing.
+
+### 6.1 Freeze rules
+
+1. **Identity never changes:** `manufacturerName` = `Greenlight`, `modelId` = `greenlight-eink42` (the
+   Basic strings are at most 32 characters). A new hardware variant gets a new model id, never a changed one.
+2. **One endpoint (1), profile Home Automation, device id Simple Sensor (0x000C)**, and the cluster list in
+   6.3 is final, including the clusters that are declared but not fully used yet (OTA client).
+3. **No reporting configuration from Z2M.** The device sends all reports on its own, to the coordinator
+   (0x0000), so nothing depends on Z2M's bind / Configure Reporting step succeeding on a sleeping device.
+4. **Attribute ids are append-only.** Never reuse or renumber one.
+5. Z2M availability is disabled for the device. `last_seen` (updated by every report) is the liveness signal
+   and doubles as "last wake".
+
+### 6.2 External converter: what it is, why it exists, and whether we need one
+
+**What it is.** Z2M itself only speaks "Zigbee"; for each device model it needs a *definition*: a small
+JavaScript object (in Z2M's built-in database, or in a file you add under `external_converters/`) that says
+(a) how to recognise the model (`modelId` / manufacturer), (b) which entities it exposes to MQTT / Home
+Assistant, (c) how to turn incoming Zigbee messages into state (`fromZigbee`), (d) how to turn MQTT
+commands into Zigbee frames (`toZigbee`), and (e) how to bind / configure reporting. An **external
+converter** is such a definition that you supply yourself for a device Z2M does not know. In Z2M 2.11+ it
+must also be enabled with `enable_external_js`.
+
+**Why one is normally needed.** Z2M ships definitions for known products, plus a best-effort generic
+mapping for unknown devices: it discovers the *standard* clusters a device declares and maps those to
+features (battery, occupancy, temperature, on/off, ...), logs a warning that the device is not supported, and
+shows what it found in the device's *Exposes* tab. What a generic mapping cannot do is understand
+**custom clusters**: state in a manufacturer-specific cluster is not published, and nothing in Z2M knows how
+to build a custom command from your data. A converter is the way to teach it that.
+
+**Our decision: no converter in the MVP.** This design is built so that the generic mapping suffices:
+
+- All *state* the HA side needs is in **standard clusters** (6.4): battery in Power Configuration, the PIR in
+  Occupancy Sensing, `awake` in Binary Input, `shown_hash` in Analog Input.
+- All *input* to the display is plain **attribute writes** to a custom cluster, which Z2M can send itself
+  through the documented raw `write` message on `zigbee2mqtt/<device>/set` (6.5). No custom command and no
+  custom converter code is involved. The Z2M documentation describes this raw read / write as meant for
+  development and debugging, which is acceptable for a first version; it does mean HA publishes a verbose
+  JSON message instead of a friendly one.
+
+**What is not verified** (to check at the first pairing, in this order):
+
+1. Which entities the generated mapping creates for Binary Input and Analog Input, and under which names
+   (the documentation only promises the standard ZCL features; battery and occupancy are expected). If they
+   are not exposed, the state never reaches HA.
+2. Whether the raw `write` accepts a cluster given only by its numeric id (0xFC8A) with attributes outside
+   the ZCL specification given as `{"value": ..., "type": 66}`. The documentation shows this form for
+   attributes; for a cluster id Z2M does not know it does not say.
+
+**Fallback if either fails: a very small converter, with no firmware change and no re-pairing.** The
+clusters are already declared on the device (frozen), so a converter only adds knowledge on the Z2M side
+(`numeric` / `binary` entries for the standard clusters, and/or `deviceAddCustomCluster` for 0xFC8A). It
+would be a file of about twenty lines, and it can be added at any time without touching the cache. This is
+why the design can promise a final first try even though the "no converter" part is not proven.
+
+### 6.3 Endpoint 1 clusters
+
+| Cluster | Direction | Role |
 |---|---|---|
-| `awake` (bool) | joined and listening, can receive pushes | after (re)join and in INTERVIEW; every 30 s while awake; `false` in SHUTDOWN |
-| `shown_hash` (u32) | hash of the snapshot currently on the panel | after (re)join; after every redraw; every 30 s while awake |
+| Basic 0x0000 | server | identity, power source, firmware version |
+| Power Configuration 0x0001 | server | battery (6.6) |
+| Occupancy Sensing 0x0406 | server | the PIR as an HA presence sensor |
+| Binary Input 0x000F | server | `awake` (`presentValue`) |
+| Analog Input 0x000C | server | `shown_hash` (`presentValue`) |
+| `greenlight` custom 0xFC8A | server | the display input slots (6.5), writable by the coordinator |
+| OTA Upgrade 0x0019 | client | reserved for a later firmware update, so the cluster list never changes. Not implemented yet. |
 
-`shown_hash` after a redraw is the acknowledgement of a push.
+(Housekeeping clusters the SDK needs, such as Identify, are fine.) 0xFC8A was picked arbitrarily; check it
+does not collide with a cluster zigbee-herdsman already names. It is used **without** a manufacturer code in
+the ZCL frames (the id is in the manufacturer-specific range 0xFC00-0xFFFF); if the first test shows the SDK
+or Z2M insists on one, adding it is a firmware change (and a raw-write option) only.
 
-## 6. Zigbee transport
+### 6.4 State: device to HA (standard clusters, all reported by the device itself)
 
-A manufacturer-specific cluster (0xFC00 range, exact id TBD) on the ESP32-C6 with esp-zigbee-sdk, as an
-end device (rx-on-when-idle while awake).
+| Cluster / attribute | Type | Meaning |
+|---|---|---|
+| Power Configuration `batteryPercentageRemaining` 0x0021 | uint8, **0-200 = 0-100 %** | battery charge (MVP: always 200) |
+| Power Configuration `batteryVoltage` 0x0020 | uint8, units of 100 mV | battery voltage (MVP: always 42) |
+| Power Configuration `batteryAlarmState` 0x003E | bitmap32 | low-battery flags (MVP: 0) |
+| Occupancy Sensing `occupancy` 0x0000 | bitmap8, bit 0 | the PIR is active; `occupancySensorType` 0x0001 = 0 (PIR) |
+| Binary Input `presentValue` 0x0055 | bool | **`awake`**: joined and listening, can receive pushes |
+| Analog Input `presentValue` 0x0055 | single float | **`shown_hash`**: hash of the snapshot on the panel (0 = nothing known) |
 
-- Attributes: `awake` (bool), `shown_hash` (u32), reportable.
-- Command `SetLines` (to the device), one frame carrying as many lines as fit (about 50-60 bytes of
-  payload per frame; 6 lines of 21 characters need about 3 frames):
+**The hash is 24 bits** (0 to 16777215), so it travels exactly in a single-precision float; HA computes it
+from the list text however it likes (any stable 24-bit hash, e.g. the first 6 hex digits of an md5 / sha1 of
+the joined lines). The device stores and echoes it; it never computes it.
 
-  ```
-  hash: u32 | total: u8 | first: u8 | count: u8 | count x { icon: u8 | len: u8 | ascii[len] }
-  ```
+Percent note (known pitfall, kept for the real battery code): the ZCL percentage is in half percents, and Z2M
+divides by 2, so 100 % is the raw value 200.
 
-- Command `SetFooter` (to the device): `len: u8 | ascii[len]`.
-- Disable default responses on both commands.
+**When the device reports.** There is nothing periodic while asleep. On each wake, after (re)join, in this
+order, so HA sees fresh data before the push decision: (1) Power Configuration (the three battery attributes
+in one frame); (2) Occupancy; (3) Analog Input `shown_hash`; (4) Binary Input `awake` = true **last**. The
+automation is triggered by `awake`, and by then `shown_hash` is already current. While awake: `awake` +
+`shown_hash` every 30 s (heartbeat); `shown_hash` after each redraw; `occupancy` when the PIR changes. At
+SHUTDOWN: `awake` = false, best effort.
 
-Device handling of a `SetLines` frame:
+### 6.5 Input: HA to device (writes to the custom cluster 0xFC8A)
 
-1. `hash == shown_hash` -> ignore (re-report `shown_hash`).
-2. `hash` differs from the buffered hash -> drop the partial buffer, start a new one.
-3. Store the lines at `first..first+count-1`. When `total` lines are present, render and report
-   `shown_hash`. `total == 0` is "All OK" (a frame with `count = 0`).
-4. A partial buffer is simply dropped at SHUTDOWN; HA's retry fixes it.
+All attributes are writable character strings (type 0x42) except the commit, which is uint32 (0x23).
+
+| Id | Name | Content |
+|---|---|---|
+| 0x0000 - 0x0005 | `line1` .. `line6` | `HHHHHH\|text`: the snapshot's 24-bit hash as 6 hex digits, a bar, then the ASCII text (about 21 characters). An empty string clears the slot. |
+| 0x0006 | `footer` | the footer text, ASCII, no tag |
+| 0x0007 | `commit` | `count * 16777216 + hash` (uint32): the number of lines (0-6) in the top byte, the 24-bit hash below |
+
+Why it looks like this:
+
+- **Plain attribute writes**: the SDK delivers them to the application as "attribute set" events; no
+  custom command handler is needed, and Z2M's raw write is a stock feature.
+- **One line per slot, written in any order**: each write is a small separate frame (about 30 bytes of
+  payload), so nothing is fragmented and nothing depends on the order the frames arrive.
+- **The tag and the commit make it safe.** The device keeps the lines it received with their tag. When it
+  gets `commit`, it renders only if lines 1 to `count` are all present and tagged with that hash; then it stores the snapshot, reports `shown_hash`
+  and redraws. Otherwise it ignores the commit, `shown_hash` does not change and HA resends after 5 s. A
+  lost or reordered frame can therefore never display a mix of old and new lines under a new hash.
+- `count = 0` is the "All OK" screen; a commit whose hash equals `shown_hash` is ignored.
+- `footer` is best effort and may be written before or after the commit; it is redrawn with the next
+  refresh. The icon is not carried at all in the MVP (see 5.1).
+
+Example (HA publishes these to `zigbee2mqtt/<device>/set`; ids in decimal, the format of the Z2M raw write):
+
+```json
+{"write": {"cluster": 64650, "payload": {"0": {"value": "A1B2C3|Living room door", "type": 66},
+                                         "1": {"value": "A1B2C3|Kitchen window", "type": 66}}}}
+{"write": {"cluster": 64650, "payload": {"7": {"value": 44151491, "type": 35}}}}
+```
+
+(64650 is 0xFC8A; the commit value is 2 * 16777216 + 0xA1B2C3. Exact JSON details, such as whether a
+value is a string or a number array, are to be confirmed at the first test.)
+
+### 6.6 Battery
+
+Hardware: a single 1000 mAh LiPo cell with a protection circuit (the cell is cut off by the protection board
+before it is damaged, around 2.5-3 V). **MVP: no real battery handling.** The device just reports 100 %
+(`batteryPercentageRemaining` = 200, `batteryVoltage` = 42, `batteryAlarmState` = 0) once per wake. The static
+Power Configuration attributes are set from the start: `batterySize` 0x0031 = 2 (Other), `batteryQuantity`
+0x0033 = 1, `batteryRatedVoltage` 0x0034 = 37 (3.7 V), `batteryAHrRating` 0x0032 = 100 (units of 10 mAh).
+
+Conventions the real implementation will follow (from the zigbee-herdsman-converters `battery()` helper): Z2M
+names are `battery` (%), `voltage` (mV) and `battery_low` (binary, true = low), all diagnostic entities;
+there is no `battery_ok`. HA's battery binary sensor also reads on = low. The `voltage` entity has only 100 mV
+resolution via the standard attribute (too coarse for a LiPo: 3.0-4.2 V is 12 steps), which is why exact mV
+is on the future-work list below.
+
+### 6.7 Future work (after the MVP; none of this is in the MVP firmware)
+
+These were considered and deliberately dropped from the MVP. Append-only ids are reserved so they can be
+added later without a re-pair (attributes of the custom cluster only show up in HA with a converter; see
+6.8).
+
+| Reserved id (0xFC8A) | Name | Type | Meaning |
+|---|---|---|---|
+| 0x0010 | `join_time_ms` | uint16 | boot to joined of the latest wake (the rejoin-time measurement, Q1) |
+| 0x0011 | `wake_reason` | enum8 | 0 cold boot, 1 PIR, 2 pair button, 3 other / unknown |
+| 0x0012 | `last_awake_s` | uint16 | duration of the previous wake cycle, for battery life insight |
+| 0x0013 | `battery_mv` | uint16 | exact battery voltage, exposed under the name `voltage` |
+| 0x0014 | `panel_error` | enum8 | 0 ok, 1 panel init failed, 2 refresh failed, 3 BUSY timeout |
+
+Also future: real battery measurement (ADC on a spare pin, e.g. D2 / GPIO2, with a high-value divider and a
+capacitor at the pin; first check whether the XIAO ESP32-C6 already has a battery sense path), a LiPo
+percentage curve and low-battery thresholds, measured once per wake before the radio and the panel start;
+OTA; and a converter if the generic mapping is not good enough.
+
+### 6.8 If a converter is needed later
+
+Outline only (file under `external_converters/`, `enable_external_js` on, file name and API to be checked
+against the installed Z2M):
+
+```js
+import {battery, occupancy, deviceAddCustomCluster} from 'zigbee-herdsman-converters/lib/modernExtend';
+export default {
+    fingerprint: [{modelID: 'greenlight-eink42', manufacturerName: 'Greenlight'}],
+    model: 'greenlight-eink42', vendor: 'Greenlight', description: 'E-paper problem list',
+    extend: [
+        deviceAddCustomCluster('greenlight', {ID: 0xFC8A, attributes: {...}, commands: {}, commandsResponse: {}}),
+        battery({percentage: true, voltage: false, lowStatus: true, percentageReporting: false, voltageReporting: false}),
+        occupancy(),
+        /* numeric / binary entries for the Analog Input and Binary Input presentValue, named shown_hash and awake */
+    ],
+    toZigbee: [ /* optional: one "snapshot" JSON {hash, lines[], footer} -> the writes of 6.5 */ ],
+};
+```
+
+The `toZigbee` part would turn a friendly JSON message into the writes of 6.5, so HA does not have to
+publish raw write messages. None of it changes the device.
+
+### 6.9 If the cache bites anyway
+
+Cheapest first: restart Z2M (it reloads definitions); correct the Z2M side and republish; remove the device in
+Z2M and pair again (hold the pair button 3 s: the device erases its network and pairs, section 4); as a last
+resort delete the device entry from `data/database.db` with Z2M stopped. The Z2M frontend also has a
+re-interview action (from memory: verify), which needs the device awake, hence the 60 s `INTERVIEW_MS`.
 
 ## 7. Home Assistant / Zigbee2MQTT
 
-- **Z2M external converter**: `fromZigbee` for the two attributes (exposes `awake`, `shown_hash`);
-  `toZigbee` that turns the JSON snapshot into `SetLines` and `SetFooter` frames. Disable Z2M availability
-  for this device (for battery devices it only trips after hours, so it says nothing useful).
-- **HA template sensor**: builds the sorted, truncated `lines` (max 6) and `current_hash`.
+- **No external converter in the MVP** (6.2). Z2M's generic mapping exposes the standard-cluster state
+  (`battery`, `occupancy`, and, to be verified at the first pairing, `awake` / `shown_hash` from Binary
+  Input / Analog Input). Z2M logs a warning that the device is not supported; that is expected. Disable Z2M
+  availability for this device (for battery devices it only trips after hours, so it says nothing useful).
+  Fallback, if the generic mapping hides `awake` / `shown_hash` or refuses the raw write: the small
+  converter of 6.8, no device change.
+- **HA template sensor**: builds the sorted, truncated `lines` (max 6), the 24-bit `current_hash` and the
+  footer text.
 - **HA automation**, triggered by any change of `awake`, `shown_hash` or `current_hash`:
-  - on `awake` becoming true: send the footer (current time); if `shown_hash != current_hash`, also the
+  - on `awake` becoming true: write the footer (current time); if `shown_hash != current_hash`, also the
     snapshot
-  - while `awake` is true and `shown_hash != current_hash`: publish the snapshot (with footer) to
-    `zigbee2mqtt/<device>/set`; wait about 5 s; if `shown_hash` still differs, resend (a few retries at
-    most)
+  - while `awake` is true and `shown_hash != current_hash`: publish the writes of 6.5 to
+    `zigbee2mqtt/<device>/set` (the tagged lines in a few small writes, then the `commit`); wait about 5 s;
+    if `shown_hash` still differs, resend (a few retries at most)
   - debounce a few seconds after `current_hash` changes, so a burst of events gives one refresh.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).
+- The MQTT entity names for `awake` and `shown_hash` are whatever Z2M's generic mapping produces; read them
+  from the device's Exposes tab after the first pairing and put them into the automation.
 
 ## 8. Display (MVP)
 
@@ -316,23 +496,47 @@ accents and no icons; 6 lines; PIR's own hold time is ignored; deep sleep simula
 PIR and pair button both wake the device; the pair button is on D1 (panel DC/RST moved to D4/D5, done);
 retained RAM assumed not to survive a software restart (NVS in the MVP).
 
+Also decided (rev 5): manufacturer name `Greenlight`; no external converter in the MVP (generic Z2M mapping +
+raw attribute writes, section 6); state in standard clusters (Power Configuration, Occupancy, Binary Input,
+Analog Input), 24-bit hash; battery is a fixed 100 % in the MVP (single 1000 mAh LiPo with protection
+circuit); `join_time_ms`, `wake_reason`, `last_awake_s`, `panel_error` and a real battery measurement are
+future work (6.7).
+
 Open:
 
-- **Q1** Real rejoin time (measure once Zigbee runs).
+- **Q1** Real rejoin time (measure once Zigbee runs; until `join_time_ms` exists, from the serial log).
 - **Q2** Retained RAM across deep sleep is fine on the C6; across `esp_restart()` it is unverified. Only
   matters for flash wear, not for correctness.
+- **Q3** At the first pairing, in this order: what Z2M's generic mapping exposes for Binary Input / Analog
+  Input and under which names; whether the raw `write` to cluster 0xFC8A with typed attribute ids works; and
+  whether the SDK / Z2M accept the custom cluster without a manufacturer code (6.2, 6.3). Each has a
+  fallback that needs no re-pairing.
+- **Q4** OTA: the reserved OTA client cluster (6.3) is declared now so the cluster list never changes; the
+  partition table (two app slots in 2 MB) is a later, USB-flashed change.
+- **Q5** Whether the SDK lets the device be rx-on-when-idle only while awake; fallback is a short poll
+  interval (100-200 ms) while awake, a long one otherwise.
 
 ## 12. Implementation plan
 
+Functionality first, the renderer last. Until the renderer exists, a received snapshot is stored, logged
+on the serial port and acknowledged exactly as if it had been drawn (`shown_hash` is reported); the panel
+keeps showing the placeholder words.
+
 1. **Done.** Level-based PIR/button timeout with `RUN_MS` = 5 s, polarity macros, state machine with Zigbee
-   stubbed, pair button on D1, simulated sleep with NVS.
-2. **Next: renderer.** Full-ASCII font (replace the 5x7 test glyphs), 6 rows plus footer strip, static
-   screens (All OK, press the pair button, pairing, pairing failed) replacing the placeholder words, a test
-   list on the panel in ACTIVE instead of the ONE..TEN test (event-driven redraw), stored snapshot and
-   footer kept across sleep (NVS) and redrawn after the MVP full clear in BOOT.
-3. Zigbee: custom cluster, attributes, `SetLines`/`SetFooter` handlers, pairing, interview, rejoin,
-   rx-on-when-idle while awake, ERASE_NETWORK (real leave and erase). Make the stub failures testable first
-   (pairing window over, rejoin failed). Set `INTERVIEW_MS` back to 60 s. Measure the rejoin time.
-4. Z2M external converter and HA automation; measure end-to-end latency.
-5. Proper deep sleep: wake on D0 and D1 (replace `st_sleep`), move the retained state to retained RAM. Then
-   the optimizations O1-O3, accents and icons.
+   stubbed, pair button on D1, 3 s hold to pair or reset, simulated sleep with NVS.
+2. **Next: Zigbee.** The frozen data model of section 6, no converter: identity (`Greenlight` /
+   `greenlight-eink42`), endpoint 1 with the clusters of 6.3, the reports of 6.4 (fixed 100 % battery,
+   occupancy, `shown_hash`, `awake`, in that order), the slot attributes and commit of 6.5 (tagged lines,
+   store the snapshot and footer in NVS, "render" = log + report `shown_hash`), pairing, interview, rejoin,
+   rx-on-when-idle while awake, heartbeat, real leave and erase in ERASE_NETWORK. Make the failure paths
+   testable (pairing window over, rejoin failed). Set `INTERVIEW_MS` back to 60 s. Measure the rejoin time.
+3. **HA side and first pairing checks:** pair with Z2M and settle Q3 (what is exposed, whether the raw writes
+   work); then the HA template sensor (lines, `current_hash`, footer), the push-on-stale automation with
+   retries, `awake` expiry. Add the small converter of 6.8 only if Q3 requires it. Measure end-to-end
+   latency. Disable Z2M availability for the device.
+4. **Proper deep sleep:** wake on D0 and D1 (replace `st_sleep`), retained state in retained RAM. Then the
+   optimizations O1-O3.
+5. **Renderer (last):** full-ASCII font (replace the 5x7 test glyphs), 6 rows plus footer strip, static
+   screens (All OK, press the pair button, pairing, pairing failed) replacing the placeholder words,
+   event-driven redraw in ACTIVE instead of the ONE..TEN test, redraw of the stored snapshot after the MVP
+   full clear in BOOT. Later: accents and icons, and the future work of 6.7 (diagnostics, real battery handling).
