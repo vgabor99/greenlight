@@ -343,8 +343,11 @@ Why it looks like this:
   of 3 long attributes (77 bytes) is refused by the Z-Stack coordinator with `MEM_ERROR (0x10)` before it
   goes on air, every time; (2) a write of 2 long attributes (23 and 21 bytes) reaches the device, but the
   stack handles only the first attribute and answers `UNSUPPORTED_ATTRIBUTE` for the rest (cause unknown;
-  two short 9-byte attributes did work). Single-attribute writes with values up to 23 bytes arrived 15 times
-  out of 15 in the final tests, when sent about 3 s apart (faster spacing is untested).
+  two short 9-byte attributes did work). Even single-attribute writes fail when they follow another write too
+  closely: sent 0.5 s apart (a burst), every second write was answered `UNSUPPORTED_ATTRIBUTE` by the device
+  (the stack rejects it before the application sees it), and at about 2.7 s apart every second write still
+  failed. Writes about 6 s apart worked 9 times out of 9 (values up to 23 bytes). The real minimum spacing
+  is somewhere between 3 s and 6 s and the cause is not understood; until it is, send at least 6 s apart.
   Z2M reports a failed write on `zigbee2mqtt/bridge/logging` (level error), so the refusal is visible.
 - **The tag and the commit make it safe.** The device keeps the lines it received with their tag. When it
   gets `commit`, it renders only if lines 1 to `count` are all present and tagged with that hash; then it stores the snapshot, reports `shown_hash`
@@ -442,10 +445,10 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   - on `awake` becoming true: write the footer (current time); if `shown_hash != current_hash`, also the
     snapshot
   - while `awake` is true and `shown_hash != current_hash`: publish the writes of 6.5 to
-    `zigbee2mqtt/<device>/set`, **one attribute per message**, about 3 s apart: line 1 .. line `count`, then the
+    `zigbee2mqtt/<device>/set`, **one attribute per message**, at least 6 s apart: line 1 .. line `count`, then the
     `commit`; wait about 5 s after the commit; if `shown_hash` still differs, resend (a few retries at most).
-    A full 6-line snapshot is 7 writes, about 20 s. The device stays awake while the PIR is active; check
-    this against the 5 s run time (RUN_MS) and shorten the spacing if the tests allow it
+    A full 6-line snapshot is 7 writes, about 45 s, much longer than the 5 s run time (RUN_MS): the awake
+    window must stay open while writes arrive, or the spacing problem must be fixed on the device
   - debounce a few seconds after `current_hash` changes, so a burst of events gives one refresh.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).
