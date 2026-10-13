@@ -6,18 +6,18 @@
 #include "driver/gpio.h"
 #include "esp_attr.h"
 #include "esp_log.h"
-#include "esp_random.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "epd.h"
+#include "zb.h"
 
 static const char *TAG = "greenlight";
 
-static uint8_t fb[EPD_STRIDE * EPD_HEIGHT];
+static uint8_t fb[EPD_STRIDE * EPD_HEIGHT];  /* 1 = white; app_main() whitens it, so a shutdown never pushes black */
 
 /* 5x7 font, column-major, bit 0 = top row. Only the glyphs we use. */
 static const struct { char c; uint8_t col[5]; } font[] = {
-    {'A', {0x7E, 0x11, 0x11, 0x11, 0x7E}}, {'J', {0x20, 0x40, 0x41, 0x3F, 0x01}},
+    {'A', {0x7E, 0x11, 0x11, 0x11, 0x7E}}, {'C', {0x3E, 0x41, 0x41, 0x41, 0x22}}, {'J', {0x20, 0x40, 0x41, 0x3F, 0x01}},
     {'L', {0x7F, 0x40, 0x40, 0x40, 0x40}}, {'P', {0x7F, 0x09, 0x09, 0x09, 0x06}},
     {'E', {0x7F, 0x49, 0x49, 0x49, 0x41}}, {'F', {0x7F, 0x09, 0x09, 0x09, 0x01}},
     {'H', {0x7F, 0x08, 0x08, 0x08, 0x7F}}, {'I', {0x00, 0x41, 0x7F, 0x41, 0x00}},
@@ -27,10 +27,6 @@ static const struct { char c; uint8_t col[5]; } font[] = {
     {'U', {0x3F, 0x40, 0x40, 0x40, 0x3F}}, {'V', {0x1F, 0x20, 0x40, 0x20, 0x1F}},
     {'W', {0x3F, 0x40, 0x38, 0x40, 0x3F}}, {'X', {0x63, 0x14, 0x08, 0x14, 0x63}},
 };
-
-static const char *const words[] = {"ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"};
-#define TEXT_SCALE 11  /* longest word: 5 chars * 66px - 11px gap = 319px wide */
-#define TEXT_ROWS  3   /* rows of 77px, one in each 100px band of the 300px height */
 
 static void set_pixel(int x, int y, int black)
 {
@@ -73,55 +69,32 @@ static void draw_text(int x, int y, const char *s, int scale)
     }
 }
 
-static void draw_frame(const char *word)
-{
-    memset(fb, 0xFF, sizeof(fb));  /* all white */
-
-    /* Double border (disabled)
-    fill_rect(0, 0, EPD_WIDTH, 4, 1);
-    fill_rect(0, EPD_HEIGHT - 4, EPD_WIDTH, 4, 1);
-    fill_rect(0, 0, 4, EPD_HEIGHT, 1);
-    fill_rect(EPD_WIDTH - 4, 0, 4, EPD_HEIGHT, 1);
-    fill_rect(12, 12, EPD_WIDTH - 24, 2, 1);
-    fill_rect(12, EPD_HEIGHT - 14, EPD_WIDTH - 24, 2, 1);
-    fill_rect(12, 12, 2, EPD_HEIGHT - 24, 1);
-    fill_rect(EPD_WIDTH - 14, 12, 2, EPD_HEIGHT - 24, 1);
-    */
-
-    /* The word, TEXT_ROWS times, one per horizontal band of the screen. Each copy sits at a random
-     * position inside its band, so over many updates the whole screen area gets exercised. */
-    int w = (int)strlen(word) * 6 * TEXT_SCALE - TEXT_SCALE;
-    int row_h = 7 * TEXT_SCALE;
-    int band_h = EPD_HEIGHT / TEXT_ROWS;
-    for (int r = 0; r < TEXT_ROWS; r++) {
-        int x = esp_random() % (EPD_WIDTH - w + 1);
-        int y = r * band_h + esp_random() % (band_h - row_h + 1);
-        draw_text(x, y, word, TEXT_SCALE);
-    }
-}
-
-
 /* Whole-screen word, centered; used as the placeholder screen of each state until the real renderer exists. */
-static void show_word(const char *word, int scale)
+static void draw_word(const char *word, int scale)
 {
     memset(fb, 0xFF, sizeof(fb));
     int w = (int)strlen(word) * 6 * scale - scale;
     draw_text((EPD_WIDTH - w) / 2, (EPD_HEIGHT - 7 * scale) / 2, word, scale);
+}
+
+static void show_word(const char *word, int scale)
+{
+    draw_word(word, scale);
     if (epd_display_partial(fb) != ESP_OK) {
         ESP_LOGE(TAG, "e-paper update failed");
     }
 }
 
 /* ---- Timing (DESIGN.md 3.2) ---- */
-#define RUN_MS        5000    /* activity timeout */
+#define RUN_MS        30000   /* TEMPORARY for development (time to publish test messages); design value 5000 */
 #define PAIR_MS       180000  /* pairing window */
 #define INTERVIEW_MS  10000   /* TEMPORARY for development; design value 60000 */
 #define RESET_HOLD_MS 3000    /* pair button hold that clears the network */
 #define REJOIN_MS     15000   /* give up rejoining after this long */
 
-/* Zigbee is stubbed in this phase: "joining" and "rejoining" just succeed after these delays. */
-#define STUB_JOIN_MS   3000
-#define STUB_REJOIN_MS 1000
+#define STACK_START_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
+#define DEV_SHOW_SLEEP 1       /* development: the final image before power-off is the word SLEEP */
+#define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_hash this often */
 
 /* ---- Inputs: PIR (D0) and pair button (D1), level based, polled and debounced by a task ---- */
 #define INPUT_POLL_MS        10
@@ -234,8 +207,45 @@ static void nvs_open_state(void)
     ESP_ERROR_CHECK(nvs_open("greenlight", NVS_READWRITE, &nvs));
 }
 
-/* NVS keys: "paired" (stands in for "the Zigbee stack has a stored network") and "pair_now" (start pairing
- * right after the next boot, set by ERASE_NETWORK). */
+/* NVS (namespace "greenlight"): "pair_now" (start pairing right after the next boot, set by ERASE_NETWORK) and
+ * "snap" (blob: the snapshot on the panel and its footer; its hash is the shown_hash). The Zigbee stack keeps
+ * the network in the same partition. */
+static zb_snapshot_t snap;
+
+static void snap_load(void)
+{
+    size_t size = sizeof(snap);
+    if (nvs_get_blob(nvs, "snap", &snap, &size) != ESP_OK || size != sizeof(snap)) {
+        memset(&snap, 0, sizeof(snap));
+    }
+}
+
+static void snap_save(void)
+{
+    nvs_set_blob(nvs, "snap", &snap, sizeof(snap));
+    nvs_commit(nvs);
+}
+
+/* Called in the Zigbee task. "Rendering" is only logged until the renderer exists (DESIGN.md 12, step 5). */
+static void on_snapshot(const zb_snapshot_t *s)
+{
+    snap = *s;
+    snap_save();
+    ESP_LOGI(TAG, "snapshot %06lx: %u lines, footer \"%s\"", (unsigned long)s->hash, s->count, s->footer);
+    if (s->count == 0) {
+        ESP_LOGI(TAG, "  (All OK)");
+    }
+    for (int i = 0; i < s->count; i++) {
+        ESP_LOGI(TAG, "  %d: %s", i + 1, s->line[i]);
+    }
+}
+
+static void on_footer(const char *footer)
+{
+    strncpy(snap.footer, footer, sizeof(snap.footer) - 1);
+    snap_save();
+    ESP_LOGI(TAG, "footer \"%s\"", snap.footer);
+}
 
 /* ---- State machine (DESIGN.md 3.3) ---- */
 typedef enum {
@@ -247,19 +257,43 @@ static const char *const state_names[] = {
     "BOOT", "UNPAIRED_WAIT", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
 };
 
+static TickType_t boot_tick;
+
+/* The reports of every wake (DESIGN.md 6.4), in this order; "awake" last. */
+static void report_wake_state(void)
+{
+    zb_report_battery();
+    zb_report_occupancy(pir_active);
+    zb_report_shown_hash(snap.hash);
+    zb_report_awake(true);
+}
+
 static state_t st_boot(void)
 {
-    bool paired = nv_get("paired");
     bool pair_now = nv_get("pair_now");
-    ESP_LOGI(TAG, "boot: paired=%d pair_now=%d", paired, pair_now);
-    /* MVP: full clear on every wake (DESIGN.md 3.4). epd_init() also releases the pin hold and recreates
-     * the SPI bus left by epd_poweroff(). */
+    snap_load();
+    ESP_LOGI(TAG, "boot: pair_now=%d shown_hash=%06lx", pair_now, (unsigned long)snap.hash);
+
+    boot_tick = xTaskGetTickCount();
+    zb_callbacks_t cbs = {.snapshot = on_snapshot, .footer = on_footer};
+    zb_start(&cbs, snap.hash);
+
+    /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
+     * releases the pin hold and recreates the SPI bus left by epd_poweroff(). */
     if (epd_init() != ESP_OK || epd_clear() != ESP_OK) {
         ESP_LOGE(TAG, "e-paper init failed");
         vTaskDelay(portMAX_DELAY);
     }
+
+    bool factory_new = false;
+    if (!zb_wait_started(STACK_START_MS, &factory_new)) {
+        ESP_LOGE(TAG, "Zigbee stack did not start");
+        return ST_SHUTDOWN;
+    }
+    ESP_LOGI(TAG, "stack up after %lu ms: %s", (unsigned long)ms_since(boot_tick),
+             factory_new ? "no network" : "network restored");
     touch_activity();
-    if (paired) {
+    if (!factory_new) {
         return ST_REJOIN;
     }
     if (pair_now) {
@@ -291,14 +325,16 @@ static state_t st_pairing(void)
 {
     show_word("PAIR", 11);
     TickType_t start = xTaskGetTickCount();
+    zb_pairing_start();
     while (ms_since(start) < PAIR_MS) {
-        if (ms_since(start) >= STUB_JOIN_MS) {  /* stub for network steering */
-            nv_set("paired", 1);
-            ESP_LOGI(TAG, "joined (stub)");
+        if (zb_joined()) {
+            zb_pairing_stop();
+            ESP_LOGI(TAG, "joined after %lu ms", (unsigned long)ms_since(start));
             return ST_INTERVIEW;
         }
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
+    zb_pairing_stop();
     ESP_LOGW(TAG, "pairing window over");
     show_word("FAIL", 11);
     return ST_UNPAIRED_WAIT;
@@ -307,6 +343,7 @@ static state_t st_pairing(void)
 static state_t st_interview(void)
 {
     show_word("INTERVIEW", 6);
+    report_wake_state();  /* so HA already sees the device state and can push the first snapshot */
     ESP_LOGI(TAG, "staying awake for %d ms", INTERVIEW_MS);
     vTaskDelay(pdMS_TO_TICKS(INTERVIEW_MS));  /* the PIR is ignored here */
     return ST_ACTIVE;
@@ -316,10 +353,16 @@ static state_t st_rejoin(void)
 {
     show_word("REJOIN", 6);
     TickType_t start = xTaskGetTickCount();
+    touch_activity();
     while (ms_since(start) < REJOIN_MS) {
-        if (ms_since(start) >= STUB_REJOIN_MS) {  /* stub for the Zigbee rejoin */
-            ESP_LOGI(TAG, "rejoined (stub, %lu ms)", (unsigned long)ms_since(start));
+        if (zb_joined()) {
+            ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)ms_since(boot_tick));
+            report_wake_state();
             return ST_ACTIVE;
+        }
+        if (pair_held_ms() >= RESET_HOLD_MS) {  /* network lost: allow re-pairing */
+            ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);
+            return ST_ERASE_NETWORK;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -329,17 +372,20 @@ static state_t st_rejoin(void)
 
 static state_t st_active(void)
 {
-    static uint32_t n;  /* placeholder content: the ONE..TEN refresh test, until the real renderer exists */
+    show_word("ACTIVE", 7);  /* placeholder until the renderer shows the snapshot */
     touch_activity();
-    for (;; n++) {
-        const char *word = words[n % (sizeof(words) / sizeof(words[0]))];
-        draw_frame(word);
-        TickType_t start = xTaskGetTickCount();
-        if (epd_display_partial(fb) != ESP_OK) {
-            ESP_LOGE(TAG, "e-paper update failed");
-            return ST_SHUTDOWN;
+    bool      last_pir = pir_active;
+    TickType_t last_beat = xTaskGetTickCount();
+    for (;;) {
+        if (pir_active != last_pir) {
+            last_pir = pir_active;
+            zb_report_occupancy(last_pir);
         }
-        ESP_LOGI(TAG, "#%lu %s (%lu ms)", (unsigned long)(n + 1), word, (unsigned long)ms_since(start));
+        if (ms_since(last_beat) >= HEARTBEAT_MS) {  /* tell HA we are still awake */
+            last_beat = xTaskGetTickCount();
+            zb_report_shown_hash(snap.hash);
+            zb_report_awake(true);
+        }
         if (pair_held_ms() >= RESET_HOLD_MS) {
             ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);
             return ST_ERASE_NETWORK;
@@ -348,23 +394,30 @@ static state_t st_active(void)
             ESP_LOGI(TAG, "no activity for %d ms", RUN_MS);
             return ST_SHUTDOWN;
         }
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
 static state_t st_erase_network(void)
 {
     show_word("ERASE", 8);
-    nv_set("paired", 0);  /* stub for: leave, erase the Zigbee storage */
     nv_set("pair_now", 1);
-    ESP_LOGI(TAG, "network erased (stub), restarting");
-    vTaskDelay(pdMS_TO_TICKS(100));
-    esp_restart();
+    nvs_erase_key(nvs, "snap");  /* nothing is known about the panel any more */
+    nvs_commit(nvs);
+    ESP_LOGI(TAG, "erasing the network, restarting");
+    zb_erase_network();  /* does not return */
     return ST_BOOT;
 }
 
 static state_t st_shutdown(void)
 {
+    if (zb_joined()) {
+        zb_report_awake(false);  /* best effort; the panel refresh below gives the radio time to send it */
+    }
     /* Cleanest state for power-off: full white reset, then render the last image (still in fb). */
+#if DEV_SHOW_SLEEP
+    draw_word("SLEEP", 11);  /* development: the final image says the device is asleep */
+#endif
     if (epd_clear() != ESP_OK || epd_display_partial(fb) != ESP_OK) {
         ESP_LOGE(TAG, "e-paper final refresh failed");
     }
@@ -388,8 +441,19 @@ static state_t st_sleep(void)
     return ST_BOOT;
 }
 
+/* XIAO ESP32-C6 antenna switch: GPIO3 low enables it, GPIO14 low selects the onboard ceramic antenna. */
+static void rf_switch_init(void)
+{
+    gpio_config_t cfg = {.pin_bit_mask = (1ULL << 3) | (1ULL << 14), .mode = GPIO_MODE_OUTPUT};
+    ESP_ERROR_CHECK(gpio_config(&cfg));
+    gpio_set_level(3, 0);
+    gpio_set_level(14, 0);
+}
+
 void app_main(void)
 {
+    rf_switch_init();
+    memset(fb, 0xFF, sizeof(fb));
     nvs_open_state();
     inputs_init();
     state_t st = ST_BOOT;
