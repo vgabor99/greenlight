@@ -399,6 +399,7 @@ static state_t st_active(void)
             last_beat = xTaskGetTickCount();
             zb_report_shown_hash(snap.hash);
             zb_report_awake(true);
+            zb_log_neighbors();
         }
         if (pair_held_ms() >= RESET_HOLD_MS) {
             ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);

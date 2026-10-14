@@ -45,4 +45,5 @@ void zb_report_battery(void);               /* the three Power Configuration att
 void zb_report_occupancy(bool occupied);
 void zb_report_shown_hash(uint32_t hash);
 void zb_report_awake(bool awake);
+void zb_log_neighbors(void);                /* diagnostic: parent and neighbour table to the log */
 void zb_report_wake(void);                  /* the wake counter (endpoint 2): the last report of every wake */

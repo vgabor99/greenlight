@@ -214,6 +214,28 @@ rule. The tag-and-commit scheme stays the safety net: a lost write costs a resen
 - Test 1 on the bench runs on this real path as long as the device stays in the lobby. A test next to the
   coordinator needs the device moved and re-joined.
 
+### 7.2 Writes lost right after a restart (open, parked 2026-10-14)
+
+Paced snapshot test (6 lines + commit, 100 ms apart, 50 ms polling), device in the lobby:
+
+- **Device kept awake**: 10 of 10 snapshots arrived first time, every write answered.
+- **Reset before every round** (the real wake path: reboot, rejoin, then HA pushes on the wake counter): about
+  half the rounds lose single writes. Each lost write is delivered only after Z2M's 10 s response timeout plus
+  its route discovery (about 13 s), so a round takes 14 to 42 s instead of about 1.5 s, and in 1 of 10 rounds
+  two writes failed outright (the commit was then rejected, as designed). The device also sends some frames
+  twice, so it misses acks as well: the loss is in the direction coordinator to device.
+- **Ruled out**: the e-paper refresh (same result with the panel never driven) and the time between the wake
+  report and the first write (a longer settle made no difference).
+- **The parent is a Tuya router, never the coordinator**, and a reboot may pick a different one: in one run it
+  was `a4c13811672cffff` (0xc91e, LQI 77 to 95) for rounds 1 to 6, then it flipped between that one and
+  `a4c138119b08ffff` (0x28b5, LQI 84 to 102). 3 of the 4 rounds after the first flip were bad, but round 6 lost
+  4 writes with an unchanged parent, so switching is not the whole story. Z2M's timeout recovery logs
+  `Node relation 0 (... / 65534)`: the coordinator has no child entry for the device.
+- The firmware logs its neighbour table (`neighbours (restored|joined|heartbeat)`) to follow the parent.
+- **Next test**: device next to the coordinator, so that it rejoins with the coordinator as parent, then the
+  same reset-each run. Clean: the Tuya routers' handling of a rejoined sleepy child is the cause. Still lossy:
+  look at the device's stack after a reboot.
+
 ## Sources
 
 - Digi, XBee 3 Zigbee maximum RF payload size: https://docs.digi.com/resources/documentation/digidocs/90001539/reference/r_zb_max_rf_payload_size.htm

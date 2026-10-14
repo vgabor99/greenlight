@@ -270,6 +270,20 @@ static void retry_timer_cb(void *arg)
     esp_zigbee_lock_release();
 }
 
+/* Diagnostic: log the parent and the other neighbours, to see whether a rejoin after a restart picks a new parent. */
+static void log_neighbors_nolock(const char *when)
+{
+    static const char *rel[] = {"PARENT", "child", "sibling", "other"};
+    ezb_nwk_info_iterator_t it = EZB_NWK_INFO_ITERATOR_INIT;
+    ezb_nwk_neighbor_info_t n;
+    ESP_LOGI(TAG, "neighbours (%s): own 0x%04hx", when, ezb_nwk_get_short_address());
+    while (ezb_nwk_get_next_neighbor(&it, &n) == EZB_ERR_NONE) {
+        ESP_LOGI(TAG, "  %-7s 0x%04hx %02x%02x%02x%02x%02x%02x%02x%02x type %u lqi %u rssi %d", rel[n.relationship & 3],
+                 n.short_addr, n.ieee_addr.u8[7], n.ieee_addr.u8[6], n.ieee_addr.u8[5], n.ieee_addr.u8[4], n.ieee_addr.u8[3],
+                 n.ieee_addr.u8[2], n.ieee_addr.u8[1], n.ieee_addr.u8[0], n.device_type, n.lqi, n.rssi);
+    }
+}
+
 static void schedule_commissioning(uint8_t mode, uint32_t delay_ms)
 {
     s_retry_mode = mode;
@@ -292,6 +306,9 @@ static bool app_signal_handler(const ezb_app_signal_t *app_signal)
         if (status == EZB_BDB_STATUS_SUCCESS) {
             bool factory_new = ezb_bdb_is_factory_new();
             ESP_LOGI(TAG, "%s", factory_new ? "factory new: no network" : "network restored");
+            if (!factory_new) {
+                log_neighbors_nolock("restored");
+            }
             xEventGroupSetBits(s_events, BIT_STARTED | (factory_new ? BIT_FACTORY_NEW : BIT_JOINED));
         } else {
             ESP_LOGW(TAG, "%s failed with status 0x%02x, retrying", ezb_app_signal_to_string(type), status);
@@ -310,6 +327,7 @@ static bool app_signal_handler(const ezb_app_signal_t *app_signal)
             ESP_LOGI(TAG, "joined: PAN 0x%04hx, channel %d, short address 0x%04hx", ezb_nwk_get_panid(),
                      ezb_nwk_get_current_channel(), ezb_nwk_get_short_address());
             s_pairing = false;
+            log_neighbors_nolock("joined");
             xEventGroupSetBits(s_events, BIT_JOINED);
             xEventGroupClearBits(s_events, BIT_FACTORY_NEW);
         } else if (s_pairing) {
@@ -579,5 +597,12 @@ void zb_report_wake(void)
     float f = (float)s_wake_count;  /* kept below 2^24 by the caller, so exact in a single-precision float */
     esp_zigbee_lock_acquire(portMAX_DELAY);
     set_and_report_ep(ZB_EP_WAKE, EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
+    esp_zigbee_lock_release();
+}
+
+void zb_log_neighbors(void)
+{
+    esp_zigbee_lock_acquire(portMAX_DELAY);
+    log_neighbors_nolock("heartbeat");
     esp_zigbee_lock_release();
 }
