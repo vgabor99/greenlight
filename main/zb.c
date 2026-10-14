@@ -28,7 +28,7 @@ static const char *TAG = "zb";
 #define ATTR_COMMIT  0x0007
 
 #define SLOT_BUF 64         /* storage of one string slot: length byte + up to 63 characters */
-#define SLOT_MAX 40         /* longest string we accept: "HHHHHH|" + ZB_LINE_CHARS fits in this */
+#define SLOT_MAX ZB_SLOT_CHARS  /* longest string we accept */
 
 /* MVP battery: fixed 100 % (DESIGN.md 6.6) */
 #define BATTERY_VOLTAGE_100MV 42
@@ -155,16 +155,26 @@ static int32_t slot_tag(const uint8_t *slot, const char **text, size_t *text_len
     return h;
 }
 
+static void emit_commit(uint32_t hash, uint8_t count, zb_commit_result_t result, uint8_t line, int32_t tag)
+{
+    if (s_cb.rx) {
+        zb_rx_t ev = {.kind = ZB_RX_COMMIT, .line = line, .hash = hash, .count = count, .result = result, .tag = tag};
+        s_cb.rx(&ev);
+    }
+}
+
 static void handle_commit(uint32_t v)
 {
     uint8_t  count = v >> 24;
     uint32_t hash  = v & 0xFFFFFF;
     if (count > ZB_MAX_LINES) {
         ESP_LOGW(TAG, "commit: bad line count %u", count);
+        emit_commit(hash, count, ZB_COMMIT_BAD_COUNT, 0, -1);
         return;
     }
     if (hash == s_shown_hash) {
         ESP_LOGI(TAG, "commit: hash %06lx already shown", (unsigned long)hash);
+        emit_commit(hash, count, ZB_COMMIT_SAME, 0, -1);
         report_shown_hash_nolock(s_shown_hash);  /* re-acknowledge */
         return;
     }
@@ -178,6 +188,7 @@ static void handle_commit(uint32_t v)
         int32_t     tag = slot_tag(s_slot[i], &text, &n);
         if (tag < 0 || (uint32_t)tag != hash) {
             ESP_LOGW(TAG, "commit %06lx rejected: line %d missing or tagged %ld", (unsigned long)hash, i + 1, (long)tag);
+            emit_commit(hash, count, ZB_COMMIT_REJECTED, i + 1, tag);
             return;
         }
         if (n > ZB_LINE_CHARS) {
@@ -194,6 +205,7 @@ static void handle_commit(uint32_t v)
 
     s_shown_hash = hash;
     ESP_LOGI(TAG, "commit %06lx accepted: %u lines", (unsigned long)hash, count);
+    emit_commit(hash, count, ZB_COMMIT_OK, 0, -1);
     if (s_cb.snapshot) {
         s_cb.snapshot(&snap);
     }
@@ -221,6 +233,11 @@ static void custom_write_attr(uint8_t ep_id, uint16_t attr_id, void *new_value, 
         memset(s_slot[idx], 0, SLOT_BUF);
         s_slot[idx][0] = len;
         memcpy(&s_slot[idx][1], &s[1], len);
+        if (s_cb.rx) {
+            zb_rx_t ev = {.kind = attr_id == ATTR_FOOTER ? ZB_RX_FOOTER : ZB_RX_LINE, .line = idx + 1};
+            memcpy(ev.text, &s[1], len);
+            s_cb.rx(&ev);
+        }
         if (attr_id == ATTR_FOOTER && s_cb.footer) {
             char text[ZB_LINE_CHARS + 1] = {0};
             memcpy(text, &s[1], len > ZB_LINE_CHARS ? ZB_LINE_CHARS : len);

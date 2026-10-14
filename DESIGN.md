@@ -56,7 +56,7 @@ start pairing (unpaired) and to reset the network (paired).
 
 | Name | Value | Meaning |
 |---|---|---|
-| `RUN_MS` | 5 s | activity timeout. Held at full while the PIR is active or the pair button is pressed, counts down after it is released, re-armed by any new activation. At 0 the device shuts down. |
+| `RUN_MS` | 20 s | activity timeout (was 5 s: too short to see a push arrive after a wake, which can take about 20 s). Held at full while the PIR is active or the pair button is pressed, counts down after it is released, re-armed by any new activation. At 0 the device shuts down. |
 | `PAIR_MS` | 180 s | length of the pairing window. |
 | `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
 | `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
@@ -129,12 +129,12 @@ well under 1 KB) lives in retained RAM, since the 15 KB framebuffer does not fit
 
 `main/hello_world_main.c` implements the state machine of 3.3 and the timeouts of 3.2:
 
-- inputs (D0, D1) are polled and debounced by a task, level based; `RUN_MS` = 5 s;
+- inputs (D0, D1) are polled and debounced by a task, level based; `RUN_MS` = 20 s;
 - all states exist; Zigbee is stubbed (join succeeds after 3 s, rejoin after 1 s, the pairing-window-over
   path is therefore not exercised); ERASE_NETWORK only clears the NVS flags;
 - `paired` and `pair_now` are in NVS; SLEEP is the simulation of 3.6;
-- each state shows a placeholder word (WAIT, PAIR, FAIL, INTERVIEW, REJOIN, ERASE); ACTIVE still runs the
-  ONE..TEN refresh test instead of the real content;
+- every state shows the debug screen of 8.1 (state, shown snapshot, last received writes) instead of the
+  real layout;
 - `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
 
 Tested on the board: unpaired start (no press: shutdown, still unpaired; press: pairing), 3 s hold erase and
@@ -483,6 +483,22 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 - Later: Hungarian accents (Latin Extended-A font from a TTF at build time) and icons (1-bit bitmaps
   indexed by the wire icon number, about 24x24, text shifted right).
 
+### 8.1 Debug screen (current, ahead of the real layout)
+
+`main/render.c`, full printable-ASCII 5x7 font at scale 2 (33 columns x 16 px rows), the same in every state:
+
+```
+ACTIVE          w412 37.2s          state, wake counter, uptime
+SHOWN A1B2C3  3 lines               the snapshot on the panel (stored one after a wake)
+1 Living room door open             ... 6 slots ("ALL OK" for count 0), then "F <footer>"
+36.9 C A1B2C3 n=3 OK                last 8 received writes, newest first, uptime stamp:
+36.7 L3 A1B2C3|Garage light on        Ln / F = slot write as received, C = commit and its result
+34.0 C 01EABC n=3 REJ L1=123ABC       (OK, SAME, BAD N, REJ Ln=<tag> or REJ Ln none)
+```
+
+Received data is drawn as it arrives: one partial refresh at a time, writes that arrive during a refresh
+are drawn together by the next one. Rows longer than 33 characters are cut off. Outgoing reports are not shown.
+
 ## 9. Failure modes
 
 | Situation | Behaviour |
@@ -518,7 +534,7 @@ D1 as well (earlier drafts said D4).
 
 ## 11. Decisions so far and open questions
 
-Decided: `RUN_MS` 5 s; `PAIR_MS` 180 s; `INTERVIEW_MS` 60 s; 3 s hold, no feedback; MVP full clear; no
+Decided: `RUN_MS` 20 s; `PAIR_MS` 180 s; `INTERVIEW_MS` 60 s; 3 s hold, no feedback; MVP full clear; no
 accents and no icons; 6 lines; PIR's own hold time is ignored; deep sleep simulated by a top-level loop;
 PIR and pair button both wake the device; the pair button is on D1 (panel DC/RST moved to D4/D5, done);
 retained RAM assumed not to survive a software restart (NVS in the MVP).
@@ -549,7 +565,7 @@ Functionality first, the renderer last. Until the renderer exists, a received sn
 on the serial port and acknowledged exactly as if it had been drawn (`shown_hash` is reported); the panel
 keeps showing the placeholder words.
 
-1. **Done.** Level-based PIR/button timeout with `RUN_MS` = 5 s, polarity macros, state machine with Zigbee
+1. **Done.** Level-based PIR/button timeout with `RUN_MS` (now 20 s), polarity macros, state machine with Zigbee
    stubbed, pair button on D1, 3 s hold to pair or reset, simulated sleep with NVS.
 2. **Next: Zigbee.** The frozen data model of section 6, no converter: identity (`Greenlight` /
    `greenlight-eink42`), endpoint 1 with the clusters of 6.3, the reports of 6.4 (fixed 100 % battery,
