@@ -211,22 +211,9 @@ static esp_err_t panel_clear(const char *why)
     return err;
 }
 
-/* Draw the screen now (~0.5 s). Blocks the state loop; input_task keeps polling the inputs meanwhile. */
-static void redraw(void)
+/* Partial refresh of fb (~0.5 s), with a full clear every CLEAR_EVERY partials. */
+static esp_err_t panel_refresh(const uint8_t *fb, const char *label)
 {
-    static render_view_t v;
-    xSemaphoreTake(view_lock, portMAX_DELAY);
-    view_dirty  = false;
-    v.state     = state_names[view_state];
-    v.wake      = wake_n;
-    v.uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount());
-    v.snap      = snap;
-    v.rx_count  = rx_count;
-    for (int i = 0; i < rx_count; i++) {
-        v.rx[i] = rx_log[(rx_head - 1 - i + RENDER_RX_N) % RENDER_RX_N];
-    }
-    xSemaphoreGive(view_lock);
-    const uint8_t *fb = render_status(&v);
     if (++partials >= CLEAR_EVERY) {
         partials = 0;
         if (panel_clear("periodic") != ESP_OK) {
@@ -242,9 +229,27 @@ static void redraw(void)
     int        busy = gpio_get_level(EPD_PIN_BUSY);
     TickType_t t0   = xTaskGetTickCount();
     esp_err_t  err  = epd_display_partial(fb);
-    ESP_LOGI(TAG, "panel: refresh #%d (%s) %lu ms, busy before %d, black %d, changed %d%s", partials, v.state,
+    ESP_LOGI(TAG, "panel: refresh #%d (%s) %lu ms, busy before %d, black %d, changed %d%s", partials, label,
              (unsigned long)ms_since(t0), busy, black, changed, err == ESP_OK ? "" : ", FAILED");
-    if (err != ESP_OK) {
+    return err;
+}
+
+/* Draw the screen now (~0.5 s). Blocks the state loop; input_task keeps polling the inputs meanwhile. */
+static void redraw(void)
+{
+    static render_view_t v;
+    xSemaphoreTake(view_lock, portMAX_DELAY);
+    view_dirty  = false;
+    v.state     = state_names[view_state];
+    v.wake      = wake_n;
+    v.uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount());
+    v.snap      = snap;
+    v.rx_count  = rx_count;
+    for (int i = 0; i < rx_count; i++) {
+        v.rx[i] = rx_log[(rx_head - 1 - i + RENDER_RX_N) % RENDER_RX_N];
+    }
+    xSemaphoreGive(view_lock);
+    if (panel_refresh(render_status(&v), v.state) != ESP_OK) {
         ESP_LOGE(TAG, "e-paper update failed");
     }
 }
