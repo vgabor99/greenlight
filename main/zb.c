@@ -36,7 +36,7 @@ static const char *TAG = "zb";
  * exchange error on Z2M, so use the value of the Espressif examples; revisit when the device sleeps for hours. */
 #define ZB_ALL_CHANNELS_MASK 0x07FFF800U  /* channels 11-26 */
 #define ED_TIMEOUT EZB_NWK_ED_TIMEOUT_64MIN
-#define POLL_MS    250   /* how often the awake device polls its parent for queued messages */
+#define POLL_MS    50    /* how often the awake device polls its parent for queued messages (ZIGBEE_PAYLOAD.md 6) */
 
 #define BIT_STARTED     BIT0
 #define BIT_FACTORY_NEW BIT1
