@@ -207,10 +207,22 @@ static void nvs_open_state(void)
     ESP_ERROR_CHECK(nvs_open("greenlight", NVS_READWRITE, &nvs));
 }
 
-/* NVS (namespace "greenlight"): "pair_now" (start pairing right after the next boot, set by ERASE_NETWORK) and
- * "snap" (blob: the snapshot on the panel and its footer; its hash is the shown_hash). The Zigbee stack keeps
- * the network in the same partition. */
+/* NVS (namespace "greenlight"): "pair_now" (start pairing right after the next boot, set by ERASE_NETWORK),
+ * "snap" (blob: the snapshot on the panel and its footer; its hash is the shown_hash) and "wake_n" (the wake
+ * counter, DESIGN.md 6.4). The Zigbee stack keeps the network in the same partition. */
 static zb_snapshot_t snap;
+
+/* Every boot is a wake (the sleep ends in a restart), so count boots. 24 bits, so the value is exact in the
+ * Analog Input's float; one u32 write per wake is negligible flash wear for NVS. */
+static uint32_t wake_count_next(void)
+{
+    uint32_t n = 0;
+    nvs_get_u32(nvs, "wake_n", &n);
+    n = (n + 1) & 0xFFFFFF;
+    nvs_set_u32(nvs, "wake_n", n);
+    nvs_commit(nvs);
+    return n;
+}
 
 static void snap_load(void)
 {
@@ -259,24 +271,26 @@ static const char *const state_names[] = {
 
 static TickType_t boot_tick;
 
-/* The reports of every wake (DESIGN.md 6.4), in this order; "awake" last. */
+/* The reports of every wake (DESIGN.md 6.4), in this order; the wake counter last: it is HA's push trigger. */
 static void report_wake_state(void)
 {
     zb_report_battery();
     zb_report_occupancy(pir_active);
     zb_report_shown_hash(snap.hash);
     zb_report_awake(true);
+    zb_report_wake();
 }
 
 static state_t st_boot(void)
 {
     bool pair_now = nv_get("pair_now");
     snap_load();
-    ESP_LOGI(TAG, "boot: pair_now=%d shown_hash=%06lx", pair_now, (unsigned long)snap.hash);
+    uint32_t wake_n = wake_count_next();
+    ESP_LOGI(TAG, "boot: pair_now=%d shown_hash=%06lx wake=%lu", pair_now, (unsigned long)snap.hash, (unsigned long)wake_n);
 
     boot_tick = xTaskGetTickCount();
     zb_callbacks_t cbs = {.snapshot = on_snapshot, .footer = on_footer};
-    zb_start(&cbs, snap.hash);
+    zb_start(&cbs, snap.hash, wake_n);
 
     /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
      * releases the pin hold and recreates the SPI bus left by epd_poweroff(). */

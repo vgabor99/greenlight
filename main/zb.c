@@ -1,6 +1,7 @@
 /* Zigbee side of the device. See DESIGN.md section 6 for the data model this implements:
  *   endpoint 1: Basic, Power Configuration, Occupancy Sensing, Binary Input (awake), Analog Input
- *   (shown_hash) and the custom cluster 0xFC8A whose writable attributes carry the display input. */
+ *   (shown_hash) and the custom cluster 0xFC8A whose writable attributes carry the display input;
+ *   endpoint 2: Analog Input (wake counter, the HA push trigger). */
 
 #include <stdio.h>
 #include <string.h>
@@ -17,6 +18,7 @@
 static const char *TAG = "zb";
 
 #define ZB_EP        1
+#define ZB_EP_WAKE   2  /* second endpoint, only for the wake counter's Analog Input */
 #define COORD_EP     1
 #define CUSTOM_CLUSTER_ID 0xFC8A
 
@@ -46,6 +48,7 @@ static const char *TAG = "zb";
 static EventGroupHandle_t s_events;
 static zb_callbacks_t     s_cb;
 static uint32_t           s_shown_hash;
+static uint32_t           s_wake_count;
 static esp_timer_handle_t s_retry_timer;
 static volatile bool      s_pairing;
 static uint8_t            s_retry_mode;
@@ -77,13 +80,13 @@ static void zcl_string(char *buf, size_t size, const char *text)
     memcpy(buf + 1, text, n);
 }
 
-static void report_attr(uint16_t cluster, uint16_t attr)
+static void report_attr_ep(uint8_t ep, uint16_t cluster, uint16_t attr)
 {
     ezb_zcl_report_attr_cmd_t cmd = {
         .cmd_ctrl = {
             .dst_addr   = EZB_ADDRESS_SHORT(0x0000),
             .dst_ep     = COORD_EP,
-            .src_ep     = ZB_EP,
+            .src_ep     = ep,
             .cluster_id = cluster,
             .manuf_code = EZB_ZCL_STD_MANUF_CODE,
             .fc = {.manuf_specific = 0, .direction = EZB_ZCL_CMD_DIRECTION_TO_CLI, .dis_default_rsp = 1},
@@ -96,14 +99,24 @@ static void report_attr(uint16_t cluster, uint16_t attr)
     }
 }
 
-static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
+static void report_attr(uint16_t cluster, uint16_t attr)
 {
-    ezb_zcl_status_t st = ezb_zcl_set_attr_value(ZB_EP, cluster, EZB_ZCL_CLUSTER_SERVER, attr, EZB_ZCL_STD_MANUF_CODE,
+    report_attr_ep(ZB_EP, cluster, attr);
+}
+
+static void set_and_report_ep(uint8_t ep, uint16_t cluster, uint16_t attr, void *value)
+{
+    ezb_zcl_status_t st = ezb_zcl_set_attr_value(ep, cluster, EZB_ZCL_CLUSTER_SERVER, attr, EZB_ZCL_STD_MANUF_CODE,
                                                  value, false);
     if (st != EZB_ZCL_STATUS_SUCCESS) {
-        ESP_LOGW(TAG, "set cluster 0x%04x attr 0x%04x failed: 0x%02x", cluster, attr, st);
+        ESP_LOGW(TAG, "set ep %u cluster 0x%04x attr 0x%04x failed: 0x%02x", ep, cluster, attr, st);
     }
-    report_attr(cluster, attr);
+    report_attr_ep(ep, cluster, attr);
+}
+
+static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
+{
+    set_and_report_ep(ZB_EP, cluster, attr, value);
 }
 
 static void report_shown_hash_nolock(uint32_t hash)
@@ -425,6 +438,20 @@ static esp_err_t create_device(void)
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, analog));
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, custom));
     ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep));
+
+    /* Endpoint 2: Analog Input = wake counter. A cluster can appear only once per endpoint, and Z2M's generic
+     * mapping exposes it as a second analog input (DESIGN.md 6.4). */
+    ezb_zcl_analog_input_cluster_server_config_t wake_cfg = {.out_of_service = false, .present_value = (float)s_wake_count, .status_flags = 0};
+    ezb_zcl_cluster_desc_t wake = ezb_zcl_analog_input_create_cluster_desc(&wake_cfg, EZB_ZCL_CLUSTER_SERVER);
+    ezb_af_ep_config_t ep2_cfg = {
+        .ep_id              = ZB_EP_WAKE,
+        .app_profile_id     = EZB_AF_HA_PROFILE_ID,
+        .app_device_id      = EZB_ZHA_SIMPLE_SENSOR_DEVICE_ID,
+        .app_device_version = 0,
+    };
+    ezb_af_ep_desc_t ep2 = ezb_af_create_endpoint_desc(&ep2_cfg);
+    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep2, wake));
+    ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep2));
     ESP_ERROR_CHECK(ezb_af_device_desc_register(dev));
 
     ezb_zcl_core_action_handler_register(core_action_handler);
@@ -462,10 +489,11 @@ static void stack_task(void *arg)
 
 /* ---- public API ---- */
 
-void zb_start(const zb_callbacks_t *cb, uint32_t shown_hash)
+void zb_start(const zb_callbacks_t *cb, uint32_t shown_hash, uint32_t wake_count)
 {
     s_cb         = *cb;
     s_shown_hash = shown_hash;
+    s_wake_count = wake_count;
     s_events     = xEventGroupCreate();
     const esp_timer_create_args_t targs = {.callback = retry_timer_cb, .name = "zb_retry"};
     ESP_ERROR_CHECK(esp_timer_create(&targs, &s_retry_timer));
@@ -543,5 +571,13 @@ void zb_report_awake(bool awake)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
     set_and_report(EZB_ZCL_CLUSTER_ID_BINARY_INPUT, 0x0055, &awake);
+    esp_zigbee_lock_release();
+}
+
+void zb_report_wake(void)
+{
+    float f = (float)s_wake_count;  /* kept below 2^24 by the caller, so exact in a single-precision float */
+    esp_zigbee_lock_acquire(portMAX_DELAY);
+    set_and_report_ep(ZB_EP_WAKE, EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
     esp_zigbee_lock_release();
 }

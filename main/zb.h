@@ -23,8 +23,9 @@ typedef struct {
     void (*footer)(const char *footer);
 } zb_callbacks_t;
 
-/* Start the Zigbee stack task. shown_hash is the hash of the snapshot on the panel (0 = unknown). */
-void zb_start(const zb_callbacks_t *cb, uint32_t shown_hash);
+/* Start the Zigbee stack task. shown_hash is the hash of the snapshot on the panel (0 = unknown); wake_count is
+ * this wake's number (0 .. 2^24-1, different from the previous wake's), reported by zb_report_wake(). */
+void zb_start(const zb_callbacks_t *cb, uint32_t shown_hash, uint32_t wake_count);
 
 /* Wait for the stack to report whether a network was restored from storage. Returns false on timeout. */
 bool zb_wait_started(uint32_t timeout_ms, bool *factory_new);
@@ -44,3 +45,4 @@ void zb_report_battery(void);               /* the three Power Configuration att
 void zb_report_occupancy(bool occupied);
 void zb_report_shown_hash(uint32_t hash);
 void zb_report_awake(bool awake);
+void zb_report_wake(void);                  /* the wake counter (endpoint 2): the last report of every wake */

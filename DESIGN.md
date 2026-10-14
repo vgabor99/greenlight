@@ -231,8 +231,9 @@ added later) can change without re-pairing.
 
 1. **Identity never changes:** `manufacturerName` = `Greenlight`, `modelId` = `greenlight-eink42` (the
    Basic strings are at most 32 characters). A new hardware variant gets a new model id, never a changed one.
-2. **One endpoint (1), profile Home Automation, device id Simple Sensor (0x000C)**, and the cluster list in
-   6.3 is final, including the clusters that are declared but not fully used yet (OTA client).
+2. **Two endpoints, profile Home Automation, device id Simple Sensor (0x000C)**: endpoint 1 with the cluster
+   list in 6.3, final, including the clusters that are declared but not fully used yet (OTA client), and
+   endpoint 2 with only an Analog Input for the wake counter (6.4; a cluster can appear only once per endpoint).
 3. **No reporting configuration from Z2M.** The device sends all reports on its own, to the coordinator
    (0x0000), so nothing depends on Z2M's bind / Configure Reporting step succeeding on a sleeping device.
 4. **Attribute ids are append-only.** Never reuse or renumber one.
@@ -293,6 +294,8 @@ why the design can promise a final first try even though the "no converter" part
 | `greenlight` custom 0xFC8A | server | the display input slots (6.5), writable by the coordinator |
 | OTA Upgrade 0x0019 | client | reserved for a later firmware update, so the cluster list never changes. Not implemented yet. |
 
+Endpoint 2 has a single cluster: Analog Input 0x000C (server), the wake counter (`presentValue`).
+
 (Housekeeping clusters the SDK needs, such as Identify, are fine.) 0xFC8A was picked arbitrarily; check it
 does not collide with a cluster zigbee-herdsman already names. It is used **without** a manufacturer code in
 the ZCL frames (the id is in the manufacturer-specific range 0xFC00-0xFFFF); if the first test shows the SDK
@@ -308,6 +311,7 @@ or Z2M insists on one, adding it is a firmware change (and a raw-write option) o
 | Occupancy Sensing `occupancy` 0x0000 | bitmap8, bit 0 | the PIR is active; `occupancySensorType` 0x0001 = 0 (PIR) |
 | Binary Input `presentValue` 0x0055 | bool | **`awake`**: joined and listening, can receive pushes |
 | Analog Input `presentValue` 0x0055 | single float | **`shown_hash`**: hash of the snapshot on the panel (0 = nothing known) |
+| Endpoint 2 Analog Input `presentValue` 0x0055 | single float | **`wake`**: the wake counter, +1 on every boot (every wake is a boot), 24 bits, kept in NVS. **HA's push trigger.** |
 
 **The hash is 24 bits** (0 to 16777215), so it travels exactly in a single-precision float; HA computes it
 from the list text however it likes (any stable 24-bit hash, e.g. the first 6 hex digits of an md5 / sha1 of
@@ -318,8 +322,15 @@ divides by 2, so 100 % is the raw value 200.
 
 **When the device reports.** There is nothing periodic while asleep. On each wake, after (re)join, in this
 order, so HA sees fresh data before the push decision: (1) Power Configuration (the three battery attributes
-in one frame); (2) Occupancy; (3) Analog Input `shown_hash`; (4) Binary Input `awake` = true **last**. The
-automation is triggered by `awake`, and by then `shown_hash` is already current. While awake: `awake` +
+in one frame); (2) Occupancy; (3) Analog Input `shown_hash`; (4) Binary Input `awake` = true; (5) the wake
+counter **last**. The automation is triggered by the wake counter, and by then `shown_hash` is already current.
+
+**Why a counter and not `awake`.** `awake = false` is sent best effort just before the radio goes off. If it
+is lost, Z2M keeps `awake = true` cached and the next wake's `true` is no change in HA, so a trigger on `awake`
+misses that wake. Any message from the device is no good trigger either: Z2M already publishes the cached
+state when the device announces itself after the reboot, about 0.5 s before the device is ready. The counter
+changes on every wake and arrives last, so its change means "awake, ready, and the state above is current".
+`awake` stays as the gate for pushes while the device stays awake (heartbeat). While awake: `awake` +
 `shown_hash` every 30 s (heartbeat); `shown_hash` after each redraw; `occupancy` when the PIR changes. At
 SHUTDOWN: `awake` = false, best effort.
 
@@ -442,17 +453,21 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   converter of 6.8, no device change.
 - **HA template sensor**: builds the sorted, truncated `lines` (max 6), the 24-bit `current_hash` and the
   footer text.
-- **HA automation**, triggered by any change of `awake`, `shown_hash` or `current_hash`:
-  - on `awake` becoming true: write the footer (current time); if `shown_hash != current_hash`, also the
-    snapshot
+- **HA automation**, triggered by any change of the wake counter, `shown_hash` or `current_hash`:
+  - on a wake counter change: wait about 2 s (the wake report burst and Z2M's replies to it are still in
+    flight), then write the footer (current time); if `shown_hash != current_hash`, also the snapshot
   - while `awake` is true and `shown_hash != current_hash`: publish the writes of 6.5 to
-    `zigbee2mqtt/<device>/set`, **one attribute per message**, back to back: line 1 .. line `count`, then the
-    `commit`; wait about 5 s after the commit; if `shown_hash` still differs, resend (a few retries at most).
-    A full 6-line snapshot is 7 to 8 writes and took 3.5 s on the bench, within the 5 s run time (RUN_MS)
+    `zigbee2mqtt/<device>/set`, **one attribute per message**, **100 ms apart** (not all at once: the parent
+    router queues them for the sleepy device, ZIGBEE_PAYLOAD.md 6): line 1 .. line `count`, then the
+    `commit`; then wait for `shown_hash` (up to about 20 s: right after a wake some writes take a Z2M
+    recovery round of about 13 s); if it still differs, resend (a few retries at most), and never resend
+    while the previous push may still be retried by Z2M.
+    Bench, 50 ms polling: device already awake 19/20 accepted in 1.1-3.1 s (avg 1.5 s); right after a wake
+    10/10 accepted, 5 of them only after 14-18 s (ZIGBEE_PAYLOAD.md 7)
   - debounce a few seconds after `current_hash` changes, so a burst of events gives one refresh.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).
-- The MQTT entity names for `awake` and `shown_hash` are whatever Z2M's generic mapping produces; read them
+- The MQTT entity names for `awake`, `shown_hash` and the wake counter are whatever Z2M's generic mapping produces; read them
   from the device's Exposes tab after the first pairing and put them into the automation.
 
 ## 8. Display (MVP)
