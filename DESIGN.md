@@ -512,6 +512,7 @@ are drawn together by the next one. Rows longer than 33 characters are cut off. 
 | Pairing fails | "Pairing failed" screen, UNPAIRED_WAIT; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it; verify. |
 | Cold boot (battery change) | Retained RAM empty: blank snapshot, `shown_hash = 0`, HA pushes on join. |
+| Panel BUSY hang | Intermittent (CLAUDE.md): a refresh never finishes and the controller stays stuck until a hardware reset. **Current: no recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epd_init()` resets the panel. **Later option:** on a BUSY timeout, `epd_init()` + `epd_clear()` + redraw (about 1.5 s), with the timeout cut to about 2 s (a refresh takes 470 ms), and count recoveries in the log (or `panel_error`, 6.7). Turn it on once the cause is understood or the rate is known to be acceptable. |
 
 ## 10. Pins
 
