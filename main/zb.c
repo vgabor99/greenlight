@@ -1,7 +1,7 @@
 /* Zigbee side of the device. See DESIGN.md section 6 for the data model this implements:
  *   endpoint 1: Basic, Power Configuration, Occupancy Sensing, Binary Input (awake), Analog Input
- *   (shown_hash) and the custom cluster 0xFC8A whose writable attributes carry the display input;
- *   endpoint 2: Analog Input (wake counter, the HA push trigger). */
+ *   (shown_view_id) and the custom cluster 0xFC8A whose writable attributes carry the view and the dataset;
+ *   endpoint 2: Analog Input (wake counter, the HA push trigger); endpoint 3: Analog Input (dataset_hash). */
 
 #include <stdio.h>
 #include <string.h>
@@ -19,16 +19,18 @@ static const char *TAG = "zb";
 
 #define ZB_EP        1
 #define ZB_EP_WAKE   2  /* second endpoint, only for the wake counter's Analog Input */
+#define ZB_EP_DS     3  /* third endpoint, only for dataset_hash's Analog Input */
 #define COORD_EP     1
 #define CUSTOM_CLUSTER_ID 0xFC8A
 
-/* Custom cluster attribute ids (DESIGN.md 6.5) */
-#define ATTR_LINE1   0x0000  /* .. ATTR_LINE1 + 5 */
-#define ATTR_FOOTER  0x0006
-#define ATTR_COMMIT  0x0007
+/* Custom cluster attribute ids (DESIGN.md 6.5); 0x0000-0x0007 are retired, 0x0010-0x0014 reserved */
+#define ATTR_VIEW_BITS 0x0020  /* .. ATTR_VIEW_ID: the four view_* attributes, in zb_view_t order */
+#define ATTR_VIEW_ID   0x0023
+#define ATTR_DS_ENTRY  0x0030
+#define ATTR_DS_COMMIT 0x0031
 
-#define SLOT_BUF 64         /* storage of one string slot: length byte + up to 63 characters */
-#define SLOT_MAX ZB_SLOT_CHARS  /* longest string we accept */
+#define VIEW_ALL  0x0F                         /* all four view_* attributes received */
+#define ENTRY_MAX (6 + 1 + 2 + 1 + ZB_DS_CHARS)  /* "HHHHHH|II|text": 36 characters */
 
 /* MVP battery: fixed 100 % (DESIGN.md 6.6) */
 #define BATTERY_VOLTAGE_100MV 42
@@ -47,15 +49,18 @@ static const char *TAG = "zb";
 
 static EventGroupHandle_t s_events;
 static zb_callbacks_t     s_cb;
-static uint32_t           s_shown_hash;
+static uint32_t           s_shown_view_id;
+static uint32_t           s_ds_hash;
 static uint32_t           s_wake_count;
 static esp_timer_handle_t s_retry_timer;
 static volatile bool      s_pairing;
 static uint8_t            s_retry_mode;
 
-/* Raw string slots as the coordinator wrote them (length byte first). */
-static uint8_t s_slot[ZB_MAX_LINES + 1][SLOT_BUF];
-static char    s_build_id[20];
+/* Attribute storage of the custom cluster (the stack keeps the written values here). */
+static uint32_t s_view_attr[4];
+static uint32_t s_commit_attr;
+static uint8_t  s_entry_attr[ENTRY_MAX + 1];
+static char     s_build_id[20];
 static char    s_date_code[20];
 
 /* ---- helpers ---- */
@@ -119,13 +124,44 @@ static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
     set_and_report_ep(ZB_EP, cluster, attr, value);
 }
 
-static void report_shown_hash_nolock(uint32_t hash)
+/* 24-bit ids and hashes are exact in the Analog Input's single-precision float */
+static void report_shown_view_id_nolock(void)
 {
-    float f = (float)hash;  /* 24-bit hashes are exact in a single-precision float */
+    float f = (float)s_shown_view_id;
     set_and_report(EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
 }
 
-/* ---- display input (custom cluster writes) ---- */
+static void report_dataset_hash_nolock(void)
+{
+    float f = (float)s_ds_hash;
+    set_and_report_ep(ZB_EP_DS, EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
+}
+
+/* ---- display input (custom cluster writes, DESIGN.md 6.5) ---- */
+
+static zb_view_t s_view_in;       /* view_* values received since the last apply */
+static uint8_t   s_view_mask;     /* which of them (bit 0 = view_bits) */
+static bool      s_view_posted;   /* apply_view() is queued */
+
+/* Dataset entries received since the last accepted commit, by index; tag -1 = none. */
+static struct {
+    int32_t tag;
+    char    text[ZB_DS_CHARS + 1];
+} s_stage[ZB_DS_MAX];
+
+static void emit(const zb_rx_t *ev)
+{
+    if (s_cb.rx) {
+        s_cb.rx(ev);
+    }
+}
+
+static void activity(void)
+{
+    if (s_cb.activity) {
+        s_cb.activity();
+    }
+}
 
 static int hex_digit(char c)
 {
@@ -135,118 +171,170 @@ static int hex_digit(char c)
     return -1;
 }
 
-/* Parse "HHHHHH|text" from a slot; returns the hash, or -1 if the slot has no valid tag. */
-static int32_t slot_tag(const uint8_t *slot, const char **text, size_t *text_len)
+/* n hex digits as a number, or -1 */
+static int32_t hex_value(const uint8_t *p, int n)
 {
-    size_t len = slot[0];
-    if (len < 7 || slot[7] != '|') {
-        return -1;
-    }
-    int32_t h = 0;
-    for (int i = 0; i < 6; i++) {
-        int d = hex_digit((char)slot[1 + i]);
+    int32_t v = 0;
+    for (int i = 0; i < n; i++) {
+        int d = hex_digit((char)p[i]);
         if (d < 0) {
             return -1;
         }
-        h = (h << 4) | d;
+        v = (v << 4) | d;
     }
-    *text = (const char *)&slot[8];
-    *text_len = len - 7;
-    return h;
+    return v;
 }
 
-static void emit_commit(uint32_t hash, uint8_t count, zb_commit_result_t result, uint8_t line, int32_t tag)
+/* Runs in the Zigbee task after the frame that carried the view_* writes has been processed, so all four
+ * records of one write are in s_view_in whatever their order. */
+static void apply_view(void *ctx)
 {
-    if (s_cb.rx) {
-        zb_rx_t ev = {.kind = ZB_RX_COMMIT, .line = line, .hash = hash, .count = count, .result = result, .tag = tag};
-        s_cb.rx(&ev);
+    zb_rx_t ev = {.kind = ZB_RX_VIEW};
+    ev.view.view = s_view_in;
+    ev.view.mask = s_view_mask;
+    s_view_posted = false;
+    s_view_mask   = 0;
+    const zb_view_t *v = &ev.view.view;
+
+    if (ev.view.mask != VIEW_ALL || v->id == 0) {
+        ESP_LOGW(TAG, "view %06lx incomplete: attributes 0x%x", (unsigned long)v->id, ev.view.mask);
+        ev.view.result = ZB_VIEW_INCOMPLETE;
+        emit(&ev);
+        return;
+    }
+    if (v->ds == 0 || v->ds != s_ds_hash) {
+        ESP_LOGW(TAG, "view %06lx out of sync: for dataset %06lx, stored %06lx", (unsigned long)v->id,
+                 (unsigned long)v->ds, (unsigned long)s_ds_hash);
+        ev.view.result = ZB_VIEW_OOS;
+        if (s_cb.view) {
+            s_cb.view(v, ev.view.result);
+        }
+        emit(&ev);
+        activity();
+        report_dataset_hash_nolock();
+        return;
+    }
+    ev.view.result = v->id == s_shown_view_id ? ZB_VIEW_TIME : ZB_VIEW_OK;
+    ESP_LOGI(TAG, "view %06lx %s: bits %08lx time %lu", (unsigned long)v->id,
+             ev.view.result == ZB_VIEW_OK ? "accepted" : "time only", (unsigned long)v->bits, (unsigned long)v->time);
+    if (s_cb.view) {
+        s_cb.view(v, ev.view.result);
+    }
+    s_shown_view_id = v->id;
+    emit(&ev);
+    report_shown_view_id_nolock();
+}
+
+static void view_write(uint16_t attr_id, uint32_t value)
+{
+    uint32_t *field[] = {&s_view_in.bits, &s_view_in.ds, &s_view_in.time, &s_view_in.id};
+    int       i       = attr_id - ATTR_VIEW_BITS;
+    *field[i] = value;
+    s_view_mask |= 1 << i;
+    if (!s_view_posted) {
+        if (esp_zigbee_task_queue_post(apply_view, NULL) == ESP_OK) {
+            s_view_posted = true;
+        } else {
+            ESP_LOGE(TAG, "could not queue the view");
+        }
     }
 }
 
-static void handle_commit(uint32_t v)
+/* "HHHHHH|II|text": stage the entry under its index. */
+static void ds_entry_write(const uint8_t *s)
 {
-    uint8_t  count = v >> 24;
-    uint32_t hash  = v & 0xFFFFFF;
-    if (count > ZB_MAX_LINES) {
-        ESP_LOGW(TAG, "commit: bad line count %u", count);
-        emit_commit(hash, count, ZB_COMMIT_BAD_COUNT, 0, -1);
-        return;
+    size_t  len = s[0];
+    zb_rx_t ev  = {.kind = ZB_RX_ENTRY, .entry = {.tag = -1}};
+    int32_t tag = -1, idx = -1;
+    if (len >= 10 && len <= ENTRY_MAX && s[7] == '|' && s[10] == '|') {
+        tag = hex_value(&s[1], 6);
+        idx = hex_value(&s[8], 2);
     }
-    if (hash == s_shown_hash) {
-        ESP_LOGI(TAG, "commit: hash %06lx already shown", (unsigned long)hash);
-        emit_commit(hash, count, ZB_COMMIT_SAME, 0, -1);
-        report_shown_hash_nolock(s_shown_hash);  /* re-acknowledge */
-        return;
+    if (tag <= 0 || idx < 0 || idx >= ZB_DS_MAX) {
+        ESP_LOGW(TAG, "ds_entry: not a valid entry (length %u)", (unsigned)len);
+        memcpy(ev.entry.text, &s[1], len > ZB_DS_CHARS ? ZB_DS_CHARS : len);
+    } else {
+        size_t n = len - 10;
+        s_stage[idx].tag = tag;
+        memset(s_stage[idx].text, 0, sizeof(s_stage[idx].text));
+        memcpy(s_stage[idx].text, &s[11], n);
+        ev.entry.tag   = tag;
+        ev.entry.index = idx;
+        memcpy(ev.entry.text, &s[11], n);
+        ESP_LOGI(TAG, "ds_entry %02ld for %06lx: \"%s\"", (long)idx, (unsigned long)tag, s_stage[idx].text);
     }
-    static zb_snapshot_t snap;
-    memset(&snap, 0, sizeof(snap));
-    snap.hash  = hash;
-    snap.count = count;
-    for (int i = 0; i < count; i++) {
-        const char *text;
-        size_t      n;
-        int32_t     tag = slot_tag(s_slot[i], &text, &n);
-        if (tag < 0 || (uint32_t)tag != hash) {
-            ESP_LOGW(TAG, "commit %06lx rejected: line %d missing or tagged %ld", (unsigned long)hash, i + 1, (long)tag);
-            emit_commit(hash, count, ZB_COMMIT_REJECTED, i + 1, tag);
-            return;
-        }
-        if (n > ZB_LINE_CHARS) {
-            n = ZB_LINE_CHARS;
-        }
-        memcpy(snap.line[i], text, n);
-    }
-    /* The footer is not tagged: take whatever was written last. */
-    size_t fl = s_slot[ZB_MAX_LINES][0];
-    if (fl > ZB_LINE_CHARS) {
-        fl = ZB_LINE_CHARS;
-    }
-    memcpy(snap.footer, &s_slot[ZB_MAX_LINES][1], fl);
+    emit(&ev);
+    activity();
+}
 
-    s_shown_hash = hash;
-    ESP_LOGI(TAG, "commit %06lx accepted: %u lines", (unsigned long)hash, count);
-    emit_commit(hash, count, ZB_COMMIT_OK, 0, -1);
-    if (s_cb.snapshot) {
-        s_cb.snapshot(&snap);
+static void ds_commit_write(uint32_t v)
+{
+    zb_rx_t ev = {.kind = ZB_RX_DS_COMMIT, .commit = {.hash = v & 0xFFFFFF, .count = v >> 24}};
+    uint32_t hash  = ev.commit.hash;
+    uint8_t  count = ev.commit.count;
+    if (count > ZB_DS_MAX || hash == 0) {
+        ESP_LOGW(TAG, "ds_commit %06lx: bad count %u", (unsigned long)hash, count);
+        ev.commit.result = ZB_DS_BAD_COUNT;
+    } else if (hash == s_ds_hash) {
+        ESP_LOGI(TAG, "ds_commit %06lx: already stored", (unsigned long)hash);
+        ev.commit.result = ZB_DS_SAME;
+        report_dataset_hash_nolock();  /* re-acknowledge */
+    } else {
+        ev.commit.result = ZB_DS_OK;
+        for (int i = 0; i < count; i++) {
+            if (s_stage[i].tag != (int32_t)hash) {
+                ESP_LOGW(TAG, "ds_commit %06lx rejected: entry %02d missing or for another dataset",
+                         (unsigned long)hash, i);
+                ev.commit.result  = ZB_DS_REJECTED;
+                ev.commit.missing = i;
+                break;
+            }
+        }
+        if (ev.commit.result == ZB_DS_OK) {
+            static zb_dataset_t ds;
+            memset(&ds, 0, sizeof(ds));
+            ds.hash  = hash;
+            ds.count = count;
+            for (int i = 0; i < count; i++) {
+                memcpy(ds.text[i], s_stage[i].text, sizeof(ds.text[i]));
+            }
+            for (int i = 0; i < ZB_DS_MAX; i++) {
+                s_stage[i].tag = -1;
+            }
+            if (s_cb.dataset) {
+                s_cb.dataset(&ds);
+            }
+            s_ds_hash = hash;
+            ESP_LOGI(TAG, "ds_commit %06lx accepted: %u entries", (unsigned long)hash, count);
+            report_dataset_hash_nolock();
+        }
     }
-    report_shown_hash_nolock(hash);
+    emit(&ev);
+    activity();
 }
 
 static ezb_zcl_status_t custom_check_value(uint16_t attr_id, uint8_t ep_id, void *value)
 {
-    ESP_LOGI(TAG, "check attr 0x%04x (first byte %u)", attr_id, ((uint8_t *)value)[0]);
-    if (attr_id <= ATTR_FOOTER) {
-        if (((uint8_t *)value)[0] > SLOT_MAX) {
-            return EZB_ZCL_STATUS_INVALID_VALUE;
-        }
+    if (attr_id == ATTR_DS_ENTRY && ((uint8_t *)value)[0] > ENTRY_MAX) {
+        ESP_LOGW(TAG, "ds_entry too long: %u characters", ((uint8_t *)value)[0]);
+        return EZB_ZCL_STATUS_INVALID_VALUE;
     }
     return EZB_ZCL_STATUS_SUCCESS;
 }
 
 static void custom_write_attr(uint8_t ep_id, uint16_t attr_id, void *new_value, uint16_t manuf_code)
 {
-    ESP_LOGI(TAG, "write attr 0x%04x (first byte %u)", attr_id, ((uint8_t *)new_value)[0]);
-    if (attr_id <= ATTR_FOOTER) {
-        const uint8_t *s = new_value;
-        uint8_t        len = s[0] > SLOT_MAX ? SLOT_MAX : s[0];
-        int            idx = attr_id == ATTR_FOOTER ? ZB_MAX_LINES : attr_id - ATTR_LINE1;
-        memset(s_slot[idx], 0, SLOT_BUF);
-        s_slot[idx][0] = len;
-        memcpy(&s_slot[idx][1], &s[1], len);
-        if (s_cb.rx) {
-            zb_rx_t ev = {.kind = attr_id == ATTR_FOOTER ? ZB_RX_FOOTER : ZB_RX_LINE, .line = idx + 1};
-            memcpy(ev.text, &s[1], len);
-            s_cb.rx(&ev);
-        }
-        if (attr_id == ATTR_FOOTER && s_cb.footer) {
-            char text[ZB_LINE_CHARS + 1] = {0};
-            memcpy(text, &s[1], len > ZB_LINE_CHARS ? ZB_LINE_CHARS : len);
-            s_cb.footer(text);
-        }
-    } else if (attr_id == ATTR_COMMIT) {
-        uint32_t v;
+    uint32_t v;
+    if (attr_id >= ATTR_VIEW_BITS && attr_id <= ATTR_VIEW_ID) {
         memcpy(&v, new_value, sizeof(v));
-        handle_commit(v);
+        view_write(attr_id, v);
+    } else if (attr_id == ATTR_DS_ENTRY) {
+        ds_entry_write(new_value);
+    } else if (attr_id == ATTR_DS_COMMIT) {
+        memcpy(&v, new_value, sizeof(v));
+        ds_commit_write(v);
+    } else {
+        ESP_LOGW(TAG, "write to unknown attribute 0x%04x", attr_id);
     }
 }
 
@@ -367,8 +455,7 @@ static void core_action_handler(ezb_zcl_core_action_callback_id_t callback_id, v
 {
     switch (callback_id) {
     case EZB_ZCL_CORE_SET_ATTR_VALUE_CB_ID: {
-        /* Tell the stack the write is fine. HA sends one attribute per write (DESIGN.md 6.5): batched writes of long
-         * strings were refused by the coordinator or stopped after the first attribute. */
+        /* Tell the stack the write is fine; custom_write_attr() checks the content. */
         ezb_zcl_set_attr_value_message_t *m = message;
         ESP_LOGI(TAG, "set attr: cluster 0x%04x attr 0x%04x type 0x%02x size %u (stack status 0x%02x)", m->info.cluster_id,
                  m->in.attribute.id, m->in.attribute.data.type, m->in.attribute.data.size, m->info.status);
@@ -433,31 +520,30 @@ static esp_err_t create_device(void)
     };
     ezb_zcl_cluster_desc_t occupancy = ezb_zcl_occupancy_sensing_create_cluster_desc(&occ_cfg, EZB_ZCL_CLUSTER_SERVER);
 
-    /* Binary Input: awake. Analog Input: shown_hash */
+    /* Binary Input: awake. Analog Input: shown_view_id */
     ezb_zcl_binary_input_cluster_server_config_t bin_cfg = {.out_of_service = false, .present_value = false, .status_flags = 0};
     ezb_zcl_cluster_desc_t binary = ezb_zcl_binary_input_create_cluster_desc(&bin_cfg, EZB_ZCL_CLUSTER_SERVER);
-    ezb_zcl_analog_input_cluster_server_config_t ana_cfg = {.out_of_service = false, .present_value = (float)s_shown_hash, .status_flags = 0};
+    ezb_zcl_analog_input_cluster_server_config_t ana_cfg = {.out_of_service = false, .present_value = (float)s_shown_view_id, .status_flags = 0};
     ezb_zcl_cluster_desc_t analog = ezb_zcl_analog_input_create_cluster_desc(&ana_cfg, EZB_ZCL_CLUSTER_SERVER);
 
-    /* Custom cluster: the display input slots. The stack takes the storage size of a string attribute from the
-     * initial value, so register full-length placeholders (they are not valid tags, so a commit rejects them). */
-    for (int i = 0; i <= ZB_MAX_LINES; i++) {
-        s_slot[i][0] = SLOT_MAX;
-        memset(&s_slot[i][1], ' ', SLOT_MAX);
-    }
+    /* Custom cluster: the view and the dataset input. The stack takes the storage size of a string attribute from
+     * the initial value, so register a full-length placeholder (not a valid entry). */
+    s_entry_attr[0] = ENTRY_MAX;
+    memset(&s_entry_attr[1], ' ', ENTRY_MAX);
     ezb_zcl_custom_cluster_config_t custom_cfg = {
         .cluster_id  = CUSTOM_CLUSTER_ID,
         .init_func   = custom_cluster_init,
         .deinit_func = custom_cluster_deinit,
     };
     ezb_zcl_cluster_desc_t custom = ezb_zcl_custom_create_cluster_desc(&custom_cfg, EZB_ZCL_CLUSTER_SERVER);
-    for (int i = 0; i <= ZB_MAX_LINES; i++) {  /* lines 1..6 and the footer */
-        ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_LINE1 + i, EZB_ZCL_ATTR_TYPE_STRING,
-                                             EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, s_slot[i]);
+    for (int i = 0; i < 4; i++) {  /* view_bits, view_ds, view_time, view_id */
+        ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_VIEW_BITS + i, EZB_ZCL_ATTR_TYPE_UINT32,
+                                             EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, &s_view_attr[i]);
     }
-    uint32_t commit = 0;
-    ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_COMMIT, EZB_ZCL_ATTR_TYPE_UINT32,
-                                         EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, &commit);
+    ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_DS_ENTRY, EZB_ZCL_ATTR_TYPE_STRING,
+                                         EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, s_entry_attr);
+    ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_DS_COMMIT, EZB_ZCL_ATTR_TYPE_UINT32,
+                                         EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, &s_commit_attr);
 
     ezb_af_ep_config_t ep_cfg = {
         .ep_id              = ZB_EP,
@@ -487,6 +573,19 @@ static esp_err_t create_device(void)
     ezb_af_ep_desc_t ep2 = ezb_af_create_endpoint_desc(&ep2_cfg);
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep2, wake));
     ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep2));
+
+    /* Endpoint 3: Analog Input = dataset_hash (DESIGN.md 6.4), same reason as endpoint 2. */
+    ezb_zcl_analog_input_cluster_server_config_t ds_cfg = {.out_of_service = false, .present_value = (float)s_ds_hash, .status_flags = 0};
+    ezb_zcl_cluster_desc_t ds_hash = ezb_zcl_analog_input_create_cluster_desc(&ds_cfg, EZB_ZCL_CLUSTER_SERVER);
+    ezb_af_ep_config_t ep3_cfg = {
+        .ep_id              = ZB_EP_DS,
+        .app_profile_id     = EZB_AF_HA_PROFILE_ID,
+        .app_device_id      = EZB_ZHA_SIMPLE_SENSOR_DEVICE_ID,
+        .app_device_version = 0,
+    };
+    ezb_af_ep_desc_t ep3 = ezb_af_create_endpoint_desc(&ep3_cfg);
+    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep3, ds_hash));
+    ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep3));
     ESP_ERROR_CHECK(ezb_af_device_desc_register(dev));
 
     ezb_zcl_core_action_handler_register(core_action_handler);
@@ -524,11 +623,15 @@ static void stack_task(void *arg)
 
 /* ---- public API ---- */
 
-void zb_start(const zb_callbacks_t *cb, uint32_t shown_hash, uint32_t wake_count)
+void zb_start(const zb_callbacks_t *cb, uint32_t ds_hash, uint32_t shown_view_id, uint32_t wake_count)
 {
-    s_cb         = *cb;
-    s_shown_hash = shown_hash;
-    s_wake_count = wake_count;
+    s_cb            = *cb;
+    s_ds_hash       = ds_hash;
+    s_shown_view_id = shown_view_id;
+    s_wake_count    = wake_count;
+    for (int i = 0; i < ZB_DS_MAX; i++) {
+        s_stage[i].tag = -1;
+    }
     s_events     = xEventGroupCreate();
     const esp_timer_create_args_t targs = {.callback = retry_timer_cb, .name = "zb_retry"};
     ESP_ERROR_CHECK(esp_timer_create(&targs, &s_retry_timer));
@@ -594,11 +697,17 @@ void zb_report_occupancy(bool occupied)
     esp_zigbee_lock_release();
 }
 
-void zb_report_shown_hash(uint32_t hash)
+void zb_report_shown_view_id(void)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    s_shown_hash = hash;
-    report_shown_hash_nolock(hash);
+    report_shown_view_id_nolock();
+    esp_zigbee_lock_release();
+}
+
+void zb_report_dataset_hash(void)
+{
+    esp_zigbee_lock_acquire(portMAX_DELAY);
+    report_dataset_hash_nolock();
     esp_zigbee_lock_release();
 }
 

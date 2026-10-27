@@ -1,9 +1,9 @@
-"""Paced snapshot write test (ZIGBEE_PAYLOAD.md section 7, test 3).
+"""Dataset + view write test (DESIGN.md 6.5, rev 6; ZIGBEE_PAYLOAD.md 7).
 
-Default mode (device stays awake, RUN_MS is 2 h for development): reset the device once, wait until Z2M receives
-its wake report (so the coordinator has a fresh route), then per round publish 6 tagged lines SPACING ms apart
-through Z2M's raw write, then the commit SPACING ms later, and watch the device log for the commit verdict.
-Rounds are GAP s apart so Z2M's retries of one round never overlap the next.
+Default mode: reset the device once and wait for its wake report. Then, per round, make sure the device has the
+test dataset (DS_LINES entries, SPACING ms apart, then the commit; skipped while the device already has it) and
+push one view: the four view_* attributes in one write, random bits, the current local time and a new id. Watch
+the device log for the verdict. Rounds are GAP s apart so Z2M's retries of one round never overlap the next.
 
 --reset-each: also reset the device before every round (the real wake path: every wake is a reboot + rejoin),
 and only publish after Z2M has received the wake report, as the HA automation does.
@@ -13,13 +13,17 @@ Env: MQTT_HOST (default 192.168.0.32), MQTT_PORT (1883), MQTT_USER, MQTT_PASS.
 The wake trigger is a change of the wake counter (analog_input_2) in the device's Z2M state, as in the HA
 automation (DESIGN.md 7), not the serial log.
 
---lines=N: tagged lines per snapshot, 0 to 6 (default 6). With 0 a round is a single write, the commit with count 0
-and a new hash (the "All OK" screen, 7 bytes of ZCL payload): the smallest snapshot the device accepts.
+--ds-lines=N: entries in the test dataset, 1 to 32 (default 8).
+--resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
+--oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
+--same: the view id stays the same after round 1; expect "time only" (the footer time updates).
 
-Usage: python paced_write_test.py ROUNDS [SPACING_MS] [GAP_S] [--reset-each] [--settle=S] [--lines=N]
+Usage: python paced_write_test.py ROUNDS [SPACING_MS] [GAP_S] [--reset-each] [--settle=S] [--ds-lines=N]
+       [--resync-each] [--oos] [--same]
+(The rev 5 snapshot mode, --lines=N, is in git history before the rev 6 firmware.)
 Full serial and Z2M logs go to paced_write_test_<date>_<time>.log in LOG_DIR (default %TEMP%/gl_test).
 """
-import json, os, random, subprocess, sys, threading, time
+import calendar, hashlib, json, os, random, subprocess, sys, threading, time
 
 import paho.mqtt.client as mqtt
 import serial
@@ -32,9 +36,12 @@ CLUSTER = 64650
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 reset_each = "--reset-each" in sys.argv
 settle = next((float(a.split("=", 1)[1]) for a in sys.argv[1:] if a.startswith("--settle=")), 0.5)
-lines = next((int(a.split("=", 1)[1]) for a in sys.argv[1:] if a.startswith("--lines=")), 6)
-if not 0 <= lines <= 6:
-    sys.exit("--lines must be 0 to 6")
+ds_lines = next((int(a.split("=", 1)[1]) for a in sys.argv[1:] if a.startswith("--ds-lines=")), 8)
+if not 1 <= ds_lines <= 32:
+    sys.exit("--ds-lines must be 1 to 32")
+resync_each = "--resync-each" in sys.argv
+oos = "--oos" in sys.argv
+same = "--same" in sys.argv
 rounds = int(args[0]) if len(args) > 0 else 10
 spacing = (int(args[1]) if len(args) > 1 else 100) / 1000.0
 gap = float(args[2]) if len(args) > 2 else 15.0
@@ -43,7 +50,7 @@ log_dir = os.environ.get("LOG_DIR", os.path.join(os.environ.get("TEMP", "."), "g
 os.makedirs(log_dir, exist_ok=True)
 logf = open(os.path.join(log_dir, time.strftime("paced_write_test_%Y%m%d_%H%M%S.log")), "w", encoding="utf-8")
 T0 = time.perf_counter()
-logf.write(f"# args: {' '.join(sys.argv[1:])} (lines {lines})\n")
+logf.write(f"# args: {' '.join(sys.argv[1:])}\n")
 
 
 def log(src, text):
@@ -95,10 +102,21 @@ if not connected.wait(5):
 cli.subscribe([("zigbee2mqtt/bridge/logging", 0), (f"zigbee2mqtt/{DEVICE}", 0)])
 
 
-def publish(attr, value, typ):
-    msg = {"write": {"cluster": CLUSTER, "payload": {str(attr): {"value": value, "type": typ}}}}
+def publish(attrs):
+    """One Z2M raw write (one ZCL frame) with the given {attribute id: (value, type)}."""
+    msg = {"write": {"cluster": CLUSTER, "payload": {str(a): {"value": v, "type": t} for a, (v, t) in attrs.items()}}}
     log("pub", json.dumps(msg))
     cli.publish(f"zigbee2mqtt/{DEVICE}/set", json.dumps(msg), qos=1)
+
+
+VIEW_BITS, VIEW_DS, VIEW_TIME, VIEW_ID, DS_ENTRY, DS_COMMIT = 0x20, 0x21, 0x22, 0x23, 0x30, 0x31
+U32, STR = 35, 66
+
+
+def make_dataset(gen):
+    texts = [f"Test {gen:03d} line {i:02d}" for i in range(ds_lines)]
+    h = int(hashlib.sha1("\n".join(texts).encode()).hexdigest()[:6], 16) or 1
+    return h, texts
 
 
 # ---- serial: survives the port disappearing during a reset ----
@@ -182,8 +200,32 @@ def find(substr, since):
     return next(((t, l) for t, l in serial_lines if t >= since and substr in l), None)
 
 
-results = []
-prev = None
+def wait_verdict(patterns, since, timeout):
+    """First serial line after since that contains one of the patterns: (label, seconds) or ("timeout", None)."""
+    while time.perf_counter() - since < timeout:
+        for label, pat in patterns:
+            hit = find(pat, since)
+            if hit:
+                return label, hit[0] - since
+        time.sleep(0.02)
+    return "timeout", None
+
+
+def sync_dataset(h, texts):
+    """Write the dataset and commit it; returns (verdict, seconds)."""
+    t = time.perf_counter()
+    for i, text in enumerate(texts):
+        publish({DS_ENTRY: (f"{h:06X}|{i:02X}|{text}", STR)})
+        time.sleep(spacing)
+    publish({DS_COMMIT: ((len(texts) << 24) | h, U32)})
+    return wait_verdict([("stored", f"ds_commit {h:06x} accepted"), ("already", f"ds_commit {h:06x}: already stored"),
+                         ("REJECTED", f"ds_commit {h:06x} rejected")], t, 30)
+
+
+results = []   # (verdict, push seconds, dataset verdict or None)
+view_id = None
+ds_hash, ds_texts = make_dataset(0)
+device_ds = None   # the dataset hash the device has, as far as this run knows
 if not reset_each:
     t_r = time.perf_counter()
     reset_device()
@@ -192,56 +234,60 @@ if not reset_each:
     print("device awake, Z2M has its report", flush=True)
 
 for r in range(1, rounds + 1):
-    h = random.randrange(1, 0xFFFFFF)
-    while h == prev:
-        h = random.randrange(1, 0xFFFFFF)
-    prev = h
-    tag = f"{h:06X}"
-
     if reset_each:
         t_r = time.perf_counter()
         reset_device()
         if not wait_for_wake(t_r):
             print(f"round {r:2}: no wake report through Z2M, skipped", flush=True)
-            results.append(("no wake", None))
+            results.append(("no wake", None, None))
             time.sleep(gap)
             continue
         wake_s = time.perf_counter() - t_r
 
     n_err = len(z2m_events)
-    log("test", f"round {r} hash {tag}")
-    t_start = time.perf_counter()
-    for i in range(lines):
-        publish(i, f"{tag}|Round {r:02d} line {i + 1} test", 66)
-        time.sleep(spacing)
-    publish(7, (lines << 24) | h, 35)
+    log("test", f"round {r}")
+    ds_verdict = None
+    if resync_each and r > 1:
+        ds_hash, ds_texts = make_dataset(r)
+    if device_ds != ds_hash:
+        ds_verdict, ds_s = sync_dataset(ds_hash, ds_texts)
+        log("test", f"dataset {ds_hash:06x}: {ds_verdict} {ds_s}")
+        if ds_verdict in ("stored", "already"):
+            device_ds = ds_hash
+            ds_verdict = f"ds {ds_verdict} {ds_s:.2f} s"
+        else:
+            ds_verdict = f"ds {ds_verdict}"
 
-    verdict, dur = "timeout", None
-    while time.perf_counter() - t_start < 30:
-        ok = find(f"commit {h:06x} accepted", t_start)
-        bad = find(f"commit {h:06x} rejected", t_start)
-        if ok:
-            dur = ok[0] - t_start
-            verdict = "accepted" if dur < 5 else "LATE"
-            break
-        if bad:
-            verdict, dur = "REJECTED (" + bad[1].split("rejected:")[1].strip() + ")", bad[0] - t_start
-            break
-        time.sleep(0.02)
-    other = [l for t, l in serial_lines if t >= t_start and "commit" in l and f"{h:06x}" not in l]
+    if not (same and view_id):
+        new = random.randrange(1, 0xFFFFFF)
+        while new == view_id:
+            new = random.randrange(1, 0xFFFFFF)
+        view_id = new
+    bits = random.randrange(0, 1 << ds_lines)
+    local_now = calendar.timegm(time.localtime())  # local wall-clock seconds since 1970 (DESIGN.md 5.2)
+    view_ds = ds_hash ^ 1 if oos else ds_hash
+    t_start = time.perf_counter()
+    publish({VIEW_BITS: (bits, U32), VIEW_DS: (view_ds, U32), VIEW_TIME: (local_now, U32), VIEW_ID: (view_id, U32)})
+    verdict, dur = wait_verdict([("accepted", f"view {view_id:06x} accepted"), ("time", f"view {view_id:06x} time only"),
+                                 ("OOS", f"view {view_id:06x} out of sync"), ("PART", f"view {view_id:06x} incomplete")],
+                                t_start, 30)
+    if verdict in ("accepted", "time") and dur >= 5:
+        verdict = "LATE " + verdict
     errs = [m for _, m in z2m_events[n_err:]]
-    results.append((verdict, dur))
-    print(f"round {r:2}: {tag} {verdict:9} {'%.2f s' % dur if dur else '   -  '}"
+    results.append((verdict, dur, ds_verdict))
+    print(f"round {r:2}: view {view_id:06X} bits {bits:08X} {verdict:9} {'%.2f s' % dur if dur is not None else '   -  '}"
+          + (f"  [{ds_verdict}]" if ds_verdict else "")
           + (f"  (wake counter {last_wake[0]} seen {wake_s - settle:.1f} s after reset)" if reset_each else "")
-          + (f"  other commits: {other}" if other else "")
           + (f"  Z2M errors: {len(errs)}, first: {errs[0][:200]}" if errs else ""), flush=True)
     time.sleep(gap)
 
 stop.set()
 th.join(2)
-ok = [d for v, d in results if v in ("accepted", "LATE")]
-late = sum(v == "LATE" for v, d in results)
-print(f"\n{len(ok)}/{len(results)} accepted ({late} of them later than 5 s), {lines} lines + commit, {spacing * 1000:.0f} ms spacing, {gap:.0f} s gap"
+expect = ("OOS",) if oos else ("time", "accepted")
+ok = [d for v, d, _ in results if d is not None and v.split()[-1] in expect]
+late = sum(v.startswith("LATE") for v, d, _ in results)
+print(f"\n{len(ok)}/{len(results)} as expected ({late} of them later than 5 s), {ds_lines}-line dataset"
+      + (", new dataset every round" if resync_each else "") + f", {spacing * 1000:.0f} ms spacing, {gap:.0f} s gap"
       + (f", reset before every round, settle {settle:g} s" if reset_each else ", device kept awake"), end="")
 print(f"; push time min {min(ok):.2f} s, avg {sum(ok) / len(ok):.2f} s, max {max(ok):.2f} s" if ok else "")
 print(f"Z2M warnings/errors about the device: {len(z2m_events)}; full log: {logf.name}")

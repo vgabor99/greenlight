@@ -1,6 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "epd.h"
 #include "render.h"
 
@@ -13,7 +14,7 @@
 /* Layout (y of each block) */
 #define Y_HEADER 2
 #define Y_RULE1  19
-#define Y_SHOWN  22  /* SHOWN row, 6 lines, footer: 8 rows */
+#define Y_SHOWN  22  /* dataset + view row, time row, 6 line rows: 8 rows */
 #define Y_RULE2  151
 #define Y_RX     156 /* RENDER_RX_N rows */
 
@@ -112,31 +113,56 @@ static void row(int y, const char *fmt, ...)
 
 static void rx_row(int y, const render_rx_t *r)
 {
+    static const char *const view_res[] = {"OK", "TIME", "OOS", "PART"};
+    static const char *const ds_res[]   = {"OK", "SAME", "BAD N", "REJ"};
     char t[12];
     snprintf(t, sizeof(t), "%lu.%lu", (unsigned long)(r->ms / 1000), (unsigned long)(r->ms % 1000 / 100));
     const zb_rx_t *e = &r->ev;
-    unsigned long  h = e->hash;
     switch (e->kind) {
-    case ZB_RX_LINE:
-        row(y, "%s L%u %s", t, e->line, e->text);
-        break;
-    case ZB_RX_FOOTER:
-        row(y, "%s F %s", t, e->text);
-        break;
-    case ZB_RX_COMMIT:
-        switch (e->result) {
-        case ZB_COMMIT_OK:        row(y, "%s C %06lX n=%u OK", t, h, e->count); break;
-        case ZB_COMMIT_SAME:      row(y, "%s C %06lX n=%u SAME", t, h, e->count); break;
-        case ZB_COMMIT_BAD_COUNT: row(y, "%s C %06lX n=%u BAD N", t, h, e->count); break;
-        case ZB_COMMIT_REJECTED:
-            if (e->tag < 0) {
-                row(y, "%s C %06lX n=%u REJ L%u none", t, h, e->count, e->line);
-            } else {
-                row(y, "%s C %06lX n=%u REJ L%u=%06lX", t, h, e->count, e->line, (unsigned long)e->tag);
-            }
-            break;
+    case ZB_RX_VIEW: {
+        const zb_view_t *v = &e->view.view;
+        if (e->view.result == ZB_VIEW_OOS) {
+            row(y, "%s V %06lX OOS ds=%06lX", t, (unsigned long)v->id, (unsigned long)v->ds);
+        } else if (e->view.result == ZB_VIEW_INCOMPLETE) {
+            row(y, "%s V %06lX PART m=%X", t, (unsigned long)v->id, e->view.mask);
+        } else {
+            row(y, "%s V %06lX b=%08lX %s", t, (unsigned long)v->id, (unsigned long)v->bits, view_res[e->view.result]);
+        }
+    } break;
+    case ZB_RX_ENTRY:
+        if (e->entry.tag < 0) {
+            row(y, "%s E bad %s", t, e->entry.text);
+        } else {
+            row(y, "%s E %02u %s", t, e->entry.index, e->entry.text);
         }
         break;
+    case ZB_RX_DS_COMMIT:
+        if (e->commit.result == ZB_DS_REJECTED) {
+            row(y, "%s D %06lX n=%u REJ idx=%u", t, (unsigned long)e->commit.hash, e->commit.count, e->commit.missing);
+        } else {
+            row(y, "%s D %06lX n=%u %s", t, (unsigned long)e->commit.hash, e->commit.count, ds_res[e->commit.result]);
+        }
+        break;
+    }
+}
+
+void render_build_rows(render_shown_t *out, const zb_dataset_t *ds, const zb_view_t *view)
+{
+    memset(out, 0, sizeof(*out));
+    out->view = *view;
+    for (int i = 0; i < ds->count; i++) {
+        if (view->bits & (1UL << i)) {
+            out->active++;
+        }
+    }
+    int shown = out->active > RENDER_ROWS ? RENDER_ROWS - 1 : out->active;
+    for (int i = 0; i < ds->count && out->nrows < shown; i++) {
+        if (view->bits & (1UL << i)) {
+            memcpy(out->row[out->nrows++], ds->text[i], sizeof(out->row[0]));
+        }
+    }
+    if (out->active > shown) {
+        snprintf(out->row[out->nrows++], sizeof(out->row[0]), "+%u more", out->active - shown);
     }
 }
 
@@ -152,24 +178,27 @@ const uint8_t *render_status(const render_view_t *v)
     draw_text(X0 + (COLS - (int)strlen(right)) * ADV, Y_HEADER, right);
     fill_rect(0, Y_RULE1, EPD_WIDTH, 2, 1);
 
-    /* The snapshot on the panel */
-    const zb_snapshot_t *s = &v->snap;
-    if (s->hash == 0 && s->count == 0) {
-        row(Y_SHOWN, "SHOWN nothing");
-    } else {
-        row(Y_SHOWN, "SHOWN %06lX  %u lines", (unsigned long)s->hash, s->count);
+    /* Dataset and the view on the panel */
+    const render_shown_t *s = &v->shown;
+    row(Y_SHOWN, "DS %06lX n=%u  VIEW %06lX", (unsigned long)v->ds_hash, v->ds_count, (unsigned long)s->view.id);
+    char when[16] = "no time";
+    if (s->view.time) {
+        time_t    t = s->view.time;  /* local wall-clock time, so format it as UTC */
+        struct tm tm;
+        gmtime_r(&t, &tm);
+        strftime(when, sizeof(when), "%a %H:%M", &tm);
     }
-    for (int i = 0; i < ZB_MAX_LINES; i++) {
-        int y = Y_SHOWN + (i + 1) * PITCH;
-        if (i < s->count) {
-            row(y, "%d %s", i + 1, s->line[i]);
-        } else if (i == 0 && s->hash != 0) {
+    row(Y_SHOWN + PITCH, "%s  %u lines%s", when, s->active, v->oos ? "  OUT OF SYNC" : "");
+    for (int i = 0; i < RENDER_ROWS; i++) {
+        int y = Y_SHOWN + (i + 2) * PITCH;
+        if (i < s->nrows) {
+            row(y, "%d %s", i + 1, s->row[i]);
+        } else if (i == 0 && s->view.id != 0) {
             row(y, "  ALL OK");
         } else {
             row(y, "%d", i + 1);
         }
     }
-    row(Y_SHOWN + 7 * PITCH, "F %s", s->footer);
     fill_rect(0, Y_RULE2, EPD_WIDTH, 2, 1);
 
     /* Received writes, newest first */

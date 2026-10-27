@@ -23,7 +23,8 @@ static const char *TAG = "greenlight";
 #define REJOIN_MS     15000   /* give up rejoining after this long */
 
 #define STACK_START_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
-#define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_hash this often */
+#define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_view_id this often */
+#define REPORT_DELAY_MS 3000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
 
 /* ---- Inputs: PIR (D0) and pair button (D1), level based, polled and debounced by a task ---- */
 #define INPUT_POLL_MS        10
@@ -137,9 +138,12 @@ static void nvs_open_state(void)
 }
 
 /* NVS (namespace "greenlight"): "pair_now" (start pairing right after the next boot, set by ERASE_NETWORK),
- * "snap" (blob: the snapshot on the panel and its footer; its hash is the shown_hash) and "wake_n" (the wake
- * counter, DESIGN.md 6.4). The Zigbee stack keeps the network in the same partition. */
-static zb_snapshot_t snap;
+ * "ds" (blob: the dataset, DESIGN.md 5.1), "view" (blob: the view on the panel with its rows; its id is the
+ * shown_view_id) and "wake_n" (the wake counter, DESIGN.md 6.4). The Zigbee stack keeps the network in the same
+ * partition. */
+static zb_dataset_t   ds;
+static render_shown_t shown;
+static bool           oos;  /* the last view received was for another dataset (not stored) */
 
 /* Every boot is a wake (the sleep ends in a restart), so count boots. 24 bits, so the value is exact in the
  * Analog Input's float; one u32 write per wake is negligible flash wear for NVS. */
@@ -153,18 +157,25 @@ static uint32_t wake_count_next(void)
     return n;
 }
 
-static void snap_load(void)
+static void blob_load(const char *key, void *p, size_t size)
 {
-    size_t size = sizeof(snap);
-    if (nvs_get_blob(nvs, "snap", &snap, &size) != ESP_OK || size != sizeof(snap)) {
-        memset(&snap, 0, sizeof(snap));
+    size_t n = size;
+    if (nvs_get_blob(nvs, key, p, &n) != ESP_OK || n != size) {
+        memset(p, 0, size);
     }
 }
 
-static void snap_save(void)
+static void blob_save(const char *key, const void *p, size_t size)
 {
-    nvs_set_blob(nvs, "snap", &snap, sizeof(snap));
+    nvs_set_blob(nvs, key, p, size);
     nvs_commit(nvs);
+}
+
+static void state_load(void)
+{
+    blob_load("ds", &ds, sizeof(ds));
+    blob_load("view", &shown, sizeof(shown));
+    nvs_erase_key(nvs, "snap");  /* rev 5 snapshot, no longer used */
 }
 
 /* ---- State machine (DESIGN.md 3.3) ---- */
@@ -180,10 +191,10 @@ static const char *const state_names[] = {
 static TickType_t boot_tick;
 static uint32_t   wake_n;  /* this wake's number */
 
-/* ---- Debug screen (render.c): the state, the shown snapshot and the last writes received ---- */
+/* ---- Debug screen (render.c): the state, the dataset, the shown view and the last writes received ---- */
 #define CLEAR_EVERY 50  /* partial refreshes between full clears, against ghosting */
 
-static SemaphoreHandle_t view_lock;  /* guards snap and rx_log: the Zigbee task writes them */
+static SemaphoreHandle_t view_lock;  /* guards ds, shown, oos and rx_log: the Zigbee task writes them */
 static volatile bool     view_dirty;
 static state_t           view_state;
 static render_rx_t       rx_log[RENDER_RX_N];  /* ring; rx_head is the next slot */
@@ -243,7 +254,10 @@ static void redraw(void)
     v.state     = state_names[view_state];
     v.wake      = wake_n;
     v.uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount());
-    v.snap      = snap;
+    v.ds_hash   = ds.hash;
+    v.ds_count  = ds.count;
+    v.shown     = shown;
+    v.oos       = oos;
     v.rx_count  = rx_count;
     for (int i = 0; i < rx_count; i++) {
         v.rx[i] = rx_log[(rx_head - 1 - i + RENDER_RX_N) % RENDER_RX_N];
@@ -265,30 +279,36 @@ static void wait_ms(uint32_t ms)
 }
 
 /* Zigbee callbacks (called in the Zigbee task): update the view, the state loop redraws. */
-static void on_snapshot(const zb_snapshot_t *s)
+static void on_view(const zb_view_t *v, zb_view_result_t result)
 {
     xSemaphoreTake(view_lock, portMAX_DELAY);
-    snap = *s;
+    oos = result == ZB_VIEW_OOS;
+    if (result == ZB_VIEW_OK) {
+        render_build_rows(&shown, &ds, v);
+    } else if (result == ZB_VIEW_TIME) {
+        shown.view.time = v->time;
+    }
     view_dirty = true;
     xSemaphoreGive(view_lock);
-    snap_save();
-    ESP_LOGI(TAG, "snapshot %06lx: %u lines, footer \"%s\"", (unsigned long)s->hash, s->count, s->footer);
-    if (s->count == 0) {
-        ESP_LOGI(TAG, "  (All OK)");
+    if (result == ZB_VIEW_OK || result == ZB_VIEW_TIME) {
+        blob_save("view", &shown, sizeof(shown));
     }
-    for (int i = 0; i < s->count; i++) {
-        ESP_LOGI(TAG, "  %d: %s", i + 1, s->line[i]);
+    if (result == ZB_VIEW_OK) {
+        ESP_LOGI(TAG, "view %06lx: %u active lines%s", (unsigned long)v->id, shown.active, shown.active ? "" : " (All OK)");
+        for (int i = 0; i < shown.nrows; i++) {
+            ESP_LOGI(TAG, "  %d: %s", i + 1, shown.row[i]);
+        }
     }
 }
 
-static void on_footer(const char *footer)
+static void on_dataset(const zb_dataset_t *d)
 {
     xSemaphoreTake(view_lock, portMAX_DELAY);
-    strncpy(snap.footer, footer, sizeof(snap.footer) - 1);
+    ds = *d;
     view_dirty = true;
     xSemaphoreGive(view_lock);
-    snap_save();
-    ESP_LOGI(TAG, "footer \"%s\"", snap.footer);
+    blob_save("ds", &ds, sizeof(ds));
+    ESP_LOGI(TAG, "dataset %06lx stored: %u lines", (unsigned long)d->hash, d->count);
 }
 
 static void on_rx(const zb_rx_t *ev)
@@ -303,26 +323,30 @@ static void on_rx(const zb_rx_t *ev)
     xSemaphoreGive(view_lock);
 }
 
-/* The reports of every wake (DESIGN.md 6.4), in this order; the wake counter last: it is HA's push trigger. */
-static void report_wake_state(void)
+/* The reports of a wake other than the wake counter (DESIGN.md 6.4). After a rejoin they follow the wake counter
+ * by REPORT_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
+static void report_wake_rest(void)
 {
+    zb_report_dataset_hash();
+    zb_report_shown_view_id();
+    zb_report_awake(true);
     zb_report_battery();
     zb_report_occupancy(pir_active);
-    zb_report_shown_hash(snap.hash);
-    zb_report_awake(true);
-    zb_report_wake();
 }
+
+static bool rest_pending;  /* ACTIVE: report_wake_rest() still to do */
 
 static state_t st_boot(void)
 {
     bool pair_now = nv_get("pair_now");
-    snap_load();
+    state_load();
     wake_n = wake_count_next();
-    ESP_LOGI(TAG, "boot: pair_now=%d shown_hash=%06lx wake=%lu", pair_now, (unsigned long)snap.hash, (unsigned long)wake_n);
+    ESP_LOGI(TAG, "boot: pair_now=%d dataset=%06lx view=%06lx wake=%lu", pair_now, (unsigned long)ds.hash,
+             (unsigned long)shown.view.id, (unsigned long)wake_n);
 
     boot_tick = xTaskGetTickCount();
-    zb_callbacks_t cbs = {.snapshot = on_snapshot, .footer = on_footer, .rx = on_rx};
-    zb_start(&cbs, snap.hash, wake_n);
+    zb_callbacks_t cbs = {.view = on_view, .dataset = on_dataset, .activity = touch_activity, .rx = on_rx};
+    zb_start(&cbs, ds.hash, shown.view.id, wake_n);
 
     /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
      * releases the pin hold and recreates the SPI bus left by epd_poweroff(). */
@@ -332,7 +356,7 @@ static state_t st_boot(void)
     }
     partials = 0;
     show_state(ST_BOOT);
-    redraw();  /* the stored snapshot, while the stack starts */
+    redraw();  /* the stored view, while the stack starts */
 
     bool factory_new = false;
     if (!zb_wait_started(STACK_START_MS, &factory_new)) {
@@ -391,7 +415,8 @@ static state_t st_pairing(void)
 static state_t st_interview(void)
 {
     show_state(ST_INTERVIEW);
-    report_wake_state();  /* so HA already sees the device state and can push the first snapshot */
+    report_wake_rest();  /* Z2M has no cached state yet: everything, the wake counter last */
+    zb_report_wake();
     ESP_LOGI(TAG, "staying awake for %d ms", INTERVIEW_MS);
     TickType_t start = xTaskGetTickCount();
     while (ms_since(start) < INTERVIEW_MS) {  /* the PIR is ignored here */
@@ -408,7 +433,8 @@ static state_t st_rejoin(void)
     while (ms_since(start) < REJOIN_MS) {
         if (zb_joined()) {
             ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)ms_since(boot_tick));
-            report_wake_state();
+            zb_report_wake();  /* the only report before the push (DESIGN.md 6.4) */
+            rest_pending = true;
             return ST_ACTIVE;
         }
         if (pair_held_ms() >= RESET_HOLD_MS) {  /* network lost: allow re-pairing */
@@ -427,14 +453,20 @@ static state_t st_active(void)
     touch_activity();
     bool      last_pir = pir_active;
     TickType_t last_beat = xTaskGetTickCount();
+    TickType_t start = last_beat;
     for (;;) {
+        if (rest_pending && ms_since(start) >= REPORT_DELAY_MS) {
+            rest_pending = false;
+            report_wake_rest();
+            last_pir = pir_active;
+        }
         if (pir_active != last_pir) {
             last_pir = pir_active;
             zb_report_occupancy(last_pir);
         }
         if (ms_since(last_beat) >= HEARTBEAT_MS) {  /* tell HA we are still awake */
             last_beat = xTaskGetTickCount();
-            zb_report_shown_hash(snap.hash);
+            zb_report_shown_view_id();
             zb_report_awake(true);
             zb_log_neighbors();
         }
@@ -455,7 +487,8 @@ static state_t st_erase_network(void)
     show_state(ST_ERASE_NETWORK);
     redraw();
     nv_set("pair_now", 1);
-    nvs_erase_key(nvs, "snap");  /* nothing is known about the panel any more */
+    nvs_erase_key(nvs, "ds");    /* nothing is known about the panel any more */
+    nvs_erase_key(nvs, "view");
     nvs_commit(nvs);
     ESP_LOGI(TAG, "erasing the network, restarting");
     zb_erase_network();  /* does not return */
