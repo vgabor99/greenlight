@@ -30,7 +30,7 @@ static const char *TAG = "zb";
 #define ATTR_DS_COMMIT 0x0031
 
 #define VIEW_ALL  0x0F                         /* all four view_* attributes received */
-#define ENTRY_MAX (6 + 1 + 2 + 1 + ZB_DS_CHARS)  /* "HHHHHH|II|text": 36 characters */
+#define ENTRY_MAX (6 + 1 + 2 + 1 + ZB_PART_CHARS)  /* "HHHHHH|II|text": 36 characters */
 
 /* MVP battery: fixed 100 % (DESIGN.md 6.6) */
 #define BATTERY_VOLTAGE_100MV 42
@@ -143,11 +143,14 @@ static zb_view_t s_view_in;       /* view_* values received since the last apply
 static uint8_t   s_view_mask;     /* which of them (bit 0 = view_bits) */
 static bool      s_view_posted;   /* apply_view() is queued */
 
-/* Dataset entries received since the last accepted commit, by index; tag -1 = none. */
-static struct {
+/* Dataset entry parts received since the last accepted commit, by line index and part; tag -1 = none. */
+typedef struct {
     int32_t tag;
-    char    text[ZB_DS_CHARS + 1];
-} s_stage[ZB_DS_MAX];
+    bool    more;  /* another part of the line follows */
+    char    text[ZB_PART_CHARS + 1];
+} stage_part_t;
+
+static stage_part_t s_stage[ZB_DS_MAX][ZB_PARTS];
 
 static void emit(const zb_rx_t *ev)
 {
@@ -263,31 +266,73 @@ static void view_write(uint16_t attr_id, uint32_t value)
     }
 }
 
-/* "HHHHHH|II|text": stage the entry under its index. */
+static void stage_clear(void)
+{
+    for (int i = 0; i < ZB_DS_MAX; i++) {
+        for (int p = 0; p < ZB_PARTS; p++) {
+            s_stage[i][p].tag = -1;
+        }
+    }
+}
+
+/* Line i of the dataset with this hash, its parts joined into out (ZB_DS_CHARS + 1 bytes). False while a part
+ * is missing or tagged with another hash. */
+static bool stage_join(int i, int32_t hash, char *out)
+{
+    size_t n = 0;
+    for (int p = 0; p < ZB_PARTS; p++) {
+        if (s_stage[i][p].tag != hash) {
+            return false;
+        }
+        size_t m = strlen(s_stage[i][p].text);
+        if (n + m > ZB_DS_CHARS) {
+            ESP_LOGW(TAG, "ds_commit: line %02d longer than %d bytes, cut", i, ZB_DS_CHARS);
+            m = ZB_DS_CHARS - n;
+        }
+        memcpy(&out[n], s_stage[i][p].text, m);
+        n += m;
+        out[n] = 0;
+        if (!s_stage[i][p].more) {
+            utf8_sanitize(out);  /* a cut can leave half a character */
+            return true;
+        }
+    }
+    return false;  /* not reached: the last part never has "more" (ds_entry_write) */
+}
+
+/* "HHHHHH|II|text": stage one part of a line. II: bits 0-4 the line index, bits 5-6 the part, bit 7 "more"
+ * (another part of the line follows). */
 static void ds_entry_write(const uint8_t *s)
 {
     size_t  len = s[0];
     zb_rx_t ev  = {.kind = ZB_RX_ENTRY, .entry = {.tag = -1}};
-    int32_t tag = -1, idx = -1;
+    int32_t tag = -1, ii = -1;
     if (len >= 10 && len <= ENTRY_MAX && s[7] == '|' && s[10] == '|') {
         tag = hex_value(&s[1], 6);
-        idx = hex_value(&s[8], 2);
+        ii  = hex_value(&s[8], 2);
     }
-    if (tag <= 0 || idx < 0 || idx >= ZB_DS_MAX) {
+    int  idx  = ii & 0x1F;
+    int  part = (ii >> 5) & 0x03;
+    bool more = ii & 0x80;
+    if (tag <= 0 || ii < 0 || part >= ZB_PARTS || (more && part == ZB_PARTS - 1)) {
         ESP_LOGW(TAG, "ds_entry: not a valid entry (length %u)", (unsigned)len);
-        memcpy(ev.entry.text, &s[1], len > ZB_DS_CHARS ? ZB_DS_CHARS : len);
+        memcpy(ev.entry.text, &s[1], len > ZB_PART_CHARS ? ZB_PART_CHARS : len);
         utf8_sanitize(ev.entry.text);
     } else {
-        size_t n = len - 10;
-        s_stage[idx].tag = tag;
-        memset(s_stage[idx].text, 0, sizeof(s_stage[idx].text));
-        memcpy(s_stage[idx].text, &s[11], n);
-        utf8_sanitize(s_stage[idx].text);
+        size_t        n  = len - 10;
+        stage_part_t *st = &s_stage[idx][part];
+        st->tag  = tag;
+        st->more = more;
+        memset(st->text, 0, sizeof(st->text));
+        memcpy(st->text, &s[11], n);
+        utf8_sanitize(st->text);
         ev.entry.tag   = tag;
         ev.entry.index = idx;
-        memcpy(ev.entry.text, s_stage[idx].text, sizeof(ev.entry.text));
-        ESP_LOGI(TAG, "ds_entry %02ld for %06lx: \"%s\" (%u bytes)", (long)idx, (unsigned long)tag,
-                 s_stage[idx].text, (unsigned)n);
+        ev.entry.part  = part;
+        ev.entry.more  = more;
+        memcpy(ev.entry.text, st->text, sizeof(ev.entry.text));
+        ESP_LOGI(TAG, "ds_entry %02d.%d%s for %06lx: \"%s\" (%u bytes)", idx, part, more ? "+" : "",
+                 (unsigned long)tag, st->text, (unsigned)n);
     }
     emit(&ev);
     activity();
@@ -307,9 +352,13 @@ static void ds_commit_write(uint32_t v)
         report_dataset_hash_nolock();  /* re-acknowledge */
     } else {
         ev.commit.result = ZB_DS_OK;
+        static zb_dataset_t ds;
+        memset(&ds, 0, sizeof(ds));
+        ds.hash  = hash;
+        ds.count = count;
         for (int i = 0; i < count; i++) {
-            if (s_stage[i].tag != (int32_t)hash) {
-                ESP_LOGW(TAG, "ds_commit %06lx rejected: entry %02d missing or for another dataset",
+            if (!stage_join(i, (int32_t)hash, ds.text[i])) {
+                ESP_LOGW(TAG, "ds_commit %06lx rejected: entry %02d missing a part or for another dataset",
                          (unsigned long)hash, i);
                 ev.commit.result  = ZB_DS_REJECTED;
                 ev.commit.missing = i;
@@ -317,16 +366,7 @@ static void ds_commit_write(uint32_t v)
             }
         }
         if (ev.commit.result == ZB_DS_OK) {
-            static zb_dataset_t ds;
-            memset(&ds, 0, sizeof(ds));
-            ds.hash  = hash;
-            ds.count = count;
-            for (int i = 0; i < count; i++) {
-                memcpy(ds.text[i], s_stage[i].text, sizeof(ds.text[i]));
-            }
-            for (int i = 0; i < ZB_DS_MAX; i++) {
-                s_stage[i].tag = -1;
-            }
+            stage_clear();
             if (s_cb.dataset) {
                 s_cb.dataset(&ds);
             }
@@ -655,9 +695,7 @@ void zb_start(const zb_callbacks_t *cb, uint32_t ds_hash, uint32_t shown_view_id
     s_ds_hash       = ds_hash;
     s_shown_view_id = shown_view_id;
     s_wake_count    = wake_count;
-    for (int i = 0; i < ZB_DS_MAX; i++) {
-        s_stage[i].tag = -1;
-    }
+    stage_clear();
     s_events     = xEventGroupCreate();
     const esp_timer_create_args_t targs = {.callback = retry_timer_cb, .name = "zb_retry"};
     ESP_ERROR_CHECK(esp_timer_create(&targs, &s_retry_timer));

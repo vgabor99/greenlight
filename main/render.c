@@ -142,7 +142,7 @@ static void rx_row(int y, const render_rx_t *r)
         if (e->entry.tag < 0) {
             row(y, "%s E bad %s", t, e->entry.text);
         } else {
-            row(y, "%s E %02u %s", t, e->entry.index, e->entry.text);
+            row(y, "%s E %02u.%u%s %s", t, e->entry.index, e->entry.part, e->entry.more ? "+" : "", e->entry.text);
         }
         break;
     case ZB_RX_DS_COMMIT:

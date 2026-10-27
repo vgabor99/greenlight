@@ -211,13 +211,14 @@ often and is sent on every wake, in one Zigbee frame.
 
 - `lines`: **at most 32** entries (`ZB_DS_MAX`); the position is the line's **index** (0-31), which is its
   bit in the view. The order is the display order, so HA puts the most important lines first. Text is
-  **UTF-8**, **at most 26 bytes** on the wire (6.5): HA cuts it at a character boundary. A Hungarian accented
-  letter takes 2 bytes, so a line holds 13 to 26 characters (longer lines: 6.7). The device replaces invalid
-  UTF-8 and control characters with `?`. The panel shows about 21 characters (8).
+  **UTF-8**, **at most 64 bytes** (`ZB_DS_CHARS`): HA cuts it at a character boundary. A Hungarian accented
+  letter takes 2 bytes, so a line holds 32 to 64 characters. On the wire a line longer than 26 bytes comes in
+  up to 3 parts (6.5). The device replaces invalid UTF-8 and control characters with `?`. The panel shows
+  about 21 characters (8).
 - `hash`: **24-bit**, chosen by HA, identifying the ordered list (e.g. the first 6 hex digits of a sha1 /
   md5 of the joined lines). **0 is reserved** for "no dataset" and never used. The device stores and echoes
   it; it never computes it. A changed text, a changed order or a new line gives a new hash, and HA resyncs.
-- The device keeps the accepted dataset in NVS (about 1 KB) and exposes its hash as `dataset_hash` (6.4).
+- The device keeps the accepted dataset in NVS (about 2.1 KB) and exposes its hash as `dataset_hash` (6.4).
 - Index stability: HA should append new entities rather than renumber, so a resync is a rare event, not
   part of every change. Correctness does not depend on it: any change of the list gives a new hash.
 
@@ -394,7 +395,7 @@ false, best effort.
 | 0x0021 | `view_ds` | uint32 (0x23) | 5.2 `ds`: the dataset hash the bits refer to (24 bits) |
 | 0x0022 | `view_time` | uint32 (0x23) | 5.2 `time`: local wall-clock seconds since 1970 (0 = unknown) |
 | 0x0023 | `view_id` | uint32 (0x23) | 5.2 `id` (24 bits, not 0) |
-| 0x0030 | `ds_entry` | string (0x42) | `HHHHHH\|II\|text`: the new dataset hash as 6 hex digits, the index as 2 hex digits (00-1F), the UTF-8 text (0-26 bytes) |
+| 0x0030 | `ds_entry` | string (0x42) | `HHHHHH\|II\|text`: the new dataset hash as 6 hex digits, `II` as 2 hex digits (bits 0-4 the line index 0-31, bits 5-6 the part 0-2, bit 7 "more parts follow"), the UTF-8 text of this part (0-26 bytes) |
 | 0x0031 | `ds_commit` | uint32 (0x23) | `count * 16777216 + hash`: number of entries (0-32) in the top byte, the new dataset hash below |
 
 **View push: all four `view_*` attributes in one write, one frame** (28 bytes of ZCL payload, 4 records of 7
@@ -411,12 +412,19 @@ matter:
 - otherwise: build the rows from the dataset and the bits (layout rule in 5.2), store them with the id and the
   time, redraw, report `shown_view_id`.
 
-**Dataset sync: rare, one `ds_entry` per write, then `ds_commit`.** HA writes entries 0 to count-1 (any
-order, 100 ms apart, ZIGBEE_PAYLOAD.md 6), then the commit. Each entry write is at most 40 bytes of payload
-(a 36-character string plus the 4-byte record header). The device stages entries in RAM by index, together
-with their tag, and counts every write as activity, so it stays awake while a sync runs. On `ds_commit` it
-accepts only if entries 0 to count-1 are all staged with that hash. Then it stores the dataset in NVS (one
-blob), clears the staging and reports `dataset_hash`. Otherwise it rejects the commit and logs the first
+**Dataset sync: rare, one `ds_entry` part per write, then `ds_commit`.** HA writes the entries of lines 0 to
+count-1 (any order, 100 ms apart, ZIGBEE_PAYLOAD.md 6), then the commit. Each entry write is at most 40 bytes
+of payload (a 36-character string plus the 4-byte record header), so it carries at most 26 bytes of text. A
+line up to 26 bytes is one entry (part 0, no "more": the same as before parts existed). A longer line is split
+at character boundaries into 2 or 3 parts of at most 26 bytes; every part but the last has the "more" bit.
+Each write takes about 0.45 s to reach the sleepy device (one poll plus the response, ZIGBEE_PAYLOAD.md),
+with occasional stalls of up to about 15 s: a sync of 16 three-part and 16 one-part lines (64 writes) took 31
+to 78 s on the bench, and the worst case of 32 lines x 3 parts = 96 writes about 45 s or more. The device stages each part in RAM by index and part,
+together with its tag, and counts every write as activity, so it stays awake while a sync runs. On
+`ds_commit` it accepts only if every line 0 to count-1 is complete with that hash: a last part L without
+"more", and parts 0 to L all staged with that tag. A part from an older sync has another tag, so it is never
+mixed in. Then it joins the parts, stores the dataset in NVS (one blob), clears the staging and reports
+`dataset_hash`. Otherwise it rejects the commit and logs the first
 missing index; HA resends the whole dataset after its timeout. A staged sync that does not finish before the
 device sleeps is lost, and the next wake starts over.
 
@@ -493,11 +501,6 @@ capacitor at the pin; first check whether the XIAO ESP32-C6 already has a batter
 percentage curve and low-battery thresholds, measured once per wake before the radio and the panel start;
 OTA; and a converter if the generic mapping is not good enough.
 
-TODO: longer UTF-8 lines. A `ds_entry` frame carries at most 26 bytes of text (40-byte rule), which is only
-13 characters if every letter is accented. Option: send a line in several pieces, e.g. a part number next to
-the index in the entry header, staged per index and part, with `ds_commit` checking that every part of every
-line arrived. Needs a larger `ZB_DS_CHARS` (NVS blob grows, so it comes with a migration or a dataset resync).
-
 ### 6.8 If a converter is needed later
 
 Outline only (file under `external_converters/`, `enable_external_js` on, file name and API to be checked
@@ -568,7 +571,8 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 - 400x300, 1 bit. Current partial refresh ~470 ms; see CLAUDE.md for panel quirks (ghosting, grain).
 - UTF-8 text, drawn with u8g2's fonts (the `_te` variants cover Latin Extended-A, so all Hungarian letters
   including ő and ű); u8g2 is used only for text and draws into the framebuffer. No icons in the MVP. At scale 3 a character is 18 px advance x 21 px high: about 21 characters per line
-  across 384 px.
+  across 384 px. Dataset lines can be up to 32-64 characters (5.1), so the real layout must wrap or shrink
+  long lines; the debug screen (8.1) shows them whole.
 - 6 rows of about 46 px (text vertically centered or top-aligned in the row) plus a footer strip of about
   20 px at the bottom, smaller font (scale 2). The rows are the active dataset lines in dataset order; with
   more than 6 active lines, 5 lines and "+N more" (5.2). The footer is the view's time (5.3).

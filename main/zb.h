@@ -6,8 +6,10 @@
 /* Zigbee side of the device (DESIGN.md section 6): the data model, the reports and the display input.
  * The stack runs in its own task; every function here is safe to call from the application task. */
 
-#define ZB_DS_MAX   32  /* dataset lines, one bit each in the view (DESIGN.md 5.1) */
-#define ZB_DS_CHARS 26  /* longest dataset line text */
+#define ZB_DS_MAX     32  /* dataset lines, one bit each in the view (DESIGN.md 5.1) */
+#define ZB_DS_CHARS   64  /* longest dataset line text, UTF-8 bytes (32 accented letters) */
+#define ZB_PART_CHARS 26  /* longest text of one ds_entry write: a line comes in up to ZB_PARTS of them */
+#define ZB_PARTS      3
 
 /* The dataset (DESIGN.md 5.1): every line the screen can show; the index is the line's bit in the view. */
 typedef struct {
@@ -52,7 +54,9 @@ typedef struct {
         struct {
             int32_t tag;             /* -1 = not a valid "HHHHHH|II|text" entry */
             uint8_t index;
-            char    text[ZB_DS_CHARS + 1];
+            uint8_t part;            /* 0 .. ZB_PARTS-1 */
+            bool    more;            /* another part of this line follows */
+            char    text[ZB_PART_CHARS + 1];
         } entry;
         struct {
             uint32_t       hash;

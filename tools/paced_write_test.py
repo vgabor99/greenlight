@@ -14,14 +14,17 @@ The wake trigger is a change of the wake counter (analog_input_2) in the device'
 automation (DESIGN.md 7), not the serial log.
 
 --ds-lines=N: entries in the test dataset, 1 to 32 (default 8).
---hu: Hungarian texts (UTF-8, every accented letter), cut to 26 bytes at a character boundary.
+--hu: Hungarian texts (UTF-8, every accented letter), cut to 64 bytes at a character boundary.
+--hu-long: like --hu, but every other line is 32 accented letters (64 bytes, 3 ds_entry parts).
+--drop-part: leave out the last part of the first multi-part line; expect the commit to be REJECTED.
+Every line is sent in parts of at most 26 bytes (DESIGN.md 6.5), split at character boundaries.
 --resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
 --oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
 --same: the view id stays the same after round 1; expect "time only" (the footer time updates).
 --no-view: send no view; the device should stay awake VIEW_WAIT_MS (45 s) instead of RUN_MS (20 s). Use GAP_S >= 50.
 
 Usage: python paced_write_test.py ROUNDS [SPACING_MS] [GAP_S] [--reset-each] [--settle=S] [--ds-lines=N] [--hu]
-       [--resync-each] [--oos] [--same] [--no-view]
+       [--hu-long] [--drop-part] [--resync-each] [--oos] [--same] [--no-view]
 (The rev 5 snapshot mode, --lines=N, is in git history before the rev 6 firmware.)
 Full serial and Z2M logs go to paced_write_test_<date>_<time>.log in LOG_DIR (default %TEMP%/gl_test).
 """
@@ -42,6 +45,8 @@ ds_lines = next((int(a.split("=", 1)[1]) for a in sys.argv[1:] if a.startswith("
 if not 1 <= ds_lines <= 32:
     sys.exit("--ds-lines must be 1 to 32")
 hu = "--hu" in sys.argv
+hu_long = "--hu-long" in sys.argv
+drop_part = "--drop-part" in sys.argv
 resync_each = "--resync-each" in sys.argv
 oos = "--oos" in sys.argv
 same = "--same" in sys.argv
@@ -122,16 +127,33 @@ U32, STR = 35, 66
 
 
 HU_TEXTS = ["ÁÉÍÓÖŐÚÜŰ", "áéíóöőúüű", "Garázsajtó nyitva", "Hűtőajtó nyitva", "Mosógép kész",
-            "Árvíztűrő tükörfúrógép"]   # the last one is too long: tests the cut
+            "Árvíztűrő tükörfúrógép"]   # 30 bytes: two parts
+HU_LONG = "ÁÉÍÓÖŐÚÜŰáéíóöőúüűÁÉÍÓÖŐÚÜŰáéíóö"   # 32 accented letters, 64 bytes: three parts
+LINE_MAX, PART_MAX, PARTS = 64, 26, 3          # ZB_DS_CHARS, ZB_PART_CHARS, ZB_PARTS
 
 
-def fit(text, limit=26):
+def fit(text, limit=LINE_MAX):
     """The text cut to limit UTF-8 bytes (DESIGN.md 5.1), never inside a character."""
     return text.encode()[:limit].decode(errors="ignore")
 
 
+def split_parts(text):
+    """A line as ds_entry parts of at most PART_MAX bytes each, split at character boundaries."""
+    parts = [""]
+    for c in fit(text):
+        if len((parts[-1] + c).encode()) > PART_MAX:
+            parts.append("")
+        parts[-1] += c
+    assert len(parts) <= PARTS, text
+    return parts
+
+
 def make_dataset(gen):
-    if hu:
+    if hu_long:
+        texts = [fit(f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}") if i % 2 == 0 else HU_LONG
+                 for i in range(ds_lines)]
+        texts[0] = f"Generáció {gen:03d}"   # the hash changes with every generation
+    elif hu:
         texts = [fit(f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}") for i in range(ds_lines)]
     else:
         texts = [f"Test {gen:03d} line {i:02d}" for i in range(ds_lines)]
@@ -234,12 +256,24 @@ def wait_verdict(patterns, since, timeout):
 def sync_dataset(h, texts):
     """Write the dataset and commit it; returns (verdict, seconds)."""
     t = time.perf_counter()
+    dropped = False
+    writes = 1   # the commit
     for i, text in enumerate(texts):
-        publish({DS_ENTRY: (f"{h:06X}|{i:02X}|{text}", STR)})
-        time.sleep(spacing)
+        parts = split_parts(text)
+        for p, part in enumerate(parts):
+            more = p < len(parts) - 1
+            if drop_part and not dropped and len(parts) > 1 and not more:
+                log("test", f"dropping part {p} of line {i}")
+                dropped = True
+                continue
+            ii = i | p << 5 | more << 7   # line index, part, "more" (DESIGN.md 6.5)
+            publish({DS_ENTRY: (f"{h:06X}|{ii:02X}|{part}", STR)})
+            writes += 1
+            time.sleep(spacing)
     publish({DS_COMMIT: ((len(texts) << 24) | h, U32)})
     return wait_verdict([("stored", f"ds_commit {h:06x} accepted"), ("already", f"ds_commit {h:06x}: already stored"),
-                         ("REJECTED", f"ds_commit {h:06x} rejected")], t, 30)
+                         ("REJECTED", f"ds_commit {h:06x} rejected")], t, 30 + 1.5 * writes)
+    # 30 s plus 1.5 s per write: about 0.45 s per write reaches the sleepy device (ZIGBEE_PAYLOAD.md), with stalls
 
 
 results = []   # (verdict, push seconds, dataset verdict or None)
