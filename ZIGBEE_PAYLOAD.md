@@ -261,6 +261,20 @@ Paced snapshot test (6 lines + commit, 100 ms apart, 50 ms polling), device in t
     reordered reports in several wakes. Z2M logged no error for any of these, because its retries succeeded.
   - The panel failed at boot twice before the run (`timeout waiting for BUSY`, `busy before 0`, which stops the
     firmware in BOOT). A reboot cleared it.
+- **Rev 6 firmware (2026-10-27, branch `dataset-view`)**: one 4-record view write per wake (28 bytes), the
+  8-line dataset already stored, `--reset-each`, 39 wakes (round 1 is not counted: the script re-sent the
+  dataset before the view):
+
+  | | Wakes | Notes |
+  |---|---|---|
+  | Fast | 34 | 0.09-1.26 s, avg 0.47 s |
+  | Stalled, then delivered by Z2M's retry | 3 | 13-15 s, all with parent 0x28b5 |
+  | Lost | 2 | Z2M gave up: after its 10 s timeout the coordinator refused the route discovery with `ZDO extRouteDisc ... 0xc7: NWK_TABLE_FULL`. HA's resend would have to catch these. |
+
+  The 4-record write always arrived as one frame (no `incomplete`). The uplink was clean: no missed wake
+  counter, no stale resend. The stall rate (3 of 39) matches the single 7-byte commit (2 of 39), so a
+  28-byte frame is no worse. `NWK_TABLE_FULL` is new and coordinator-side (Z-Stack's route request table). It
+  may come from the test resetting the device every ~10 s; to check against normal wake rates.
 - **Next test**: device next to the coordinator, so that it rejoins with the coordinator as parent, then the
   same reset-each run. Clean: the Tuya routers' handling of a rejoined sleepy child is the cause. Still lossy:
   look at the device's stack after a reboot.

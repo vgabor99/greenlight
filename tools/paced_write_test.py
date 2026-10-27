@@ -63,6 +63,7 @@ z2m_events = []      # (t, message) for warnings/errors about the device
 device_msgs = []     # t of every state message the device published through Z2M
 wake_changes = []    # (t, value) of the wake counter (analog_input_2) in every device message
 last_wake = [None]
+last_ds = [None]     # the device's dataset_hash (analog_input_3) as Z2M last published it
 cli = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 if os.environ.get("MQTT_USER"):
     cli.username_pw_set(os.environ["MQTT_USER"], os.environ.get("MQTT_PASS"))
@@ -76,8 +77,11 @@ def on_msg(c, u, m):
         device_msgs.append(t)
         log("dev>", m.payload.decode(errors="replace"))
         try:
-            w = json.loads(m.payload).get("analog_input_2")
-        except ValueError:
+            st = json.loads(m.payload)
+            w = st.get("analog_input_2")
+            if st.get("analog_input_3") is not None:
+                last_ds[0] = int(st["analog_input_3"])
+        except (ValueError, AttributeError):
             w = None
         if w is not None:
             wake_changes.append((t, w))
@@ -249,6 +253,8 @@ for r in range(1, rounds + 1):
     ds_verdict = None
     if resync_each and r > 1:
         ds_hash, ds_texts = make_dataset(r)
+    if device_ds is None and last_ds[0] is not None:
+        device_ds = last_ds[0]   # Z2M's cached value, as the HA automation uses it (DESIGN.md 7)
     if device_ds != ds_hash:
         ds_verdict, ds_s = sync_dataset(ds_hash, ds_texts)
         log("test", f"dataset {ds_hash:06x}: {ds_verdict} {ds_s}")

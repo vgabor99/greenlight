@@ -7,7 +7,8 @@ Rev 6 replaces the snapshot of text lines (6 tagged lines + footer + commit, 8 w
 **dataset + view** model (5, 6.5). The dataset is the fixed list of possible lines, synced rarely. The view is
 a bitfield over it, sent in **one frame** per wake. Reason: after a wake, Zigbee frames to and from the device
 are lost at about 5 to 7 % each, and each loss costs about 13 s of Z2M recovery. 6-line pushes stalled in 8 of
-20 wakes, single-frame pushes in 2 of 39 (ZIGBEE_PAYLOAD.md 7.2). Code not changed yet (plan step 2b).
+20 wakes, single-frame pushes in 2 of 39 (ZIGBEE_PAYLOAD.md 7.2). Implemented (plan step 2b): 34 of 39
+wakes got their view in 0.09-1.26 s (ZIGBEE_PAYLOAD.md 7.2).
 
 ## 1. Goal
 
@@ -667,7 +668,7 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
    store the snapshot and footer in NVS, "render" = log + report `shown_hash`), pairing, interview, rejoin,
    rx-on-when-idle while awake, heartbeat, real leave and erase in ERASE_NETWORK. Make the failure paths
    testable (pairing window over, rejoin failed). Set `INTERVIEW_MS` back to 60 s. Measure the rejoin time.
-2b. **Next: dataset + view (rev 6).** Replace the snapshot slots with the view and dataset attributes of
+2b. **Done: dataset + view (rev 6).** Replace the snapshot slots with the view and dataset attributes of
    6.5, endpoint 3 for `dataset_hash`, the wake report order of 6.4 (wake counter first, the rest after
    `REPORT_DELAY_MS`), dataset and shown view in NVS, the debug screen of 8.1. Re-pair. Bench test with the
    paced write test extended for views and datasets, with a reset before every wake.
