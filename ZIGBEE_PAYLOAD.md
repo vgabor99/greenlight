@@ -74,6 +74,9 @@ for every message type the device accepts:
 | Commit (uint32) | 7 bytes | fits |
 | Line + commit in one write (option 3) | about 38 bytes | fits, barely; only with the line length cap |
 | Two lines in one write | about 62 bytes | **does not fit; rejected** |
+| Rev 6 view write (`view_bits`, `view_ds`, `view_time`, `view_id`, 4 x uint32) | 28 bytes | fits (DESIGN.md 6.5) |
+| Rev 6 dataset entry (`HHHHHH\|II\|` + 26 characters) | 40 bytes at most | fits, at the limit; the 26-character cap is what keeps it there |
+| Rev 6 dataset commit (uint32) | 7 bytes | fits |
 
 ### 2.2 APS fragmentation (Zigbee PRO, optional feature)
 

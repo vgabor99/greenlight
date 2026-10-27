@@ -1,7 +1,13 @@
 # Greenlight: design (draft for review)
 
-Status: draft, 2026-10-12 (rev 4). Implemented and tested on the hardware: the e-paper driver, the pin
+Status: draft, 2026-10-27 (rev 6). Implemented and tested on the hardware: the e-paper driver, the pin
 move, and plan step 1 (inputs, state machine, simulated sleep; Zigbee stubbed, see 3.5 and 12).
+
+Rev 6 replaces the snapshot of text lines (6 tagged lines + footer + commit, 8 writes per push) with a
+**dataset + view** model (5, 6.5). The dataset is the fixed list of possible lines, synced rarely. The view is
+a bitfield over it, sent in **one frame** per wake. Reason: after a wake, Zigbee frames to and from the device
+are lost at about 5 to 7 % each, and each loss costs about 13 s of Z2M recovery. 6-line pushes stalled in 8 of
+20 wakes, single-frame pushes in 2 of 39 (ZIGBEE_PAYLOAD.md 7.2). Code not changed yet (plan step 2b).
 
 ## 1. Goal
 
@@ -17,26 +23,31 @@ comes first: an unpaired device does nothing useful until it is paired.
 ## 2. Overview
 
 ```
-  HA (template sensor: lines + hash)       Zigbee2MQTT (generic mapping)               device
-  ──────────────────────────────────       ──────────────────────────────              ──────
-  current_hash ─┐                                                                      PIR on -> wake
-                │   awake / shown_hash  <── standard cluster reports <───────────────  rejoin, report
-  automation:   │                                                                      ...
-  awake && shown_hash != current_hash ─►  /set {"write": ...} ─► attribute writes ──► collect lines, commit,
-                                                                                        redraw, report shown_hash
-                                                                                       PIR off + timeout
-                                         awake=false  <──────────────────────────────  report, deep sleep
+  HA (dataset: all possible lines,          Zigbee2MQTT (generic mapping)              device
+      view: which are active now)
+  ─────────────────────────────────        ─────────────────────────────              ──────
+                                                                                      PIR on -> wake
+  automation <──── wake counter   <──────── standard cluster report <──────────────── rejoin, report wake
+  dataset_hash (cached) != HA's?  ───────►  /set: ds_entry x N, ds_commit  ─────────► store dataset (rare)
+  every wake, and on any change   ───────►  /set: one view write (1 frame) ─────────► redraw lines + footer,
+                 shown_view_id    <──────── standard cluster report <──────────────── report shown_view_id
+                                                                                      PIR off + timeout
+                 awake=false      <──────────────────────────────────────────────────  report, deep sleep
 ```
 
 Principles:
 
-- **Push from HA, state from the device.** The device never asks for data. It exposes `awake` and
-  `shown_hash`; HA pushes whenever the device is awake and stale.
-- **Snapshots, not deltas.** Every push is the complete list, so a lost, repeated or late frame never
-  leaves lasting damage, and a device that slept through any number of changes catches up in one push.
+- **Push from HA, state from the device.** The device never asks for data. It exposes `awake`,
+  `shown_view_id` and `dataset_hash`; HA pushes on every wake and whenever its view changes while awake.
+- **One frame per wake.** Every Zigbee frame right after a wake can stall the exchange for about 13 s
+  (ZIGBEE_PAYLOAD.md 7.2), so the per-wake exchange is one report up and one write down. Everything that
+  needs more frames (the dataset) is rare and checked by a hash.
+- **Full views, not deltas.** Every view push is the complete bitfield, so a lost, repeated or late frame
+  never leaves lasting damage, and a device that slept through any number of changes catches up in one push.
 - **The panel is the memory.** The e-paper keeps its image without power (but see the MVP full clear in
   3.4).
-- **The device is dumb.** HA writes the final text; the device only lays out lines.
+- **The device is dumb.** HA writes the final text (in the dataset) and decides which lines are active and
+  in which order they appear; the device only lays them out.
 
 ## 3. Device behaviour
 
@@ -96,19 +107,19 @@ States and transitions:
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | init, read the stored snapshot and `shown_hash` from retained memory (empty after a cold boot: `shown_hash = 0`), check the stack for a stored network | paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
+| **BOOT** | init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
 | **UNPAIRED_WAIT** | shows the "press the pair button" screen; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR; shows the pairing screen | joined -> INTERVIEW; `PAIR_MS` over -> "Pairing failed" screen, back to UNPAIRED_WAIT |
-| **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports `awake` and `shown_hash` so HA can already push | `INTERVIEW_MS` over -> ACTIVE |
-| **REJOIN** | restores the network from NVS and rejoins; the stored snapshot is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
+| **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state (6.4) so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
+| **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `RUN_MS` as in 3.2 | `RUN_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK |
-| **ERASE_NETWORK** | polite leave, erase the Zigbee storage, clear the stored snapshot and `shown_hash`, set the `pair_now` flag, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current snapshot), report `awake = false` (best effort), `epd_poweroff()` | -> SLEEP; if an input is already active, the next wake is immediate |
+| **ERASE_NETWORK** | polite leave, erase the Zigbee storage, clear the stored dataset and view, set the `pair_now` flag, restart | restart -> BOOT (-> PAIRING) |
+| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view), report `awake = false` (best effort), `epd_poweroff()` | -> SLEEP; if an input is already active, the next wake is immediate |
 
 Rules that keep it simple:
 
 - One timer per state, no hidden state elsewhere. The only things that survive SLEEP are the retained
-  data (stored snapshot, footer, `shown_hash`, `pair_now`) and the Zigbee network in NVS.
+  data (stored dataset and view, `pair_now`, the wake counter) and the Zigbee network in NVS.
 - The pair button is only acted on in UNPAIRED_WAIT and ACTIVE, both times as a 3 s hold. In every other state it is ignored, apart from waking the device.
 - A failed pairing never erases anything; the device stays factory new.
 - A failed rejoin never erases the network; only the pair button does.
@@ -116,14 +127,14 @@ Rules that keep it simple:
 ### 3.4 MVP panel handling (full clear, optimize later)
 
 On every wake (BOOT), the panel gets a full clear (so the controller has a valid previous frame for
-partial updates, see CLAUDE.md), then the stored snapshot and stored footer are rendered right away, in
-parallel with the rejoin. When HA pushes a changed snapshot or a fresh footer, the screen is partially
-refreshed once more. Consequence: the screen flashes once per wake. The stored snapshot (lines + footer,
-well under 1 KB) lives in retained RAM, since the 15 KB framebuffer does not fit. Optimizations for later:
+partial updates, see CLAUDE.md), then the stored view (lines and footer time) is rendered right away, in
+parallel with the rejoin. When HA pushes the view (every wake: at least the footer time is new), the screen
+is partially refreshed once more. Consequence: the screen flashes once per wake. The stored dataset and view (about
+1 KB) live in NVS (retained RAM later, 3.6), since the 15 KB framebuffer does not fit. Optimizations for later:
 
 - O1: do not touch the panel on wake if nothing changed (clear lazily, only when a redraw is needed).
 - O2: skip the final clean refresh at SHUTDOWN when no partial update happened since the last one.
-- O3: persist the snapshot in NVS so it survives a battery change.
+- O3: (done) dataset and view are in NVS, so they survive a battery change.
 
 ### 3.5 Current code (plan step 1 done)
 
@@ -133,7 +144,7 @@ well under 1 KB) lives in retained RAM, since the 15 KB framebuffer does not fit
 - all states exist; Zigbee is stubbed (join succeeds after 3 s, rejoin after 1 s, the pairing-window-over
   path is therefore not exercised); ERASE_NETWORK only clears the NVS flags;
 - `paired` and `pair_now` are in NVS; SLEEP is the simulation of 3.6;
-- every state shows the debug screen of 8.1 (state, shown snapshot, last received writes) instead of the
+- every state shows the debug screen of 8.1 (state, shown view, last received writes) instead of the
   real layout;
 - `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
 
@@ -155,10 +166,10 @@ app_main():  BOOT -> ... -> SHUTDOWN -> sleep_wait_for_wake() -> esp_restart()
 - `esp_restart()` makes the next cycle run the complete real boot path: stack init, restore from NVS, rejoin.
   Only retained RAM and NVS carry over, as after a real deep-sleep wake. It is not known whether
   retained RAM (`RTC_DATA_ATTR`) survives a software restart on the C6; the MVP assumes it does not and
-  keeps those few fields (stored snapshot, footer, `shown_hash`, `pair_now`) in NVS. At the final deep-sleep
+  keeps those few fields (dataset, view, `pair_now`, wake counter) in NVS. At the final deep-sleep
   step they can move to retained RAM to save flash writes.
 - The radio stays powered during the simulated sleep, so the power numbers mean nothing yet; the
-  functional behaviour (cold stack start, rejoin, resync via `shown_hash`) is the same.
+  functional behaviour (cold stack start, rejoin, resync via `dataset_hash` / `shown_view_id`) is the same.
 
 **Rejoin time.** A web search found no measured wake-to-rejoin number for the ESP32-C6 with the
 esp-zigbee-sdk, and some reports of lengthy commissioning after leaving deep sleep. MVP budget: assume 3 s
@@ -174,7 +185,7 @@ first thing to measure when Zigbee runs: log the time from boot to the "joined" 
   Zigbee2MQTT meanwhile. Panel: static "Pairing..." screen.
 - **INTERVIEW**: Z2M reads Basic cluster attributes and so on (several seconds, sometimes tens). The Basic
   cluster must report the fixed manufacturer name `Greenlight` and model id (6.1); they are what Z2M
-  stores, and what a converter would match later. HA can already push the first snapshot (`shown_hash = 0` differs from `current_hash`).
+  stores, and what a converter would match later. HA can already sync the dataset and push the first view (`dataset_hash = 0` and `shown_view_id = 0` differ from anything HA has).
 - **ERASE_NETWORK**: a polite leave (`esp_zb_bdb_reset_via_local_action()` in the SDK), then erase the
   Zigbee storage (`esp_zb_factory_reset()`, which restarts the chip), after setting `pair_now` so the next
   BOOT goes straight to PAIRING. The SDK function names are from memory; verify when implementing.
@@ -184,43 +195,70 @@ first thing to measure when Zigbee runs: log the time from boot to the "joined" 
 
 ## 5. Data model
 
-### 5.1 Snapshot (HA side, logical)
+Two parts, sent separately (rev 6): the **dataset**, the fixed list of every line the screen can show, and
+the **view**, which of those lines are active right now. The lines stand for physical things in the house
+(doors, windows, lights), so the dataset changes rarely (a device added or renamed in HA). The view changes
+often and is sent on every wake, in one Zigbee frame.
+
+### 5.1 Dataset (HA side, synced to the device)
 
 ```json
-{ "hash": 48213,
-  "lines": [ {"icon": "door",   "text": "Living room door"},
-             {"icon": "window", "text": "Kitchen window"} ],
-  "footer": "Updated 14:32" }
+{ "hash": 4821377,
+  "lines": [ "Front door open", "Garage door open", "Kitchen window open", "Living room light on" ] }
 ```
 
-- `hash`: **24-bit** value chosen by HA, identifying the content of `lines` (e.g. the first 6 hex digits of
-  a sha1 / md5 of icon+text of every line; 24 bits so it travels exactly in a float, see 6.4). The device
-  stores and echoes it; it never computes it. The same lines always give the same hash.
-  The footer is **not** part of the hash (it changes every minute and must not cause a push by itself).
-- `lines`: **at most 6**, already sorted and truncated by HA; if the list is longer, the sixth is
-  "+N more". Text is plain ASCII for the MVP (no accents), about 21 characters at most (see 8).
-- Empty `lines` means "All OK".
-- `icon`: kept in the format as a 1-byte number for later, **ignored by the MVP** (the device draws
-  text only).
-- `footer`: a short text (about 30 bytes), written by HA.
+- `lines`: **at most 32** entries (`ZB_DS_MAX`); the position is the line's **index** (0-31), which is its
+  bit in the view. The order is the display order, so HA puts the most important lines first. Text is plain
+  ASCII (no accents in the MVP), **at most 26 characters** on the wire (6.5); the panel shows about 21 (8).
+- `hash`: **24-bit**, chosen by HA, identifying the ordered list (e.g. the first 6 hex digits of a sha1 /
+  md5 of the joined lines). **0 is reserved** for "no dataset" and never used. The device stores and echoes
+  it; it never computes it. A changed text, a changed order or a new line gives a new hash, and HA resyncs.
+- The device keeps the accepted dataset in NVS (about 1 KB) and exposes its hash as `dataset_hash` (6.4).
+- Index stability: HA should append new entities rather than renumber, so a resync is a rare event, not
+  part of every change. Correctness does not depend on it: any change of the list gives a new hash.
 
-### 5.2 Staleness footer
+### 5.2 View (HA side, pushed on every wake)
 
-The screen is only as fresh as the last wake. The footer is the fix: HA sends a footer with the current
-time **every time the device reports `awake = true`** and with every content push. Its meaning is "the last
-time this screen was confirmed in sync with HA". If the time is old, the viewer knows the data may be old.
+```json
+{ "ds": 4821377, "bits": 5, "time": 1793112720, "id": 9871234 }
+```
 
-- The footer is a separate attribute write (`footer`, 6.5), not tied to a hash change.
-- The device stores the footer text with the snapshot and redraws it with the next refresh. Footer and
-  lines that arrive close together are coalesced into one refresh (debounce about 300 ms).
-- The footer sits in a reserved strip at the bottom of the screen (about 20 px), also on "All OK".
+- `bits`: bitfield over the dataset, bit *i* set = line *i* is active. 0 = "All OK".
+- `ds`: the dataset hash the bits refer to. The device accepts the view only if `ds` equals its stored
+  `dataset_hash`; otherwise it is **out of sync** (6.5) and leaves the screen as it is.
+- `id`: **24-bit**, chosen by HA, identifying `ds` + `bits` (e.g. a hash of the two). **Not 0**. The device
+  echoes it as `shown_view_id` when the view is on the panel; it never computes it. The time is **not** part
+  of the id: a new time alone must not look like new content.
+- `time`: the staleness time (5.3), local wall-clock time as seconds since 1970-01-01, i.e. HA's Unix time
+  plus its UTC offset. The device formats it with no time zone knowledge. 0 = unknown.
+- Layout rule (device): the active lines in dataset order, at most 6 rows. With more than 6 active lines
+  the device shows the first 5 and "+N more" as the sixth row.
 
-### 5.3 State exposed by the device
+### 5.3 Staleness footer
 
-Section 6.4 defines `awake` and `shown_hash` (standard Binary Input / Analog Input clusters) next to the
-battery and occupancy attributes. `shown_hash` after a redraw is the acknowledgement of a push.
+The screen is only as fresh as the last wake. The footer shows the view's `time`, meaning "the last time
+this screen was confirmed in sync with HA". If the time is old, the viewer knows the data may be old.
+
+- HA sends the view **on every wake**, even when nothing changed, so the time advances; that is the one
+  write per wake (6.5).
+- A view with the same `id` as the shown one only updates the time: the device redraws the footer (a
+  partial refresh) and reports `shown_view_id` again as the acknowledgement.
+- An out-of-sync view updates nothing, not even the time, so a device that cannot follow HA visibly ages.
+- The device stores the time with the view and draws it at every wake. The footer sits in a reserved strip
+  at the bottom of the screen (about 20 px), also on "All OK". Format: weekday and time, e.g. "Mon 14:32"
+  (final format in the renderer step).
+
+### 5.4 State exposed by the device
+
+Section 6.4 defines `awake`, `shown_view_id`, `dataset_hash` and the wake counter (standard Binary Input /
+Analog Input clusters) next to the battery and occupancy attributes. `shown_view_id` after a redraw is the
+acknowledgement of a view push, `dataset_hash` after a store is the acknowledgement of a dataset sync.
 
 ## 6. Zigbee data model (freeze before the first pairing)
+
+**Rev 6 note: the freeze is suspended during development.** Rev 6 changes endpoint 1's Analog Input meaning,
+adds endpoint 3 and replaces the custom attributes, so the device must be re-paired (remove it in Z2M first).
+Further re-pairs are acceptable until the data model settles; the rules below apply again from then on.
 
 Goal: the first pairing is the last one, **and the MVP works with no external converter**. Z2M keeps what
 the interview found in `data/database.db` (endpoints, cluster lists, a few Basic attributes). Everything that
@@ -231,12 +269,14 @@ added later) can change without re-pairing.
 
 1. **Identity never changes:** `manufacturerName` = `Greenlight`, `modelId` = `greenlight-eink42` (the
    Basic strings are at most 32 characters). A new hardware variant gets a new model id, never a changed one.
-2. **Two endpoints, profile Home Automation, device id Simple Sensor (0x000C)**: endpoint 1 with the cluster
-   list in 6.3, final, including the clusters that are declared but not fully used yet (OTA client), and
-   endpoint 2 with only an Analog Input for the wake counter (6.4; a cluster can appear only once per endpoint).
+2. **Three endpoints, profile Home Automation, device id Simple Sensor (0x000C)**: endpoint 1 with the
+   cluster list in 6.3, final, including the clusters that are declared but not fully used yet (OTA client);
+   endpoint 2 with only an Analog Input for the wake counter; endpoint 3 with only an Analog Input for
+   `dataset_hash` (6.4; a cluster can appear only once per endpoint, so each float needs its own endpoint).
 3. **No reporting configuration from Z2M.** The device sends all reports on its own, to the coordinator
    (0x0000), so nothing depends on Z2M's bind / Configure Reporting step succeeding on a sleeping device.
-4. **Attribute ids are append-only.** Never reuse or renumber one.
+4. **Attribute ids are append-only.** Never reuse or renumber one. Retired in rev 6: 0x0000-0x0007 (the
+   snapshot slots and commit); reserved for future work: 0x0010-0x0014 (6.7).
 5. Z2M availability is disabled for the device. `last_seen` (updated by every report) is the liveness signal
    and doubles as "last wake".
 
@@ -260,7 +300,8 @@ to build a custom command from your data. A converter is the way to teach it tha
 **Our decision: no converter in the MVP.** This design is built so that the generic mapping suffices:
 
 - All *state* the HA side needs is in **standard clusters** (6.4): battery in Power Configuration, the PIR in
-  Occupancy Sensing, `awake` in Binary Input, `shown_hash` in Analog Input.
+  Occupancy Sensing, `awake` in Binary Input, `shown_view_id`, the wake counter and `dataset_hash` in Analog
+  Input (endpoints 1, 2, 3).
 - All *input* to the display is plain **attribute writes** to a custom cluster, which Z2M can send itself
   through the documented raw `write` message on `zigbee2mqtt/<device>/set` (6.5). No custom command and no
   custom converter code is involved. The Z2M documentation describes this raw read / write as meant for
@@ -290,11 +331,12 @@ why the design can promise a final first try even though the "no converter" part
 | Power Configuration 0x0001 | server | battery (6.6) |
 | Occupancy Sensing 0x0406 | server | the PIR as an HA presence sensor |
 | Binary Input 0x000F | server | `awake` (`presentValue`) |
-| Analog Input 0x000C | server | `shown_hash` (`presentValue`) |
-| `greenlight` custom 0xFC8A | server | the display input slots (6.5), writable by the coordinator |
+| Analog Input 0x000C | server | `shown_view_id` (`presentValue`) |
+| `greenlight` custom 0xFC8A | server | the display input: view and dataset attributes (6.5), writable by the coordinator |
 | OTA Upgrade 0x0019 | client | reserved for a later firmware update, so the cluster list never changes. Not implemented yet. |
 
 Endpoint 2 has a single cluster: Analog Input 0x000C (server), the wake counter (`presentValue`).
+Endpoint 3 likewise: Analog Input 0x000C (server), `dataset_hash` (`presentValue`).
 
 (Housekeeping clusters the SDK needs, such as Identify, are fine.) 0xFC8A was picked arbitrarily; check it
 does not collide with a cluster zigbee-herdsman already names. It is used **without** a manufacturer code in
@@ -310,75 +352,109 @@ or Z2M insists on one, adding it is a firmware change (and a raw-write option) o
 | Power Configuration `batteryAlarmState` 0x003E | bitmap32 | low-battery flags (MVP: 0) |
 | Occupancy Sensing `occupancy` 0x0000 | bitmap8, bit 0 | the PIR is active; `occupancySensorType` 0x0001 = 0 (PIR) |
 | Binary Input `presentValue` 0x0055 | bool | **`awake`**: joined and listening, can receive pushes |
-| Analog Input `presentValue` 0x0055 | single float | **`shown_hash`**: hash of the snapshot on the panel (0 = nothing known) |
+| Analog Input `presentValue` 0x0055 | single float | **`shown_view_id`**: `id` of the view on the panel (5.2; 0 = none) |
 | Endpoint 2 Analog Input `presentValue` 0x0055 | single float | **`wake`**: the wake counter, +1 on every boot (every wake is a boot), 24 bits, kept in NVS. **HA's push trigger.** |
+| Endpoint 3 Analog Input `presentValue` 0x0055 | single float | **`dataset_hash`**: hash of the stored dataset (5.1; 0 = none) |
 
-**The hash is 24 bits** (0 to 16777215), so it travels exactly in a single-precision float; HA computes it
-from the list text however it likes (any stable 24-bit hash, e.g. the first 6 hex digits of an md5 / sha1 of
-the joined lines). The device stores and echoes it; it never computes it.
+**Ids and hashes are 24 bits** (0 to 16777215), so they travel exactly in a single-precision float. HA
+chooses them (5.1, 5.2); the device stores and echoes them and never computes them.
 
 Percent note (known pitfall, kept for the real battery code): the ZCL percentage is in half percents, and Z2M
 divides by 2, so 100 % is the raw value 200.
 
-**When the device reports.** There is nothing periodic while asleep. On each wake, after (re)join, in this
-order, so HA sees fresh data before the push decision: (1) Power Configuration (the three battery attributes
-in one frame); (2) Occupancy; (3) Analog Input `shown_hash`; (4) Binary Input `awake` = true; (5) the wake
-counter **last**. The automation is triggered by the wake counter, and by then `shown_hash` is already current.
+**When the device reports.** There is nothing periodic while asleep. On each wake, right after the
+(re)join, **only the wake counter**: it is the one uplink frame the push depends on (every frame after a
+wake risks a 13 s stall, ZIGBEE_PAYLOAD.md 7.2). HA decides from the values Z2M has cached:
+`dataset_hash` and `shown_view_id` only change when the device reports them, and the device does not change
+them while asleep, so the cached values are current. `REPORT_DELAY_MS` (3 s) after the wake counter, when
+the view push has normally been handled, the rest follows: `dataset_hash`, `shown_view_id`, Binary Input
+`awake` = true, Power Configuration, Occupancy. In INTERVIEW (after a pairing, when Z2M has no cached
+values) all of them are reported at once, the wake counter last.
 
 **Why a counter and not `awake`.** `awake = false` is sent best effort just before the radio goes off. If it
 is lost, Z2M keeps `awake = true` cached and the next wake's `true` is no change in HA, so a trigger on `awake`
 misses that wake. Any message from the device is no good trigger either: Z2M already publishes the cached
 state when the device announces itself after the reboot, about 0.5 s before the device is ready. The counter
-changes on every wake and arrives last, so its change means "awake, ready, and the state above is current".
-`awake` stays as the gate for pushes while the device stays awake (heartbeat). While awake: `awake` +
-`shown_hash` every 30 s (heartbeat); `shown_hash` after each redraw; `occupancy` when the PIR changes. At
-SHUTDOWN: `awake` = false, best effort.
+changes on every wake, so its change means "awake and ready". Nor can `dataset_hash` or `shown_view_id`
+serve: they are usually the same as at the last wake, and a report of an unchanged value is no state change
+in HA. `awake` stays as the gate for pushes while the device stays awake (heartbeat). While awake: `awake` +
+`shown_view_id` every 30 s (heartbeat); `shown_view_id` after each accepted view; `dataset_hash` after each
+accepted dataset and after an out-of-sync view; `occupancy` when the PIR changes. At SHUTDOWN: `awake` =
+false, best effort.
 
 ### 6.5 Input: HA to device (writes to the custom cluster 0xFC8A)
 
-All attributes are writable character strings (type 0x42) except the commit, which is uint32 (0x23).
+| Id | Name | Type | Content |
+|---|---|---|---|
+| 0x0020 | `view_bits` | uint32 (0x23) | 5.2 `bits`: bit *i* = dataset line *i* active |
+| 0x0021 | `view_ds` | uint32 (0x23) | 5.2 `ds`: the dataset hash the bits refer to (24 bits) |
+| 0x0022 | `view_time` | uint32 (0x23) | 5.2 `time`: local wall-clock seconds since 1970 (0 = unknown) |
+| 0x0023 | `view_id` | uint32 (0x23) | 5.2 `id` (24 bits, not 0) |
+| 0x0030 | `ds_entry` | string (0x42) | `HHHHHH\|II\|text`: the new dataset hash as 6 hex digits, the index as 2 hex digits (00-1F), the ASCII text (0-26 characters) |
+| 0x0031 | `ds_commit` | uint32 (0x23) | `count * 16777216 + hash`: number of entries (0-32) in the top byte, the new dataset hash below |
 
-| Id | Name | Content |
-|---|---|---|
-| 0x0000 - 0x0005 | `line1` .. `line6` | `HHHHHH\|text`: the snapshot's 24-bit hash as 6 hex digits, a bar, then the ASCII text (about 21 characters). An empty string clears the slot. |
-| 0x0006 | `footer` | the footer text, ASCII, no tag |
-| 0x0007 | `commit` | `count * 16777216 + hash` (uint32): the number of lines (0-6) in the top byte, the 24-bit hash below |
+**View push: all four `view_*` attributes in one write, one frame** (28 bytes of ZCL payload, 4 records of 7
+bytes; the 40-byte rule is ZIGBEE_PAYLOAD.md 2.1). HA sends it on every wake and whenever its view changes
+while the device is awake. The device collects the four values and applies them once the whole frame has been
+processed (deferred to the Zigbee task's next turn), so the order of the records in the frame does not
+matter:
+
+- `view_ds` != stored `dataset_hash`: **out of sync**. Nothing changes on the screen, not even the time;
+  `shown_view_id` is not reported. The device reports `dataset_hash` (so HA's cached value is right) and
+  counts it as activity, so it stays awake for the resync.
+- `view_id` == `shown_view_id`: only the time is new. Store it, redraw the footer, report `shown_view_id`
+  (the acknowledgement).
+- otherwise: build the rows from the dataset and the bits (layout rule in 5.2), store them with the id and the
+  time, redraw, report `shown_view_id`.
+
+**Dataset sync: rare, one `ds_entry` per write, then `ds_commit`.** HA writes entries 0 to count-1 (any
+order, 100 ms apart, ZIGBEE_PAYLOAD.md 6), then the commit. Each entry write is at most 40 bytes of payload
+(a 36-character string plus the 4-byte record header). The device stages entries in RAM by index, together
+with their tag, and counts every write as activity, so it stays awake while a sync runs. On `ds_commit` it
+accepts only if entries 0 to count-1 are all staged with that hash. Then it stores the dataset in NVS (one
+blob), clears the staging and reports `dataset_hash`. Otherwise it rejects the commit and logs the first
+missing index; HA resends the whole dataset after its timeout. A staged sync that does not finish before the
+device sleeps is lost, and the next wake starts over.
+
+**The panel keeps what it shows.** The device stores the rendered rows of the shown view (at most 6 texts,
+the id and the time), not only the bits. A new dataset therefore never changes the screen by itself: the old
+rows stay until a view for the new dataset arrives (HA sends one right after the sync).
 
 Why it looks like this:
 
 - **Plain attribute writes**: the SDK delivers them to the application as "attribute set" events; no
   custom command handler is needed, and Z2M's raw write is a stock feature.
-- **One attribute per write.** Each Z2M `write` message carries exactly one attribute (a line, the footer or
-  the commit), about 30 bytes of payload, so nothing is fragmented and nothing depends on the order the frames
-  arrive. Batched writes were tried and fail: a write of 3 long attributes (77 bytes) is refused by the Z-Stack
-  coordinator with `MEM_ERROR (0x10)` before it goes on air. (A batch of 2 long attributes also failed, but that
-  was most likely the storage-size bug below; it was not retested.)
-- **Register the string slots with a full-length initial value.** The stack takes the storage size of a string
-  attribute from the value it is registered with. With a zero-length initial string, every second write of a
-  string longer than 11 characters was answered `UNSUPPORTED_ATTRIBUTE` by the device (the stack rejects it
-  before the application sees it), however slow or fast the writes came. The firmware registers 40-character
-  placeholders (not valid tags, so a commit rejects them). With that, 10 of 10 writes of 27 bytes arrived in a
-  burst, and a complete snapshot (6 lines, footer, commit) sent without any spacing arrived in 3.5 s and was
-  accepted. No spacing between writes is needed.
-  Z2M reports a failed write on `zigbee2mqtt/bridge/logging` (level error), so the refusal is visible.
-- **The tag and the commit make it safe.** The device keeps the lines it received with their tag. When it
-  gets `commit`, it renders only if lines 1 to `count` are all present and tagged with that hash; then it stores the snapshot, reports `shown_hash`
-  and redraws. Otherwise it ignores the commit, `shown_hash` does not change and HA resends after 5 s. A
-  lost or reordered frame can therefore never display a mix of old and new lines under a new hash.
-- `count = 0` is the "All OK" screen; a commit whose hash equals `shown_hash` is ignored.
-- `footer` is best effort and may be written before or after the commit; it is redrawn with the next
-  refresh. The icon is not carried at all in the MVP (see 5.1).
+- **One frame per write, at most 40 bytes of payload.** A Z2M `write` with several attributes is one ZCL
+  frame with several records. The batch that Z-Stack refused with `MEM_ERROR (0x10)` (3 long strings, 77
+  bytes) failed because of its size, not because it had several records (ZIGBEE_PAYLOAD.md 1). The view
+  write is well under the limit.
+- **A single frame needs no tag.** A frame arrives whole or not at all (the NWK MIC protects it), so the
+  device can never combine an old bitfield with a new id. The tag-and-commit scheme of rev 5 stays only for
+  the dataset, which needs several frames.
+- **`view_ds` makes the view self-checking.** A view always says which dataset it refers to, so a device
+  with an old or missing dataset knows and does not draw wrong text.
+- **Register string attributes with a full-length initial value.** The stack takes the storage size of a
+  string attribute from the value it is registered with. With a zero-length initial string, every second
+  write of a string longer than 11 characters was answered `UNSUPPORTED_ATTRIBUTE` (rev 5 bench). `ds_entry`
+  is registered with a 36-character placeholder, which is not a valid tag.
+- **uint32 for the numbers**: the type that the rev 5 commit has already proven through Z2M's raw write (a
+  bitmap32 or uint24 would do as well, but is not tested).
+- Z2M reports a failed write on `zigbee2mqtt/bridge/logging` (level error), so a refusal is visible.
 
-Example (HA publishes these to `zigbee2mqtt/<device>/set`; ids in decimal, the format of the Z2M raw write):
+Example (HA publishes these to `zigbee2mqtt/<device>/set`; ids in decimal, the format of the Z2M raw write;
+64650 is 0xFC8A, the dataset hash 4821377 is 0x499181):
 
 ```json
-{"write": {"cluster": 64650, "payload": {"0": {"value": "A1B2C3|Living room door", "type": 66}}}}
-{"write": {"cluster": 64650, "payload": {"1": {"value": "A1B2C3|Kitchen window", "type": 66}}}}
-{"write": {"cluster": 64650, "payload": {"7": {"value": 44151491, "type": 35}}}}
+{"write": {"cluster": 64650, "payload": {"48": {"value": "499181|00|Front door open", "type": 66}}}}
+{"write": {"cluster": 64650, "payload": {"48": {"value": "499181|02|Kitchen window open", "type": 66}}}}
+{"write": {"cluster": 64650, "payload": {"49": {"value": 71930241, "type": 35}}}}
+{"write": {"cluster": 64650, "payload": {"32": {"value": 5, "type": 35}, "33": {"value": 4821377, "type": 35},
+                                          "34": {"value": 1793112720, "type": 35}, "35": {"value": 9871234, "type": 35}}}}
 ```
 
-(64650 is 0xFC8A; the commit value is 2 * 16777216 + 0xA1B2C3. Exact JSON details, such as whether a
-value is a string or a number array, are to be confirmed at the first test.)
+(The dataset commit is 4 * 16777216 + 0x499181; all four entries 00 to 03 are written, two are shown here.
+The view shows lines 0 and 2. To verify at the first test: that Z2M sends the four-record write as one frame,
+and that the device's write callback sees all four records.)
 
 ### 6.6 Battery
 
@@ -427,9 +503,10 @@ export default {
         deviceAddCustomCluster('greenlight', {ID: 0xFC8A, attributes: {...}, commands: {}, commandsResponse: {}}),
         battery({percentage: true, voltage: false, lowStatus: true, percentageReporting: false, voltageReporting: false}),
         occupancy(),
-        /* numeric / binary entries for the Analog Input and Binary Input presentValue, named shown_hash and awake */
+        /* numeric / binary entries for the Analog Input (ep 1, 2, 3) and Binary Input presentValue:
+           shown_view_id, wake, dataset_hash, awake */
     ],
-    toZigbee: [ /* optional: one "snapshot" JSON {hash, lines[], footer} -> the writes of 6.5 */ ],
+    toZigbee: [ /* optional: friendly "view" {ds, bits, time, id} and "dataset" JSON -> the writes of 6.5 */ ],
 };
 ```
 
@@ -446,29 +523,35 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 ## 7. Home Assistant / Zigbee2MQTT
 
 - **No external converter in the MVP** (6.2). Z2M's generic mapping exposes the standard-cluster state
-  (`battery`, `occupancy`, and, to be verified at the first pairing, `awake` / `shown_hash` from Binary
-  Input / Analog Input). Z2M logs a warning that the device is not supported; that is expected. Disable Z2M
-  availability for this device (for battery devices it only trips after hours, so it says nothing useful).
-  Fallback, if the generic mapping hides `awake` / `shown_hash` or refuses the raw write: the small
+  (`battery`, `occupancy`, `awake` from Binary Input, `shown_view_id`, the wake counter and `dataset_hash`
+  from the Analog Inputs on endpoints 1, 2, 3). Z2M logs a warning that the device is not supported; that is
+  expected. Disable Z2M availability for this device (for battery devices it only trips after hours, so it
+  says nothing useful). Fallback, if the generic mapping hides an entity or refuses the raw write: the small
   converter of 6.8, no device change.
-- **HA template sensor**: builds the sorted, truncated `lines` (max 6), the 24-bit `current_hash` and the
-  footer text.
-- **HA automation**, triggered by any change of the wake counter, `shown_hash` or `current_hash`:
-  - on a wake counter change: wait about 2 s (the wake report burst and Z2M's replies to it are still in
-    flight), then write the footer (current time); if `shown_hash != current_hash`, also the snapshot
-  - while `awake` is true and `shown_hash != current_hash`: publish the writes of 6.5 to
-    `zigbee2mqtt/<device>/set`, **one attribute per message**, **100 ms apart** (not all at once: the parent
-    router queues them for the sleepy device, ZIGBEE_PAYLOAD.md 6): line 1 .. line `count`, then the
-    `commit`; then wait for `shown_hash` (up to about 20 s: right after a wake some writes take a Z2M
-    recovery round of about 13 s); if it still differs, resend (a few retries at most), and never resend
-    while the previous push may still be retried by Z2M.
-    Bench, 50 ms polling: device already awake 19/20 accepted in 1.1-3.1 s (avg 1.5 s); right after a wake
-    10/10 accepted, 5 of them only after 14-18 s (ZIGBEE_PAYLOAD.md 7)
-  - debounce a few seconds after `current_hash` changes, so a burst of events gives one refresh.
+- **HA dataset** (5.1): the ordered list of up to 32 line texts, one per watched entity (for example a
+  template that maps each door / window / light to "Kitchen window open"), and its 24-bit `ds_hash`. Append
+  new entities at the end, so their index stays stable.
+- **HA view** (5.2): `bits` (which entities are in their problem state), `view_id` = 24-bit hash of `ds_hash`
+  and `bits` (never 0), and `time` = now as local seconds since 1970.
+- **HA automation**, triggered by a change of the wake counter, of `view_id` or of `ds_hash`:
+  - on a wake counter change: (1) if the cached `dataset_hash` != `ds_hash`, run the dataset sync (6.5:
+    every `ds_entry`, 100 ms apart, then `ds_commit`) and wait for `dataset_hash` to match, up to about 20 s;
+    (2) send the view write (one message, all four attributes), **always**, even when `shown_view_id`
+    already equals `view_id`: it carries the new footer time (5.3).
+  - while `awake` is true and `view_id` changes: send the view write (after a dataset sync if `ds_hash`
+    changed too). Debounce about 1 s, so a burst of entity changes gives one write.
+  - after each write, wait for the acknowledgement (`shown_view_id` == `view_id`, or `dataset_hash` ==
+    `ds_hash`) for up to about 20 s: a write right after a wake can take a Z2M recovery round of about 13 s.
+    If it is still missing, resend (a few retries at most). Never resend while Z2M may still retry the
+    previous write.
+  - Bench (rev 5 data model, ZIGBEE_PAYLOAD.md 7.2): one write per wake was accepted in 0.04-0.96 s
+    (average 0.17 s) in 36 of 39 wakes; 2 took about 13 s.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).
-- The MQTT entity names for `awake`, `shown_hash` and the wake counter are whatever Z2M's generic mapping produces; read them
-  from the device's Exposes tab after the first pairing and put them into the automation.
+- The MQTT entity names for `awake`, `shown_view_id`, the wake counter and `dataset_hash` are whatever Z2M's
+  generic mapping produces (rev 5 bench: `binary_input_1`, `analog_input_1`, `analog_input_2`; endpoint 3 is
+  expected as `analog_input_3`); check the device's Exposes tab after pairing and put them into the
+  automation.
 
 ## 8. Display (MVP)
 
@@ -477,11 +560,12 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   to printable ASCII. At scale 3 a character is 18 px advance x 21 px high: about 21 characters per line
   across 384 px.
 - 6 rows of about 46 px (text vertically centered or top-aligned in the row) plus a footer strip of about
-  20 px at the bottom, smaller font (scale 2).
+  20 px at the bottom, smaller font (scale 2). The rows are the active dataset lines in dataset order; with
+  more than 6 active lines, 5 lines and "+N more" (5.2). The footer is the view's time (5.3).
 - Static screens as full-screen drawings: "All OK", "Press the pair button", "Pairing...", "Pairing
   failed". For the MVP these can be drawn with the same text routine.
-- Later: Hungarian accents (Latin Extended-A font from a TTF at build time) and icons (1-bit bitmaps
-  indexed by the wire icon number, about 24x24, text shifted right).
+- Later: Hungarian accents (Latin Extended-A font from a TTF at build time) and icons (1-bit bitmaps,
+  about 24x24, text shifted right; the icon number would become part of each dataset entry).
 
 ### 8.1 Debug screen (current, ahead of the real layout)
 
@@ -489,29 +573,33 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 
 ```
 ACTIVE          w412 37.2s          state, wake counter, uptime
-SHOWN A1B2C3  3 lines               the snapshot on the panel (stored one after a wake)
-1 Living room door open             ... 6 slots ("ALL OK" for count 0), then "F <footer>"
-36.9 C A1B2C3 n=3 OK                last 8 received writes, newest first, uptime stamp:
-36.7 L3 A1B2C3|Garage light on        Ln / F = slot write as received, C = commit and its result
-34.0 C 01EABC n=3 REJ L1=123ABC       (OK, SAME, BAD N, REJ Ln=<tag> or REJ Ln none)
+DS 499181 n=4  VIEW 969F82          stored dataset (hash, entries) and shown view id
+Mon 14:32  2 lines                  view time and active line count ("OUT OF SYNC" if the last view was)
+1 Front door open                   ... the shown rows (up to 6; "ALL OK" for none)
+36.9 V 969F82 b=00000005 OK         last received writes, newest first, uptime stamp:
+36.7 D 499181 n=4 OK                  V = view (OK, TIME, OOS ds=<hash>), E = ds_entry index and text,
+36.5 E 03 Living room light on        D = ds_commit (OK, REJ idx=<first missing>, BAD N)
 ```
 
 Received data is drawn as it arrives: one partial refresh at a time, writes that arrive during a refresh
-are drawn together by the next one. Rows longer than 33 characters are cut off. Outgoing reports are not shown.
+are drawn together by the next one. Rows longer than 33 characters are cut off. Outgoing reports are not
+shown. A dataset sync of 32 entries scrolls the receive log; only the last few are visible.
 
 ## 9. Failure modes
 
 | Situation | Behaviour |
 |---|---|
-| Frame lost | HA resends after 5 s; the device ignores repeats of the hash it already shows. |
-| Device sleeps mid-update | Partial buffer dropped; next wake reports the old `shown_hash`, HA pushes again. |
-| HA down / Zigbee down | Screen keeps the stored snapshot; its footer time stops advancing, so the staleness shows. |
-| Rejoin fails (parent gone) | After `REJOIN_MS` the device shuts down with the stored snapshot on screen; network kept. |
+| Frame lost | HA resends after its acknowledgement timeout; a repeated view with the shown id only refreshes the time, a repeated dataset entry overwrites the staged one. |
+| Device sleeps mid-sync | Staged dataset entries dropped; `dataset_hash` unchanged, so HA syncs again at the next wake. A view is one frame and cannot be half applied. |
+| View for another dataset | Out of sync (6.5): screen and time unchanged, `dataset_hash` reported, device stays awake for the sync. |
+| HA down / Zigbee down | Screen keeps the stored view; its footer time stops advancing, so the staleness shows. |
+| Rejoin fails (parent gone) | After `REJOIN_MS` the device shuts down with the stored view on screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. Set the end-device timeout as long as the stack allows. |
 | Device dies silently | `awake` expires in HA after about 90 s. |
 | Pairing fails | "Pairing failed" screen, UNPAIRED_WAIT; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it; verify. |
-| Cold boot (battery change) | Retained RAM empty: blank snapshot, `shown_hash = 0`, HA pushes on join. |
+| Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
+| Wake counter report lost | HA does not push in this wake; the screen keeps the last view and its old time. Seen once in 39 wakes (ZIGBEE_PAYLOAD.md 7.2). Next wake is normal. |
 | Panel BUSY hang | Caused by a bad display GND contact on the breadboard (CLAUDE.md); fix in hardware (solid GND, bulk capacitor at the display). A refresh never finishes and the controller stays stuck until a hardware reset. **Current: no recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epd_init()` resets the panel. **Later option:** on a BUSY timeout, `epd_init()` + `epd_clear()` + redraw (about 1.5 s), with the timeout cut to about 2 s (a refresh takes 470 ms), and count recoveries in the log (or `panel_error`, 6.7). Turn it on once the cause is understood or the rate is known to be acceptable. |
 
 ## 10. Pins
@@ -546,6 +634,11 @@ Analog Input), 24-bit hash; battery is a fixed 100 % in the MVP (single 1000 mAh
 circuit); `join_time_ms`, `wake_reason`, `last_awake_s`, `panel_error` and a real battery measurement are
 future work (6.7).
 
+Also decided (rev 6, 2026-10-27): dataset + view instead of text snapshots (5): at most 32 lines,
+texts at most 26 characters, the view as one 4-record write per wake (6.5); the view carries a staleness
+time that HA sends on every wake (5.3); `dataset_hash` on a third endpoint; the wake counter stays as HA's
+push trigger and is the only report before the push (6.4); re-pairing is acceptable during development (6).
+
 Open:
 
 - **Q1** Real rejoin time (measure once Zigbee runs; until `join_time_ms` exists, from the serial log).
@@ -562,25 +655,28 @@ Open:
 
 ## 12. Implementation plan
 
-Functionality first, the renderer last. Until the renderer exists, a received snapshot is stored, logged
-on the serial port and acknowledged exactly as if it had been drawn (`shown_hash` is reported); the panel
-keeps showing the placeholder words.
+Functionality first, the renderer last. Until the renderer exists, a received view is stored, logged on
+the serial port, shown on the debug screen (8.1) and acknowledged exactly as if it had been drawn
+(`shown_view_id` is reported).
 
 1. **Done.** Level-based PIR/button timeout with `RUN_MS` (now 20 s), polarity macros, state machine with Zigbee
    stubbed, pair button on D1, 3 s hold to pair or reset, simulated sleep with NVS.
-2. **Next: Zigbee.** The frozen data model of section 6, no converter: identity (`Greenlight` /
+2. **Done (rev 5 data model, replaced by step 2b).** Zigbee: The frozen data model of section 6, no converter: identity (`Greenlight` /
    `greenlight-eink42`), endpoint 1 with the clusters of 6.3, the reports of 6.4 (fixed 100 % battery,
    occupancy, `shown_hash`, `awake`, in that order), the slot attributes and commit of 6.5 (tagged lines,
    store the snapshot and footer in NVS, "render" = log + report `shown_hash`), pairing, interview, rejoin,
    rx-on-when-idle while awake, heartbeat, real leave and erase in ERASE_NETWORK. Make the failure paths
    testable (pairing window over, rejoin failed). Set `INTERVIEW_MS` back to 60 s. Measure the rejoin time.
+2b. **Next: dataset + view (rev 6).** Replace the snapshot slots with the view and dataset attributes of
+   6.5, endpoint 3 for `dataset_hash`, the wake report order of 6.4 (wake counter first, the rest after
+   `REPORT_DELAY_MS`), dataset and shown view in NVS, the debug screen of 8.1. Re-pair. Bench test with the
+   paced write test extended for views and datasets, with a reset before every wake.
 3. **HA side and first pairing checks:** pair with Z2M and settle Q3 (what is exposed, whether the raw writes
-   work); then the HA template sensor (lines, `current_hash`, footer), the push-on-stale automation with
-   retries, `awake` expiry. Add the small converter of 6.8 only if Q3 requires it. Measure end-to-end
+   work); then the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Add the small converter of 6.8 only if Q3 requires it. Measure end-to-end
    latency. Disable Z2M availability for the device.
 4. **Proper deep sleep:** wake on D0 and D1 (replace `st_sleep`), retained state in retained RAM. Then the
    optimizations O1-O3.
 5. **Renderer (last):** full-ASCII font (replace the 5x7 test glyphs), 6 rows plus footer strip, static
    screens (All OK, press the pair button, pairing, pairing failed) replacing the placeholder words,
-   event-driven redraw in ACTIVE instead of the ONE..TEN test, redraw of the stored snapshot after the MVP
+   event-driven redraw in ACTIVE instead of the ONE..TEN test, redraw of the stored view after the MVP
    full clear in BOOT. Later: accents and icons, and the future work of 6.7 (diagnostics, real battery handling).
