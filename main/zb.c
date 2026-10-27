@@ -185,6 +185,29 @@ static int32_t hex_value(const uint8_t *p, int n)
     return v;
 }
 
+/* Dataset text is UTF-8 (DESIGN.md 5.1): replace each byte that is not part of a valid sequence (a stray
+ * continuation byte, a truncated or overlong sequence) and each control character with '?'. */
+static void utf8_sanitize(char *s)
+{
+    uint8_t *p = (uint8_t *)s;
+    while (*p) {
+        int n = *p < 0x80                    ? 0
+              : *p >= 0xC2 && *p < 0xE0      ? 1
+              : (*p & 0xF0) == 0xE0          ? 2
+              : *p >= 0xF0 && *p < 0xF5      ? 3
+                                             : -1;
+        bool ok = n >= 0;
+        for (int i = 1; ok && i <= n; i++) {
+            ok = (p[i] & 0xC0) == 0x80;  /* also stops at the terminating 0 */
+        }
+        if (!ok || *p < 0x20 || *p == 0x7F) {
+            *p++ = '?';
+        } else {
+            p += n + 1;
+        }
+    }
+}
+
 /* Runs in the Zigbee task after the frame that carried the view_* writes has been processed, so all four
  * records of one write are in s_view_in whatever their order. */
 static void apply_view(void *ctx)
@@ -253,15 +276,18 @@ static void ds_entry_write(const uint8_t *s)
     if (tag <= 0 || idx < 0 || idx >= ZB_DS_MAX) {
         ESP_LOGW(TAG, "ds_entry: not a valid entry (length %u)", (unsigned)len);
         memcpy(ev.entry.text, &s[1], len > ZB_DS_CHARS ? ZB_DS_CHARS : len);
+        utf8_sanitize(ev.entry.text);
     } else {
         size_t n = len - 10;
         s_stage[idx].tag = tag;
         memset(s_stage[idx].text, 0, sizeof(s_stage[idx].text));
         memcpy(s_stage[idx].text, &s[11], n);
+        utf8_sanitize(s_stage[idx].text);
         ev.entry.tag   = tag;
         ev.entry.index = idx;
-        memcpy(ev.entry.text, &s[11], n);
-        ESP_LOGI(TAG, "ds_entry %02ld for %06lx: \"%s\"", (long)idx, (unsigned long)tag, s_stage[idx].text);
+        memcpy(ev.entry.text, s_stage[idx].text, sizeof(ev.entry.text));
+        ESP_LOGI(TAG, "ds_entry %02ld for %06lx: \"%s\" (%u bytes)", (long)idx, (unsigned long)tag,
+                 s_stage[idx].text, (unsigned)n);
     }
     emit(&ev);
     activity();

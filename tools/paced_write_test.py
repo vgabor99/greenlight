@@ -14,12 +14,13 @@ The wake trigger is a change of the wake counter (analog_input_2) in the device'
 automation (DESIGN.md 7), not the serial log.
 
 --ds-lines=N: entries in the test dataset, 1 to 32 (default 8).
+--hu: Hungarian texts (UTF-8, every accented letter), cut to 26 bytes at a character boundary.
 --resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
 --oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
 --same: the view id stays the same after round 1; expect "time only" (the footer time updates).
 --no-view: send no view; the device should stay awake VIEW_WAIT_MS (45 s) instead of RUN_MS (20 s). Use GAP_S >= 50.
 
-Usage: python paced_write_test.py ROUNDS [SPACING_MS] [GAP_S] [--reset-each] [--settle=S] [--ds-lines=N]
+Usage: python paced_write_test.py ROUNDS [SPACING_MS] [GAP_S] [--reset-each] [--settle=S] [--ds-lines=N] [--hu]
        [--resync-each] [--oos] [--same] [--no-view]
 (The rev 5 snapshot mode, --lines=N, is in git history before the rev 6 firmware.)
 Full serial and Z2M logs go to paced_write_test_<date>_<time>.log in LOG_DIR (default %TEMP%/gl_test).
@@ -40,6 +41,7 @@ settle = next((float(a.split("=", 1)[1]) for a in sys.argv[1:] if a.startswith("
 ds_lines = next((int(a.split("=", 1)[1]) for a in sys.argv[1:] if a.startswith("--ds-lines=")), 8)
 if not 1 <= ds_lines <= 32:
     sys.exit("--ds-lines must be 1 to 32")
+hu = "--hu" in sys.argv
 resync_each = "--resync-each" in sys.argv
 oos = "--oos" in sys.argv
 same = "--same" in sys.argv
@@ -119,8 +121,20 @@ VIEW_BITS, VIEW_DS, VIEW_TIME, VIEW_ID, DS_ENTRY, DS_COMMIT = 0x20, 0x21, 0x22, 
 U32, STR = 35, 66
 
 
+HU_TEXTS = ["ÁÉÍÓÖŐÚÜŰ", "áéíóöőúüű", "Garázsajtó nyitva", "Hűtőajtó nyitva", "Mosógép kész",
+            "Árvíztűrő tükörfúrógép"]   # the last one is too long: tests the cut
+
+
+def fit(text, limit=26):
+    """The text cut to limit UTF-8 bytes (DESIGN.md 5.1), never inside a character."""
+    return text.encode()[:limit].decode(errors="ignore")
+
+
 def make_dataset(gen):
-    texts = [f"Test {gen:03d} line {i:02d}" for i in range(ds_lines)]
+    if hu:
+        texts = [fit(f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}") for i in range(ds_lines)]
+    else:
+        texts = [f"Test {gen:03d} line {i:02d}" for i in range(ds_lines)]
     h = int(hashlib.sha1("\n".join(texts).encode()).hexdigest()[:6], 16) or 1
     return h, texts
 

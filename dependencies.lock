@@ -23,10 +23,19 @@ dependencies:
     source:
       type: idf
     version: 6.1.0
+  u8g2:
+    component_hash: 8d6bf5a101d3a2731edad4297e00bd29072133d1db4d3c6f0c63308bf54b33c0
+    dependencies: []
+    source:
+      git: https://github.com/olikraus/u8g2.git
+      path: .
+      type: git
+    version: d6c8499c5f2707cac8eccd09fd8f677d12b17977
 direct_dependencies:
 - espressif/esp-zboss-lib
 - espressif/esp-zigbee-lib
 - idf
-manifest_hash: 5a61b511c00d21ff8ab290e334d10c80bb903f2ac38529313cb0eb4cf120b5ce
+- u8g2
+manifest_hash: 665e336f07e6b193fabb490642cf092976dad7cd8e8d6c2ff6681e6fa1e6894f
 target: esp32c6
 version: 3.0.0

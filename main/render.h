@@ -5,7 +5,7 @@
 #include "zb.h"
 
 /* Debug screen (MVP): the device state, the dataset, the view on the panel and the last writes received from
- * HA, as plain ASCII text in a 5x7 font at scale 2 (33 columns). */
+ * HA, as UTF-8 text in u8g2's Terminus Bold 16 font with Latin Extended-A (49 columns, Hungarian accents included). */
 
 #define RENDER_RX_N 8  /* received writes shown, newest first */
 #define RENDER_ROWS 6  /* line rows on the screen (DESIGN.md 5.2) */

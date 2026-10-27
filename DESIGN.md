@@ -210,8 +210,10 @@ often and is sent on every wake, in one Zigbee frame.
 ```
 
 - `lines`: **at most 32** entries (`ZB_DS_MAX`); the position is the line's **index** (0-31), which is its
-  bit in the view. The order is the display order, so HA puts the most important lines first. Text is plain
-  ASCII (no accents in the MVP), **at most 26 characters** on the wire (6.5); the panel shows about 21 (8).
+  bit in the view. The order is the display order, so HA puts the most important lines first. Text is
+  **UTF-8**, **at most 26 bytes** on the wire (6.5): HA cuts it at a character boundary. A Hungarian accented
+  letter takes 2 bytes, so a line holds 13 to 26 characters (longer lines: 6.7). The device replaces invalid
+  UTF-8 and control characters with `?`. The panel shows about 21 characters (8).
 - `hash`: **24-bit**, chosen by HA, identifying the ordered list (e.g. the first 6 hex digits of a sha1 /
   md5 of the joined lines). **0 is reserved** for "no dataset" and never used. The device stores and echoes
   it; it never computes it. A changed text, a changed order or a new line gives a new hash, and HA resyncs.
@@ -392,7 +394,7 @@ false, best effort.
 | 0x0021 | `view_ds` | uint32 (0x23) | 5.2 `ds`: the dataset hash the bits refer to (24 bits) |
 | 0x0022 | `view_time` | uint32 (0x23) | 5.2 `time`: local wall-clock seconds since 1970 (0 = unknown) |
 | 0x0023 | `view_id` | uint32 (0x23) | 5.2 `id` (24 bits, not 0) |
-| 0x0030 | `ds_entry` | string (0x42) | `HHHHHH\|II\|text`: the new dataset hash as 6 hex digits, the index as 2 hex digits (00-1F), the ASCII text (0-26 characters) |
+| 0x0030 | `ds_entry` | string (0x42) | `HHHHHH\|II\|text`: the new dataset hash as 6 hex digits, the index as 2 hex digits (00-1F), the UTF-8 text (0-26 bytes) |
 | 0x0031 | `ds_commit` | uint32 (0x23) | `count * 16777216 + hash`: number of entries (0-32) in the top byte, the new dataset hash below |
 
 **View push: all four `view_*` attributes in one write, one frame** (28 bytes of ZCL payload, 4 records of 7
@@ -491,6 +493,11 @@ capacitor at the pin; first check whether the XIAO ESP32-C6 already has a batter
 percentage curve and low-battery thresholds, measured once per wake before the radio and the panel start;
 OTA; and a converter if the generic mapping is not good enough.
 
+TODO: longer UTF-8 lines. A `ds_entry` frame carries at most 26 bytes of text (40-byte rule), which is only
+13 characters if every letter is accented. Option: send a line in several pieces, e.g. a part number next to
+the index in the entry header, staged per index and part, with `ds_commit` checking that every part of every
+line arrived. Needs a larger `ZB_DS_CHARS` (NVS blob grows, so it comes with a migration or a dataset resync).
+
 ### 6.8 If a converter is needed later
 
 Outline only (file under `external_converters/`, `enable_external_js` on, file name and API to be checked
@@ -559,20 +566,20 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 ## 8. Display (MVP)
 
 - 400x300, 1 bit. Current partial refresh ~470 ms; see CLAUDE.md for panel quirks (ghosting, grain).
-- ASCII only, no accents, no icons in the MVP. The existing 5x7 font (only the test glyphs) is extended
-  to printable ASCII. At scale 3 a character is 18 px advance x 21 px high: about 21 characters per line
+- UTF-8 text, drawn with u8g2's fonts (the `_te` variants cover Latin Extended-A, so all Hungarian letters
+  including ő and ű); u8g2 is used only for text and draws into the framebuffer. No icons in the MVP. At scale 3 a character is 18 px advance x 21 px high: about 21 characters per line
   across 384 px.
 - 6 rows of about 46 px (text vertically centered or top-aligned in the row) plus a footer strip of about
   20 px at the bottom, smaller font (scale 2). The rows are the active dataset lines in dataset order; with
   more than 6 active lines, 5 lines and "+N more" (5.2). The footer is the view's time (5.3).
 - Static screens as full-screen drawings: "All OK", "Press the pair button", "Pairing...", "Pairing
   failed". For the MVP these can be drawn with the same text routine.
-- Later: Hungarian accents (Latin Extended-A font from a TTF at build time) and icons (1-bit bitmaps,
+- Later: a larger proportional `_te` font for the real layout, and icons (1-bit bitmaps,
   about 24x24, text shifted right; the icon number would become part of each dataset entry).
 
 ### 8.1 Debug screen (current, ahead of the real layout)
 
-`main/render.c`, full printable-ASCII 5x7 font at scale 2 (33 columns x 16 px rows), the same in every state:
+`main/render.c`, u8g2 font `t0_16b_te` (Terminus Bold, 49 columns x 16 px rows), the same in every state:
 
 ```
 ACTIVE          w412 37.2s          state, wake counter, uptime
@@ -585,7 +592,7 @@ Mon 14:32  2 lines                  view time and active line count ("OUT OF SYN
 ```
 
 Received data is drawn as it arrives: one partial refresh at a time, writes that arrive during a refresh
-are drawn together by the next one. Rows longer than 33 characters are cut off. Outgoing reports are not
+are drawn together by the next one. Rows longer than 49 characters are cut off. Outgoing reports are not
 shown. A dataset sync of 32 entries scrolls the receive log; only the last few are visible.
 
 ## 9. Failure modes
