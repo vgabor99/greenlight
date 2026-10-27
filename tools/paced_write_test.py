@@ -17,9 +17,10 @@ automation (DESIGN.md 7), not the serial log.
 --resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
 --oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
 --same: the view id stays the same after round 1; expect "time only" (the footer time updates).
+--no-view: send no view; the device should stay awake VIEW_WAIT_MS (45 s) instead of RUN_MS (20 s). Use GAP_S >= 50.
 
 Usage: python paced_write_test.py ROUNDS [SPACING_MS] [GAP_S] [--reset-each] [--settle=S] [--ds-lines=N]
-       [--resync-each] [--oos] [--same]
+       [--resync-each] [--oos] [--same] [--no-view]
 (The rev 5 snapshot mode, --lines=N, is in git history before the rev 6 firmware.)
 Full serial and Z2M logs go to paced_write_test_<date>_<time>.log in LOG_DIR (default %TEMP%/gl_test).
 """
@@ -42,6 +43,7 @@ if not 1 <= ds_lines <= 32:
 resync_each = "--resync-each" in sys.argv
 oos = "--oos" in sys.argv
 same = "--same" in sys.argv
+no_view = "--no-view" in sys.argv
 rounds = int(args[0]) if len(args) > 0 else 10
 spacing = (int(args[1]) if len(args) > 1 else 100) / 1000.0
 gap = float(args[2]) if len(args) > 2 else 15.0
@@ -249,6 +251,7 @@ for r in range(1, rounds + 1):
         wake_s = time.perf_counter() - t_r
 
     n_err = len(z2m_events)
+    t_start_round = t_r if reset_each else time.perf_counter()
     log("test", f"round {r}")
     ds_verdict = None
     if resync_each and r > 1:
@@ -264,6 +267,15 @@ for r in range(1, rounds + 1):
         else:
             ds_verdict = f"ds {ds_verdict}"
 
+    if no_view:
+        t_act = next((t for t, l in serial_lines if t > t_start_round and "REJOIN -> ACTIVE" in l), None)
+        time.sleep(gap)
+        t_off = next((t for t, l in serial_lines if t > t_start_round and "ACTIVE -> SHUTDOWN" in l), None)
+        awake = t_off - t_act if t_act and t_off else None
+        results.append(("awake", awake, ds_verdict))
+        print(f"round {r:2}: no view sent, ACTIVE for {'%.1f s' % awake if awake else 'unknown'}"
+              + (f"  [{ds_verdict}]" if ds_verdict else ""), flush=True)
+        continue
     if not (same and view_id):
         new = random.randrange(1, 0xFFFFFF)
         while new == view_id:
@@ -289,7 +301,7 @@ for r in range(1, rounds + 1):
 
 stop.set()
 th.join(2)
-expect = ("OOS",) if oos else ("time", "accepted")
+expect = ("awake",) if no_view else ("OOS",) if oos else ("time", "accepted")
 ok = [d for v, d, _ in results if d is not None and v.split()[-1] in expect]
 late = sum(v.startswith("LATE") for v, d, _ in results)
 print(f"\n{len(ok)}/{len(results)} as expected ({late} of them later than 5 s), {ds_lines}-line dataset"

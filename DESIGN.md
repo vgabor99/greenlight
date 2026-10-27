@@ -73,6 +73,7 @@ start pairing (unpaired) and to reset the network (paired).
 | `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
 | `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
 | `REJOIN_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
+| `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend (7). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
 
 ### 3.3 State machine
 
@@ -544,7 +545,8 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   - after each write, wait for the acknowledgement (`shown_view_id` == `view_id`, or `dataset_hash` ==
     `ds_hash`) for up to about 20 s: a write right after a wake can take a Z2M recovery round of about 13 s.
     If it is still missing, resend (a few retries at most). Never resend while Z2M may still retry the
-    previous write.
+    previous write. A resend after a wake still finds the device awake: it waits up to `VIEW_WAIT_MS` (45 s)
+    for its view (3.2). Needed because Z2M sometimes drops a write for good (`NWK_TABLE_FULL`, Q6).
   - Bench (rev 5 data model, ZIGBEE_PAYLOAD.md 7.2): one write per wake was accepted in 0.04-0.96 s
     (average 0.17 s) in 36 of 39 wakes; 2 took about 13 s.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
@@ -651,6 +653,10 @@ Open:
   fallback that needs no re-pairing.
 - **Q4** OTA: the reserved OTA client cluster (6.3) is declared now so the cluster list never changes; the
   partition table (two app slots in 2 MB) is a later, USB-flashed change.
+- **Q6** (parked) The coordinator sometimes refuses Z2M's route discovery to the device with `ZDO extRouteDisc
+  ... 0xc7: NWK_TABLE_FULL` (Z-Stack's route request table), and Z2M then drops the write: 2 of 39 wakes on
+  the rev 6 bench (ZIGBEE_PAYLOAD.md 7.2). Possibly caused by the test resetting the device every ~10 s. To
+  check at a normal wake rate; `VIEW_WAIT_MS` plus HA's resend cover it meanwhile.
 - **Q5** Whether the SDK lets the device be rx-on-when-idle only while awake; fallback is a short poll
   interval (100-200 ms) while awake, a long one otherwise.
 

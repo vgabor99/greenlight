@@ -25,6 +25,7 @@ static const char *TAG = "greenlight";
 #define STACK_START_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
 #define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_view_id this often */
 #define REPORT_DELAY_MS 3000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
+#define VIEW_WAIT_MS   45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
 
 /* ---- Inputs: PIR (D0) and pair button (D1), level based, polled and debounced by a task ---- */
 #define INPUT_POLL_MS        10
@@ -144,6 +145,7 @@ static void nvs_open_state(void)
 static zb_dataset_t   ds;
 static render_shown_t shown;
 static bool           oos;  /* the last view received was for another dataset (not stored) */
+static volatile bool  view_seen;  /* a view was applied in this wake (VIEW_WAIT_MS) */
 
 /* Every boot is a wake (the sleep ends in a restart), so count boots. 24 bits, so the value is exact in the
  * Analog Input's float; one u32 write per wake is negligible flash wear for NVS. */
@@ -283,6 +285,9 @@ static void on_view(const zb_view_t *v, zb_view_result_t result)
 {
     xSemaphoreTake(view_lock, portMAX_DELAY);
     oos = result == ZB_VIEW_OOS;
+    if (result == ZB_VIEW_OK || result == ZB_VIEW_TIME) {
+        view_seen = true;
+    }
     if (result == ZB_VIEW_OK) {
         render_build_rows(&shown, &ds, v);
     } else if (result == ZB_VIEW_TIME) {
@@ -454,6 +459,7 @@ static state_t st_active(void)
     bool      last_pir = pir_active;
     TickType_t last_beat = xTaskGetTickCount();
     TickType_t start = last_beat;
+    bool       waiting = false;
     for (;;) {
         if (rest_pending && ms_since(start) >= REPORT_DELAY_MS) {
             rest_pending = false;
@@ -475,8 +481,15 @@ static state_t st_active(void)
             return ST_ERASE_NETWORK;
         }
         if (idle_ms() >= RUN_MS) {
-            ESP_LOGI(TAG, "no activity for %d ms", RUN_MS);
-            return ST_SHUTDOWN;
+            if (!view_seen && ms_since(start) < VIEW_WAIT_MS) {
+                if (!waiting) {
+                    waiting = true;
+                    ESP_LOGI(TAG, "no view yet: staying awake up to %d ms", VIEW_WAIT_MS);
+                }
+            } else {
+                ESP_LOGI(TAG, "no activity for %d ms%s", RUN_MS, view_seen ? "" : ", and no view");
+                return ST_SHUTDOWN;
+            }
         }
         wait_ms(20);
     }
