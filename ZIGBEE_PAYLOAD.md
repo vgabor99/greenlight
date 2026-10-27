@@ -274,7 +274,19 @@ Paced snapshot test (6 lines + commit, 100 ms apart, 50 ms polling), device in t
   The 4-record write always arrived as one frame (no `incomplete`). The uplink was clean: no missed wake
   counter, no stale resend. The stall rate (3 of 39) matches the single 7-byte commit (2 of 39), so a
   28-byte frame is no worse. `NWK_TABLE_FULL` is new and coordinator-side (Z-Stack's route request table). It
-  may come from the test resetting the device every ~10 s; to check against normal wake rates.
+  may come from the test resetting the device every ~10 s; to check against normal wake rates. Parked
+  (DESIGN.md Q6); `VIEW_WAIT_MS` (45 s) keeps the device awake for HA's resend.
+- **Rev 6 path checks (2026-10-27, `--reset-each`, 0 Z2M errors, no `incomplete` view)**:
+  - `--no-view`: with no view the device stayed in ACTIVE 45.0 s (`VIEW_WAIT_MS`) instead of 20 s. (The
+    second wake hit the panel BUSY timeout at boot, a hardware fault unrelated to this.)
+  - `--resync-each`, 9 new 8-line datasets, each followed by its view: all stored and all views accepted.
+    Dataset time 1.8-4.1 s in 6 wakes, 20.5-29.5 s in 3 (stalls inside the 9-frame burst); the view after
+    it took 0.3-0.7 s, once 13.6 s. The device stayed awake through every sync (each entry is activity). So
+    a dataset change costs about 1 wake in 3 a 20-30 s delay, which is acceptable for a rare event.
+  - `--oos`, 3 views for a dataset the device does not have: all rejected as out of sync, `shown_view_id`
+    unchanged, `dataset_hash` reported.
+  - `--same`, the same view id 3 times: first `accepted`, then `time only` twice (bits ignored, as the id
+    defines the content).
 - **Next test**: device next to the coordinator, so that it rejoins with the coordinator as parent, then the
   same reset-each run. Clean: the Tuya routers' handling of a rejoined sleepy child is the cause. Still lossy:
   look at the device's stack after a reboot.
