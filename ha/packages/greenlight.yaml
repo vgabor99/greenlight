@@ -69,6 +69,12 @@ automation:
               - condition: template
                 value_template: >
                   {{ now() - states.binary_sensor.gf_lobby_greenlight_awake.last_reported < timedelta(seconds=90) }}
+          # or woke after the last awake report: awake = true follows the wake counter by a few seconds
+          - condition: template
+            value_template: >
+              {% set w = states.sensor.gf_lobby_greenlight_wake_count.last_changed %}
+              {{ w > states.binary_sensor.gf_lobby_greenlight_awake.last_changed
+                 and now() - w < timedelta(seconds=90) }}
       - condition: template
         value_template: "{{ states('sensor.greenlight_dataset') | int(0) > 0 }}"
     variables:

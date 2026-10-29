@@ -503,6 +503,26 @@ capacitor at the pin; first check whether the XIAO ESP32-C6 already has a batter
 percentage curve and low-battery thresholds, measured once per wake before the radio and the panel start;
 OTA; and a converter if the generic mapping is not good enough.
 
+**TODO, only if the wake push turns out too slow once deployed: hold view writes in Z2M while asleep.** HA
+would send every view change, asleep or not, and zigbee-herdsman would deliver it on the next frame from the
+device (the device announce, about 0.5 s after the reboot, before the wake counter). That saves maybe
+0.5-1 s per wake over the wake push. From the herdsman source (checked 2026-10-29): a write whose delivery
+fails is queued and sent on the device's next message, and a newer write to the same attributes replaces the
+queued one (`keep-command`), but only if the device's `pendingRequestTimeout` is > 0. Herdsman sets that
+only for Poll Control devices or a known check-in interval, so for ours it is 0 and the write is just lost.
+Needed:
+- the converter sets `pendingRequestTimeout` (e.g. 1 day) on every Z2M start (it is not persisted);
+- the automation sends view changes without the `awake` gate, and without the ack wait and resends while
+  asleep (otherwise each change blocks the queued automation for 3 x 20 s and delays the next wake push);
+- dataset writes get `options: {sendPolicy: 'immediate'}` in the MQTT `write` (Z2M passes `options`
+  through): every `ds_entry` part writes the same attribute 0x0030, so queued parts would replace each other.
+
+Drawbacks: every change while asleep puts a frame in the parent's indirect queue for about 8 s before it
+fails and is held (the small-router overflow of ZIGBEE_PAYLOAD.md 2.2, and the display sleeps most of the
+time while lights change often); Z2M logs a failed send per change while asleep and a "superseded" error per
+replaced write; writes would land during BOOT / REJOIN, an untested firmware path; and the wake push still
+sends the view again with the new time, so a wake gets two refreshes.
+
 ### 6.8 The converter
 
 `z2m/greenlight.mjs` (6.2). Written against Z2M 2.12.1, zigbee-herdsman-converters 26.76 and
@@ -555,7 +575,10 @@ re-interview action (from memory: verify), which needs the device awake, hence t
     (2) send the view write (one message, all four attributes), **always**, even when `shown_view_id`
     already equals `view_id`: it carries the new footer time (5.3).
   - while `awake` is true and `view_id` changes: send the view write (after a dataset sync if `ds_hash`
-    changed too). Debounce about 1 s, so a burst of entity changes gives one write.
+    changed too). Debounce about 1 s, so a burst of entity changes gives one write. Also between the wake
+    counter and the `awake` = true that follows it (6.4, a few seconds; 8 s seen): a change counts as awake
+    while the wake counter changed after `awake` last did, for up to 90 s. Without that, a change in this
+    gap was dropped (2026-10-29: a lamp turned on 4.4 s after a wake never reached the panel).
   - after each write, wait for the acknowledgement (`shown_view_id` == `view_id`, or `dataset_hash` ==
     `ds_hash`) for up to about 20 s: a write right after a wake can take a Z2M recovery round of about 13 s.
     If it is still missing, resend (a few retries at most). Never resend while Z2M may still retry the
