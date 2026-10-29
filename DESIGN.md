@@ -537,7 +537,7 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   | 2-3 | binary_sensor `moisture`, `problem` | `<name>` | `on` |
   | 4-6 | binary_sensor `lock`, `door`, `window` | `<name> nyitva` | `on` |
   | 7 | `light.*` except groups (`entity_id` attribute) | `<name> ég` | `on` |
-  | 8 | `remote.*` | `<name>` | not `off` |
+  | 8 | `remote.*` | `<name>` | not `off`, `unavailable` or `unknown` |
 
   Order: priority, then `entity_id`. Sorted rather than "append new entities at the end": an added entity
   changes the hash and resyncs anyway, and priority order is the better display order. Texts are cut to 64

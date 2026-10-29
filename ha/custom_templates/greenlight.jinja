@@ -58,7 +58,8 @@
   {% do returns(out.items) %}
 {% endmacro %}
 
-{# Whether one member is in its problem state. #}
+{# Whether one member is in its problem state. Like the dashboard, an unavailable or unknown entity is not
+   active, except for the alarm, where "neither disarmed nor armed" is the problem itself. #}
 {% macro gl_active(entity_id, kind, returns=none) %}
   {%- set s = states(entity_id) -%}
   {%- if kind == 'disarmed' -%}
@@ -66,7 +67,7 @@
   {%- elif kind == 'alarm_unknown' -%}
     {% do returns(s != 'disarmed' and not s.startswith('armed_')) %}
   {%- elif kind == 'not_off' -%}
-    {% do returns(s != 'off') %}
+    {% do returns(s not in ['off', 'unavailable', 'unknown']) %}
   {%- else -%}
     {% do returns(s == 'on') %}
   {%- endif -%}
