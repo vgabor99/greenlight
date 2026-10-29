@@ -99,8 +99,8 @@ void zb_erase_network(void);
 /* Reports to the coordinator (DESIGN.md 6.4). */
 void zb_report_battery(void);               /* the three Power Configuration attributes, fixed 100 % in the MVP */
 void zb_report_occupancy(bool occupied);
-void zb_report_shown_view_id(void);         /* endpoint 1 Analog Input */
-void zb_report_dataset_hash(void);          /* endpoint 3 Analog Input */
-void zb_report_awake(bool awake);
+void zb_report_shown_view_id(void);         /* 0xFC8A shown_view_id */
+void zb_report_dataset_hash(void);          /* 0xFC8A dataset_hash */
+void zb_report_awake(bool awake);           /* 0xFC8A awake */
 void zb_log_neighbors(void);                /* diagnostic: parent and neighbour table to the log */
-void zb_report_wake(void);                  /* the wake counter (endpoint 2): HA's push trigger */
+void zb_report_wake(void);                  /* 0xFC8A wake_count: HA's push trigger */

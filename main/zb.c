@@ -1,7 +1,8 @@
-/* Zigbee side of the device. See DESIGN.md section 6 for the data model this implements:
- *   endpoint 1: Basic, Power Configuration, Occupancy Sensing, Binary Input (awake), Analog Input
- *   (shown_view_id) and the custom cluster 0xFC8A whose writable attributes carry the view and the dataset;
- *   endpoint 2: Analog Input (wake counter, the HA push trigger); endpoint 3: Analog Input (dataset_hash). */
+/* Zigbee side of the device. See DESIGN.md section 6 for the data model this implements (rev 7): a single
+ * endpoint with Basic, Power Configuration, Occupancy Sensing, the OTA Upgrade client (declared only) and the
+ * custom cluster 0xFC8A. Its writable attributes carry the view and the dataset; its reported attributes are
+ * the device state (wake_count, the HA push trigger; shown_view_id; dataset_hash; awake). Z2M needs the
+ * external converter in z2m/greenlight.mjs to publish them. */
 
 #include <stdio.h>
 #include <string.h>
@@ -18,16 +19,18 @@
 static const char *TAG = "zb";
 
 #define ZB_EP        1
-#define ZB_EP_WAKE   2  /* second endpoint, only for the wake counter's Analog Input */
-#define ZB_EP_DS     3  /* third endpoint, only for dataset_hash's Analog Input */
 #define COORD_EP     1
 #define CUSTOM_CLUSTER_ID 0xFC8A
 
-/* Custom cluster attribute ids (DESIGN.md 6.5); 0x0000-0x0007 are retired, 0x0010-0x0014 reserved */
-#define ATTR_VIEW_BITS 0x0020  /* .. ATTR_VIEW_ID: the four view_* attributes, in zb_view_t order */
-#define ATTR_VIEW_ID   0x0023
-#define ATTR_DS_ENTRY  0x0030
-#define ATTR_DS_COMMIT 0x0031
+/* Custom cluster attribute ids (DESIGN.md 6.4, 6.5); 0x0000-0x0007 are retired, 0x0010-0x0014 reserved */
+#define ATTR_VIEW_BITS     0x0020  /* .. ATTR_VIEW_ID: the four view_* attributes, in zb_view_t order */
+#define ATTR_VIEW_ID       0x0023
+#define ATTR_DS_ENTRY      0x0030
+#define ATTR_DS_COMMIT     0x0031
+#define ATTR_WAKE_COUNT    0x0040  /* reported state, read-only */
+#define ATTR_SHOWN_VIEW_ID 0x0041
+#define ATTR_DATASET_HASH  0x0042
+#define ATTR_AWAKE         0x0043
 
 #define VIEW_ALL  0x0F                         /* all four view_* attributes received */
 #define ENTRY_MAX (6 + 1 + 2 + 1 + ZB_PART_CHARS)  /* "HHHHHH|II|text": 36 characters */
@@ -60,6 +63,8 @@ static uint8_t            s_retry_mode;
 static uint32_t s_view_attr[4];
 static uint32_t s_commit_attr;
 static uint8_t  s_entry_attr[ENTRY_MAX + 1];
+static uint32_t s_state_attr[3];  /* wake_count, shown_view_id, dataset_hash */
+static bool     s_awake_attr;
 static char     s_build_id[20];
 static char    s_date_code[20];
 
@@ -85,13 +90,13 @@ static void zcl_string(char *buf, size_t size, const char *text)
     memcpy(buf + 1, text, n);
 }
 
-static void report_attr_ep(uint8_t ep, uint16_t cluster, uint16_t attr)
+static void report_attr(uint16_t cluster, uint16_t attr)
 {
     ezb_zcl_report_attr_cmd_t cmd = {
         .cmd_ctrl = {
             .dst_addr   = EZB_ADDRESS_SHORT(0x0000),
             .dst_ep     = COORD_EP,
-            .src_ep     = ep,
+            .src_ep     = ZB_EP,
             .cluster_id = cluster,
             .manuf_code = EZB_ZCL_STD_MANUF_CODE,
             .fc = {.manuf_specific = 0, .direction = EZB_ZCL_CMD_DIRECTION_TO_CLI, .dis_default_rsp = 1},
@@ -104,37 +109,24 @@ static void report_attr_ep(uint8_t ep, uint16_t cluster, uint16_t attr)
     }
 }
 
-static void report_attr(uint16_t cluster, uint16_t attr)
-{
-    report_attr_ep(ZB_EP, cluster, attr);
-}
-
-static void set_and_report_ep(uint8_t ep, uint16_t cluster, uint16_t attr, void *value)
-{
-    ezb_zcl_status_t st = ezb_zcl_set_attr_value(ep, cluster, EZB_ZCL_CLUSTER_SERVER, attr, EZB_ZCL_STD_MANUF_CODE,
-                                                 value, false);
-    if (st != EZB_ZCL_STATUS_SUCCESS) {
-        ESP_LOGW(TAG, "set ep %u cluster 0x%04x attr 0x%04x failed: 0x%02x", ep, cluster, attr, st);
-    }
-    report_attr_ep(ep, cluster, attr);
-}
-
 static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
 {
-    set_and_report_ep(ZB_EP, cluster, attr, value);
+    ezb_zcl_status_t st = ezb_zcl_set_attr_value(ZB_EP, cluster, EZB_ZCL_CLUSTER_SERVER, attr, EZB_ZCL_STD_MANUF_CODE,
+                                                 value, false);
+    if (st != EZB_ZCL_STATUS_SUCCESS) {
+        ESP_LOGW(TAG, "set cluster 0x%04x attr 0x%04x failed: 0x%02x", cluster, attr, st);
+    }
+    report_attr(cluster, attr);
 }
 
-/* 24-bit ids and hashes are exact in the Analog Input's single-precision float */
 static void report_shown_view_id_nolock(void)
 {
-    float f = (float)s_shown_view_id;
-    set_and_report(EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_SHOWN_VIEW_ID, &s_shown_view_id);
 }
 
 static void report_dataset_hash_nolock(void)
 {
-    float f = (float)s_ds_hash;
-    set_and_report_ep(ZB_EP_DS, EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_DATASET_HASH, &s_ds_hash);
 }
 
 /* ---- display input (custom cluster writes, DESIGN.md 6.5) ---- */
@@ -399,6 +391,8 @@ static void custom_write_attr(uint8_t ep_id, uint16_t attr_id, void *new_value, 
     } else if (attr_id == ATTR_DS_COMMIT) {
         memcpy(&v, new_value, sizeof(v));
         ds_commit_write(v);
+    } else if (attr_id >= ATTR_WAKE_COUNT && attr_id <= ATTR_AWAKE) {
+        /* our own set_and_report() (the attributes are read-only for the network) */
     } else {
         ESP_LOGW(TAG, "write to unknown attribute 0x%04x", attr_id);
     }
@@ -586,14 +580,16 @@ static esp_err_t create_device(void)
     };
     ezb_zcl_cluster_desc_t occupancy = ezb_zcl_occupancy_sensing_create_cluster_desc(&occ_cfg, EZB_ZCL_CLUSTER_SERVER);
 
-    /* Binary Input: awake. Analog Input: shown_view_id */
-    ezb_zcl_binary_input_cluster_server_config_t bin_cfg = {.out_of_service = false, .present_value = false, .status_flags = 0};
-    ezb_zcl_cluster_desc_t binary = ezb_zcl_binary_input_create_cluster_desc(&bin_cfg, EZB_ZCL_CLUSTER_SERVER);
-    ezb_zcl_analog_input_cluster_server_config_t ana_cfg = {.out_of_service = false, .present_value = (float)s_shown_view_id, .status_flags = 0};
-    ezb_zcl_cluster_desc_t analog = ezb_zcl_analog_input_create_cluster_desc(&ana_cfg, EZB_ZCL_CLUSTER_SERVER);
+    /* OTA Upgrade client: declared so the cluster list stays final (DESIGN.md 6.3), not implemented yet */
+    ezb_zcl_ota_upgrade_cluster_client_config_t ota_cfg = {
+        .upgrade_server_id    = EZB_ZCL_OTA_UPGRADE_UPGRADE_SERVER_ID_DEFAULT_VALUE,
+        .file_offset          = EZB_ZCL_OTA_UPGRADE_FILE_OFFSET_DEFAULT_VALUE,
+        .image_upgrade_status = EZB_ZCL_OTA_UPGRADE_IMAGE_UPGRADE_STATUS_DEFAULT_VALUE,
+    };
+    ezb_zcl_cluster_desc_t ota = ezb_zcl_ota_upgrade_create_cluster_desc(&ota_cfg, EZB_ZCL_CLUSTER_CLIENT);
 
-    /* Custom cluster: the view and the dataset input. The stack takes the storage size of a string attribute from
-     * the initial value, so register a full-length placeholder (not a valid entry). */
+    /* Custom cluster: the view and the dataset input, and the reported state. The stack takes the storage size of
+     * a string attribute from the initial value, so register a full-length placeholder (not a valid entry). */
     s_entry_attr[0] = ENTRY_MAX;
     memset(&s_entry_attr[1], ' ', ENTRY_MAX);
     ezb_zcl_custom_cluster_config_t custom_cfg = {
@@ -610,6 +606,15 @@ static esp_err_t create_device(void)
                                          EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, s_entry_attr);
     ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_DS_COMMIT, EZB_ZCL_ATTR_TYPE_UINT32,
                                          EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE, &s_commit_attr);
+    s_state_attr[0] = s_wake_count;
+    s_state_attr[1] = s_shown_view_id;
+    s_state_attr[2] = s_ds_hash;
+    for (int i = 0; i < 3; i++) {  /* wake_count, shown_view_id, dataset_hash */
+        ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_WAKE_COUNT + i, EZB_ZCL_ATTR_TYPE_UINT32,
+                                             EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_REPORTING, &s_state_attr[i]);
+    }
+    ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_AWAKE, EZB_ZCL_ATTR_TYPE_BOOL,
+                                         EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_REPORTING, &s_awake_attr);
 
     ezb_af_ep_config_t ep_cfg = {
         .ep_id              = ZB_EP,
@@ -621,37 +626,9 @@ static esp_err_t create_device(void)
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, basic));
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, power));
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, occupancy));
-    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, binary));
-    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, analog));
     ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, custom));
+    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep, ota));
     ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep));
-
-    /* Endpoint 2: Analog Input = wake counter. A cluster can appear only once per endpoint, and Z2M's generic
-     * mapping exposes it as a second analog input (DESIGN.md 6.4). */
-    ezb_zcl_analog_input_cluster_server_config_t wake_cfg = {.out_of_service = false, .present_value = (float)s_wake_count, .status_flags = 0};
-    ezb_zcl_cluster_desc_t wake = ezb_zcl_analog_input_create_cluster_desc(&wake_cfg, EZB_ZCL_CLUSTER_SERVER);
-    ezb_af_ep_config_t ep2_cfg = {
-        .ep_id              = ZB_EP_WAKE,
-        .app_profile_id     = EZB_AF_HA_PROFILE_ID,
-        .app_device_id      = EZB_ZHA_SIMPLE_SENSOR_DEVICE_ID,
-        .app_device_version = 0,
-    };
-    ezb_af_ep_desc_t ep2 = ezb_af_create_endpoint_desc(&ep2_cfg);
-    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep2, wake));
-    ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep2));
-
-    /* Endpoint 3: Analog Input = dataset_hash (DESIGN.md 6.4), same reason as endpoint 2. */
-    ezb_zcl_analog_input_cluster_server_config_t ds_cfg = {.out_of_service = false, .present_value = (float)s_ds_hash, .status_flags = 0};
-    ezb_zcl_cluster_desc_t ds_hash = ezb_zcl_analog_input_create_cluster_desc(&ds_cfg, EZB_ZCL_CLUSTER_SERVER);
-    ezb_af_ep_config_t ep3_cfg = {
-        .ep_id              = ZB_EP_DS,
-        .app_profile_id     = EZB_AF_HA_PROFILE_ID,
-        .app_device_id      = EZB_ZHA_SIMPLE_SENSOR_DEVICE_ID,
-        .app_device_version = 0,
-    };
-    ezb_af_ep_desc_t ep3 = ezb_af_create_endpoint_desc(&ep3_cfg);
-    ESP_ERROR_CHECK(ezb_af_endpoint_add_cluster_desc(ep3, ds_hash));
-    ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev, ep3));
     ESP_ERROR_CHECK(ezb_af_device_desc_register(dev));
 
     ezb_zcl_core_action_handler_register(core_action_handler);
@@ -778,15 +755,14 @@ void zb_report_dataset_hash(void)
 void zb_report_awake(bool awake)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    set_and_report(EZB_ZCL_CLUSTER_ID_BINARY_INPUT, 0x0055, &awake);
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_AWAKE, &awake);
     esp_zigbee_lock_release();
 }
 
 void zb_report_wake(void)
 {
-    float f = (float)s_wake_count;  /* kept below 2^24 by the caller, so exact in a single-precision float */
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    set_and_report_ep(ZB_EP_WAKE, EZB_ZCL_CLUSTER_ID_ANALOG_INPUT, 0x0055, &f);
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_WAKE_COUNT, &s_wake_count);
     esp_zigbee_lock_release();
 }
 

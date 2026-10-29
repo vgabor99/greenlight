@@ -255,31 +255,35 @@ this screen was confirmed in sync with HA". If the time is old, the viewer knows
 
 ### 5.4 State exposed by the device
 
-Section 6.4 defines `awake`, `shown_view_id`, `dataset_hash` and the wake counter (standard Binary Input /
-Analog Input clusters) next to the battery and occupancy attributes. `shown_view_id` after a redraw is the
+Section 6.4 defines `awake`, `shown_view_id`, `dataset_hash` and `wake_count` (reported attributes of the
+custom cluster 0xFC8A) next to the battery and occupancy attributes. `shown_view_id` after a redraw is the
 acknowledgement of a view push, `dataset_hash` after a store is the acknowledgement of a dataset sync.
 
 ## 6. Zigbee data model (freeze before the first pairing)
 
-**Rev 6 note: the freeze is suspended during development.** Rev 6 changes endpoint 1's Analog Input meaning,
-adds endpoint 3 and replaces the custom attributes, so the device must be re-paired (remove it in Z2M first).
-Further re-pairs are acceptable until the data model settles; the rules below apply again from then on.
+**Rev 7 (2026-10-29): one endpoint and a small external converter.** Rev 6 needed no converter, but
+Z2M's generated definition for a device with several endpoints is broken for occupancy: it exposes
+`occupancy`, but its parser publishes `occupancy_1`, so the HA entity stayed null. The other state got
+meaningless names (`analog_input_1/2/3`, `binary_input_1`). With a converter, Z2M can publish
+custom-cluster attributes, so the device state moved into 0xFC8A. Endpoints 2 and 3 (which existed only
+because a standard Analog Input holds one float per endpoint) and the Analog / Binary Input clusters are
+gone. The OTA client is declared now. Rev 7 needs a re-pair (remove the device in Z2M first). After that,
+the freeze rules below apply.
 
-Goal: the first pairing is the last one, **and the MVP works with no external converter**. Z2M keeps what
-the interview found in `data/database.db` (endpoints, cluster lists, a few Basic attributes). Everything that
-lives there must be final before the first pairing. Everything else (exposed names, units, custom attributes
-added later) can change without re-pairing.
+Goal: the pairing that follows the rev 7 change is the last one. Z2M keeps what the interview found in
+`data/database.db` (endpoints, cluster lists, a few Basic attributes), and all of that must be final.
+Everything else can change without re-pairing: the converter, the exposed names and units, and custom
+attributes added later.
 
 ### 6.1 Freeze rules
 
 1. **Identity never changes:** `manufacturerName` = `Greenlight`, `modelId` = `greenlight-eink42` (the
    Basic strings are at most 32 characters). A new hardware variant gets a new model id, never a changed one.
-2. **Three endpoints, profile Home Automation, device id Simple Sensor (0x000C)**: endpoint 1 with the
-   cluster list in 6.3, final, including the clusters that are declared but not fully used yet (OTA client);
-   endpoint 2 with only an Analog Input for the wake counter; endpoint 3 with only an Analog Input for
-   `dataset_hash` (6.4; a cluster can appear only once per endpoint, so each float needs its own endpoint).
+2. **One endpoint (1), profile Home Automation, device id Simple Sensor (0x000C)**, with the cluster list in
+   6.3. The list is final, including the OTA client, which is declared but not used yet.
 3. **No reporting configuration from Z2M.** The device sends all reports on its own, to the coordinator
-   (0x0000), so nothing depends on Z2M's bind / Configure Reporting step succeeding on a sleeping device.
+   (0x0000), so nothing depends on Z2M's bind / Configure Reporting step succeeding on a sleeping device. The
+   converter has no configure step and no readable exposes.
 4. **Attribute ids are append-only.** Never reuse or renumber one. Retired in rev 6: 0x0000-0x0007 (the
    snapshot slots and commit); reserved for future work: 0x0010-0x0014 (6.7).
 5. Z2M availability is disabled for the device. `last_seen` (updated by every report) is the liveness signal
@@ -302,31 +306,33 @@ shows what it found in the device's *Exposes* tab. What a generic mapping cannot
 **custom clusters**: state in a manufacturer-specific cluster is not published, and nothing in Z2M knows how
 to build a custom command from your data. A converter is the way to teach it that.
 
-**Our decision: no converter in the MVP.** This design is built so that the generic mapping suffices:
+**Our decision (rev 7): a small converter, `z2m/greenlight.mjs` in this repo.** Rev 5 and 6 avoided one and
+put all state into standard clusters. The first pairings showed what that costs. The Binary and Analog Input
+values arrived as `binary_input_1` and `analog_input_1/2/3`. Occupancy did not work at all: on a device with
+several endpoints, the generated definition exposes `occupancy` but publishes `occupancy_1`. The converter:
 
-- All *state* the HA side needs is in **standard clusters** (6.4): battery in Power Configuration, the PIR in
-  Occupancy Sensing, `awake` in Binary Input, `shown_view_id`, the wake counter and `dataset_hash` in Analog
-  Input (endpoints 1, 2, 3).
-- All *input* to the display is plain **attribute writes** to a custom cluster, which Z2M can send itself
-  through the documented raw `write` message on `zigbee2mqtt/<device>/set` (6.5). No custom command and no
-  custom converter code is involved. The Z2M documentation describes this raw read / write as meant for
-  development and debugging, which is acceptable for a first version; it does mean HA publishes a verbose
-  JSON message instead of a friendly one.
+- declares 0xFC8A as the custom cluster `greenlight` (`deviceAddCustomCluster`). Its reported attributes
+  carry the device state (6.4) and become the entities `wake_count`, `shown_view_id`, `dataset_hash` and
+  `awake`;
+- uses zigbee-herdsman-converters' own `battery()` and `occupancy()` for Power Configuration and
+  Occupancy Sensing, with reporting off;
+- has no configure step, and every expose is STATE only (no reads to a sleeping device; freeze rule 3).
 
-**What is not verified** (to check at the first pairing, in this order):
+All *input* to the display stays plain **attribute writes** to 0xFC8A, which HA sends through Z2M's
+documented raw `write` message on `zigbee2mqtt/<device>/set` (6.5; verified on the rev 5 and 6 benches).
+Numeric attribute ids keep working with the cluster now known: zigbee-herdsman looks a string key up by
+name, and a numeric key falls back to a raw write with the given type. The converter also declares the
+input attributes as writable, so a write by name works as well (`{"viewBits": 5}`, no type). A friendlier
+`toZigbee` (one `view` message for the four writes, one `dataset` message for the whole sync) can be added
+to the converter later without a firmware change or a re-pair.
 
-1. Which entities the generated mapping creates for Binary Input and Analog Input, and under which names
-   (the documentation only promises the standard ZCL features; battery and occupancy are expected). If they
-   are not exposed, the state never reaches HA.
-2. Whether the raw `write` accepts a cluster given only by its numeric id (0xFC8A) with attributes outside
-   the ZCL specification given as `{"value": ..., "type": 66}`. The documentation shows this form for
-   attributes; for a cluster id Z2M does not know it does not say.
-
-**Fallback if either fails: a very small converter, with no firmware change and no re-pairing.** The
-clusters are already declared on the device (frozen), so a converter only adds knowledge on the Z2M side
-(`numeric` / `binary` entries for the standard clusters, and/or `deviceAddCustomCluster` for 0xFC8A). It
-would be a file of about twenty lines, and it can be added at any time without touching the cache. This is
-why the design can promise a final first try even though the "no converter" part is not proven.
+**Install.** Turn on `advanced.enable_external_js` in Z2M (needs a restart). Copy the file to
+`data/external_converters/greenlight.mjs` or send it with `zigbee2mqtt/bridge/request/converter/save`. A
+copied file and folder must belong to Z2M's user (`chown -R --reference=data data/external_converters`):
+Z2M copies the file to a temp file in that folder before loading it, and with root ownership that fails
+(`EACCES`, "Invalid external converter ... was ignored").
+Pair the device after the converter is loaded. A converter loaded later also works: Z2M picks the
+definition by the fingerprint.
 
 ### 6.3 Endpoint 1 clusters
 
@@ -335,34 +341,31 @@ why the design can promise a final first try even though the "no converter" part
 | Basic 0x0000 | server | identity, power source, firmware version |
 | Power Configuration 0x0001 | server | battery (6.6) |
 | Occupancy Sensing 0x0406 | server | the PIR as an HA presence sensor |
-| Binary Input 0x000F | server | `awake` (`presentValue`) |
-| Analog Input 0x000C | server | `shown_view_id` (`presentValue`) |
-| `greenlight` custom 0xFC8A | server | the display input: view and dataset attributes (6.5), writable by the coordinator |
+| `greenlight` custom 0xFC8A | server | the display input (view and dataset attributes, 6.5, writable by the coordinator) and the device state (6.4, reported) |
 | OTA Upgrade 0x0019 | client | reserved for a later firmware update, so the cluster list never changes. Not implemented yet. |
 
-Endpoint 2 has a single cluster: Analog Input 0x000C (server), the wake counter (`presentValue`).
-Endpoint 3 likewise: Analog Input 0x000C (server), `dataset_hash` (`presentValue`).
+No other endpoints (rev 6 had endpoints 2 and 3, one Analog Input each; gone in rev 7).
 
-(Housekeeping clusters the SDK needs, such as Identify, are fine.) 0xFC8A was picked arbitrarily; check it
-does not collide with a cluster zigbee-herdsman already names. It is used **without** a manufacturer code in
-the ZCL frames (the id is in the manufacturer-specific range 0xFC00-0xFFFF); if the first test shows the SDK
-or Z2M insists on one, adding it is a firmware change (and a raw-write option) only.
+0xFC8A was picked arbitrarily and is used **without** a manufacturer code in the ZCL frames (the id is in
+the manufacturer-specific range 0xFC00-0xFFFF); the SDK, Z2M and the raw write accept that (rev 5 and 6
+benches).
 
-### 6.4 State: device to HA (standard clusters, all reported by the device itself)
+### 6.4 State: device to HA (all reported by the device itself)
 
-| Cluster / attribute | Type | Meaning |
-|---|---|---|
-| Power Configuration `batteryPercentageRemaining` 0x0021 | uint8, **0-200 = 0-100 %** | battery charge (MVP: always 200) |
-| Power Configuration `batteryVoltage` 0x0020 | uint8, units of 100 mV | battery voltage (MVP: always 42) |
-| Power Configuration `batteryAlarmState` 0x003E | bitmap32 | low-battery flags (MVP: 0) |
-| Occupancy Sensing `occupancy` 0x0000 | bitmap8, bit 0 | the PIR is active; `occupancySensorType` 0x0001 = 0 (PIR) |
-| Binary Input `presentValue` 0x0055 | bool | **`awake`**: joined and listening, can receive pushes |
-| Analog Input `presentValue` 0x0055 | single float | **`shown_view_id`**: `id` of the view on the panel (5.2; 0 = none) |
-| Endpoint 2 Analog Input `presentValue` 0x0055 | single float | **`wake`**: the wake counter, +1 on every boot (every wake is a boot), 24 bits, kept in NVS. **HA's push trigger.** |
-| Endpoint 3 Analog Input `presentValue` 0x0055 | single float | **`dataset_hash`**: hash of the stored dataset (5.1; 0 = none) |
+| Cluster / attribute | Type | Z2M name | Meaning |
+|---|---|---|---|
+| Power Configuration `batteryPercentageRemaining` 0x0021 | uint8, **0-200 = 0-100 %** | `battery` | battery charge (MVP: always 200) |
+| Power Configuration `batteryVoltage` 0x0020 | uint8, units of 100 mV | (not exposed) | battery voltage (MVP: always 42) |
+| Power Configuration `batteryAlarmState` 0x003E | bitmap32 | (not exposed) | low-battery flags (MVP: 0) |
+| Occupancy Sensing `occupancy` 0x0000 | bitmap8, bit 0 | `occupancy` | the PIR is active; `occupancySensorType` 0x0001 = 0 (PIR) |
+| 0xFC8A `wake_count` 0x0040 | uint32 (0x23) | `wake_count` | the wake counter, +1 on every boot (every wake is a boot), 24 bits, kept in NVS. **HA's push trigger.** |
+| 0xFC8A `shown_view_id` 0x0041 | uint32 (0x23) | `shown_view_id` | `id` of the view on the panel (5.2; 0 = none) |
+| 0xFC8A `dataset_hash` 0x0042 | uint32 (0x23) | `dataset_hash` | hash of the stored dataset (5.1; 0 = none) |
+| 0xFC8A `awake` 0x0043 | boolean (0x10) | `awake` | joined and listening, can receive pushes |
 
-**Ids and hashes are 24 bits** (0 to 16777215), so they travel exactly in a single-precision float. HA
-chooses them (5.1, 5.2); the device stores and echoes them and never computes them.
+The 0xFC8A state attributes are read-only for the network (readable and reportable). **Ids and hashes are
+24 bits** (0 to 16777215; rev 6 needed that for the Analog Input's float, and it stays so HA's templates don't
+change). HA chooses them (5.1, 5.2); the device stores and echoes them and never computes them.
 
 Percent note (known pitfall, kept for the real battery code): the ZCL percentage is in half percents, and Z2M
 divides by 2, so 100 % is the raw value 200.
@@ -372,8 +375,7 @@ divides by 2, so 100 % is the raw value 200.
 wake risks a 13 s stall, ZIGBEE_PAYLOAD.md 7.2). HA decides from the values Z2M has cached:
 `dataset_hash` and `shown_view_id` only change when the device reports them, and the device does not change
 them while asleep, so the cached values are current. `REPORT_DELAY_MS` (3 s) after the wake counter, when
-the view push has normally been handled, the rest follows: `dataset_hash`, `shown_view_id`, Binary Input
-`awake` = true, Power Configuration, Occupancy. In INTERVIEW (after a pairing, when Z2M has no cached
+the view push has normally been handled, the rest follows: `dataset_hash`, `shown_view_id`, `awake` = true, Power Configuration, Occupancy. In INTERVIEW (after a pairing, when Z2M has no cached
 values) all of them are reported at once, the wake counter last.
 
 **Why a counter and not `awake`.** `awake = false` is sent best effort just before the radio goes off. If it
@@ -485,7 +487,7 @@ is on the future-work list below.
 ### 6.7 Future work (after the MVP; none of this is in the MVP firmware)
 
 These were considered and deliberately dropped from the MVP. Append-only ids are reserved so they can be
-added later without a re-pair (attributes of the custom cluster only show up in HA with a converter; see
+added later without a re-pair (a new attribute of the custom cluster also needs a line in the converter,
 6.8).
 
 | Reserved id (0xFC8A) | Name | Type | Meaning |
@@ -501,29 +503,13 @@ capacitor at the pin; first check whether the XIAO ESP32-C6 already has a batter
 percentage curve and low-battery thresholds, measured once per wake before the radio and the panel start;
 OTA; and a converter if the generic mapping is not good enough.
 
-### 6.8 If a converter is needed later
+### 6.8 The converter
 
-Outline only (file under `external_converters/`, `enable_external_js` on, file name and API to be checked
-against the installed Z2M):
-
-```js
-import {battery, occupancy, deviceAddCustomCluster} from 'zigbee-herdsman-converters/lib/modernExtend';
-export default {
-    fingerprint: [{modelID: 'greenlight-eink42', manufacturerName: 'Greenlight'}],
-    model: 'greenlight-eink42', vendor: 'Greenlight', description: 'E-paper problem list',
-    extend: [
-        deviceAddCustomCluster('greenlight', {ID: 0xFC8A, attributes: {...}, commands: {}, commandsResponse: {}}),
-        battery({percentage: true, voltage: false, lowStatus: true, percentageReporting: false, voltageReporting: false}),
-        occupancy(),
-        /* numeric / binary entries for the Analog Input (ep 1, 2, 3) and Binary Input presentValue:
-           shown_view_id, wake, dataset_hash, awake */
-    ],
-    toZigbee: [ /* optional: friendly "view" {ds, bits, time, id} and "dataset" JSON -> the writes of 6.5 */ ],
-};
-```
-
-The `toZigbee` part would turn a friendly JSON message into the writes of 6.5, so HA does not have to
-publish raw write messages. None of it changes the device.
+`z2m/greenlight.mjs` (6.2). Written against Z2M 2.12.1, zigbee-herdsman-converters 26.76 and
+zigbee-herdsman 10.6: `deviceAddCustomCluster('greenlight', ...)` with every 0xFC8A attribute (inputs
+writable, state read-only), `battery()` and `occupancy()` with reporting off, `numeric` for `wake_count`,
+`shown_view_id` and `dataset_hash`, `binary` for `awake` (all STATE only, diagnostic). A new attribute
+(6.7) needs a line in the custom cluster and an expose here, then a Z2M restart; no re-pair.
 
 ### 6.9 If the cache bites anyway
 
@@ -534,12 +520,9 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 
 ## 7. Home Assistant / Zigbee2MQTT
 
-- **No external converter in the MVP** (6.2). Z2M's generic mapping exposes the standard-cluster state
-  (`battery`, `occupancy`, `awake` from Binary Input, `shown_view_id`, the wake counter and `dataset_hash`
-  from the Analog Inputs on endpoints 1, 2, 3). Z2M logs a warning that the device is not supported; that is
-  expected. Disable Z2M availability for this device (for battery devices it only trips after hours, so it
-  says nothing useful). Fallback, if the generic mapping hides an entity or refuses the raw write: the small
-  converter of 6.8, no device change.
+- **External converter `z2m/greenlight.mjs`** (6.2, 6.8). It exposes `battery`, `occupancy`, `awake`,
+  `wake_count`, `shown_view_id` and `dataset_hash`. Disable Z2M availability for this device (for battery
+  devices it only trips after hours, so it says nothing useful).
 - **HA dataset** (5.1): the ordered list of up to 32 line texts, one per watched entity (for example a
   template that maps each door / window / light to "Kitchen window open"), and its 24-bit `ds_hash`. Append
   new entities at the end, so their index stays stable.
@@ -561,10 +544,8 @@ re-interview action (from memory: verify), which needs the device awake, hence t
     (average 0.17 s) in 36 of 39 wakes; 2 took about 13 s.
 - `awake` is considered true only if the last report is younger than about 90 s (covers a device that
   died without saying goodbye).
-- The MQTT entity names for `awake`, `shown_view_id`, the wake counter and `dataset_hash` are whatever Z2M's
-  generic mapping produces (rev 5 bench: `binary_input_1`, `analog_input_1`, `analog_input_2`; endpoint 3 is
-  expected as `analog_input_3`); check the device's Exposes tab after pairing and put them into the
-  automation.
+- The MQTT state keys are the converter's names: `awake`, `shown_view_id`, `wake_count`, `dataset_hash`
+  (plus `occupancy`, `battery`).
 
 ## 8. Display (MVP)
 
@@ -644,7 +625,7 @@ retained RAM assumed not to survive a software restart (NVS in the MVP).
 
 Also decided (rev 5): manufacturer name `Greenlight`; no external converter in the MVP (generic Z2M mapping +
 raw attribute writes, section 6); state in standard clusters (Power Configuration, Occupancy, Binary Input,
-Analog Input), 24-bit hash; battery is a fixed 100 % in the MVP (single 1000 mAh LiPo with protection
+Analog Input; replaced in rev 7), 24-bit hash; battery is a fixed 100 % in the MVP (single 1000 mAh LiPo with protection
 circuit); `join_time_ms`, `wake_reason`, `last_awake_s`, `panel_error` and a real battery measurement are
 future work (6.7).
 
@@ -653,15 +634,18 @@ texts at most 26 characters, the view as one 4-record write per wake (6.5); the 
 time that HA sends on every wake (5.3); `dataset_hash` on a third endpoint; the wake counter stays as HA's
 push trigger and is the only report before the push (6.4); re-pairing is acceptable during development (6).
 
+Also decided (rev 7, 2026-10-29): one endpoint; the device state (`wake_count`, `shown_view_id`,
+`dataset_hash`, `awake`) in the custom cluster 0xFC8A as uint32 / boolean; a small external converter
+(`z2m/greenlight.mjs`) because Z2M's generated definition broke occupancy on the multi-endpoint device; the
+OTA client cluster declared (6.3); HA input unchanged (raw writes, 6.5).
+
 Open:
 
 - **Q1** Real rejoin time (measure once Zigbee runs; until `join_time_ms` exists, from the serial log).
 - **Q2** Retained RAM across deep sleep is fine on the C6; across `esp_restart()` it is unverified. Only
   matters for flash wear, not for correctness.
-- **Q3** At the first pairing, in this order: what Z2M's generic mapping exposes for Binary Input / Analog
-  Input and under which names; whether the raw `write` to cluster 0xFC8A with typed attribute ids works; and
-  whether the SDK / Z2M accept the custom cluster without a manufacturer code (6.2, 6.3). Each has a
-  fallback that needs no re-pairing.
+- **Q3** Settled in rev 7: the generated mapping was not good enough (6.2), so there is a converter; the raw
+  `write` to 0xFC8A with typed attribute ids and no manufacturer code works (rev 5 and 6 benches).
 - **Q4** OTA: the reserved OTA client cluster (6.3) is declared now so the cluster list never changes; the
   partition table (two app slots in 2 MB) is a later, USB-flashed change.
 - **Q6** (parked) The coordinator sometimes refuses Z2M's route discovery to the device with `ZDO extRouteDisc
@@ -689,8 +673,10 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
    6.5, endpoint 3 for `dataset_hash`, the wake report order of 6.4 (wake counter first, the rest after
    `REPORT_DELAY_MS`), dataset and shown view in NVS, the debug screen of 8.1. Re-pair. Bench test with the
    paced write test extended for views and datasets, with a reset before every wake.
+2c. **Rev 7: one endpoint + converter.** Device state in 0xFC8A (6.4), the OTA client declared, the
+   converter of 6.8 installed in Z2M. Re-pair; check the exposes, then rerun the paced write test.
 3. **HA side and first pairing checks:** pair with Z2M and settle Q3 (what is exposed, whether the raw writes
-   work); then the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Add the small converter of 6.8 only if Q3 requires it. Measure end-to-end
+   work, settled in rev 7); then the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Measure end-to-end
    latency. Disable Z2M availability for the device.
 4. **Proper deep sleep:** wake on D0 and D1 (replace `st_sleep`), retained state in retained RAM. Then the
    optimizations O1-O3.

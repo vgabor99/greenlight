@@ -147,8 +147,8 @@ static render_shown_t shown;
 static bool           oos;  /* the last view received was for another dataset (not stored) */
 static volatile bool  view_seen;  /* a view was applied in this wake (VIEW_WAIT_MS) */
 
-/* Every boot is a wake (the sleep ends in a restart), so count boots. 24 bits, so the value is exact in the
- * Analog Input's float; one u32 write per wake is negligible flash wear for NVS. */
+/* Every boot is a wake (the sleep ends in a restart), so count boots. 24 bits, like the ids and hashes
+ * (DESIGN.md 6.4); one u32 write per wake is negligible flash wear for NVS. */
 static uint32_t wake_count_next(void)
 {
     uint32_t n = 0;

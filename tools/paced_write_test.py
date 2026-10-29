@@ -10,7 +10,7 @@ and only publish after Z2M has received the wake report, as the HA automation do
 
 Env: MQTT_HOST (default 192.168.0.32), MQTT_PORT (1883), MQTT_USER, MQTT_PASS.
 --settle=S: after the wake trigger, wait S seconds before the first write (default 0.5).
-The wake trigger is a change of the wake counter (analog_input_2) in the device's Z2M state, as in the HA
+The wake trigger is a change of wake_count in the device's Z2M state, as in the HA
 automation (DESIGN.md 7), not the serial log.
 
 --ds-lines=N: entries in the test dataset, 1 to 32 (default 8).
@@ -70,9 +70,9 @@ def log(src, text):
 # ---- MQTT: Z2M log lines about the device, and the device's own state messages ----
 z2m_events = []      # (t, message) for warnings/errors about the device
 device_msgs = []     # t of every state message the device published through Z2M
-wake_changes = []    # (t, value) of the wake counter (analog_input_2) in every device message
+wake_changes = []    # (t, value) of wake_count in every device message
 last_wake = [None]
-last_ds = [None]     # the device's dataset_hash (analog_input_3) as Z2M last published it
+last_ds = [None]     # the device's dataset_hash as Z2M last published it
 cli = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 if os.environ.get("MQTT_USER"):
     cli.username_pw_set(os.environ["MQTT_USER"], os.environ.get("MQTT_PASS"))
@@ -87,9 +87,9 @@ def on_msg(c, u, m):
         log("dev>", m.payload.decode(errors="replace"))
         try:
             st = json.loads(m.payload)
-            w = st.get("analog_input_2")
-            if st.get("analog_input_3") is not None:
-                last_ds[0] = int(st["analog_input_3"])
+            w = st.get("wake_count")
+            if st.get("dataset_hash") is not None:
+                last_ds[0] = int(st["dataset_hash"])
         except (ValueError, AttributeError):
             w = None
         if w is not None:
@@ -223,7 +223,7 @@ def reset_device():
 
 
 def wait_for_wake(t_reset, timeout=30.0):
-    """Wait for the HA trigger: Z2M publishes this boot's wake counter (analog_input_2), then settle.
+    """Wait for the HA trigger: Z2M publishes this boot's wake_count, then settle.
     This boot's value is the "wake=N" the device prints at boot; an earlier value is Z2M's cached state."""
     while time.perf_counter() - t_reset < timeout:
         boot = next((l for t, l in serial_lines if t > t_reset and " wake=" in l), None)
