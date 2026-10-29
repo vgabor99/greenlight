@@ -523,12 +523,33 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 - **External converter `z2m/greenlight.mjs`** (6.2, 6.8). It exposes `battery`, `occupancy`, `awake`,
   `wake_count`, `shown_view_id` and `dataset_hash`. Disable Z2M availability for this device (for battery
   devices it only trips after hours, so it says nothing useful).
-- **HA dataset** (5.1): the ordered list of up to 32 line texts, one per watched entity (for example a
-  template that maps each door / window / light to "Kitchen window open"), and its 24-bit `ds_hash`. Append
-  new entities at the end, so their index stays stable.
-- **HA view** (5.2): `bits` (which entities are in their problem state), `view_id` = 24-bit hash of `ds_hash`
-  and `bits` (never 0), and `time` = now as local seconds since 1970.
-- **HA automation**, triggered by a change of the wake counter, of `view_id` or of `ds_hash`:
+- **Implemented in `ha/`** (copies of what runs in HA; deployed through ha-mcp):
+  `ha/custom_templates/greenlight.jinja` (the rules, as macros) and `ha/packages/greenlight.yaml`
+  (`sensor.greenlight_dataset`, `sensor.greenlight_view`, `automation.greenlight_push`). After editing the
+  macros, call `homeassistant.reload_custom_templates`; after the package, reload templates / automations.
+- **HA dataset** (5.1), built automatically with the rules of the "Bezárva?" dashboard (`dashboard-away`):
+  one line per watched entity **whatever its state**, so the dataset only changes when entities are
+  added, removed or renamed. Nothing is listed by hand; the label `exclude_from_alerts` keeps an entity out.
+
+  | Prio | Match | Line text | Active when |
+  |---|---|---|---|
+  | 1 | `alarm_control_panel.*` (two lines) | `<name> kikapcsolva` / `<name> ismeretlen` | `disarmed` / neither `disarmed` nor `armed_*` |
+  | 2-3 | binary_sensor `moisture`, `problem` | `<name>` | `on` |
+  | 4-6 | binary_sensor `lock`, `door`, `window` | `<name> nyitva` | `on` |
+  | 7 | `light.*` except groups (`entity_id` attribute) | `<name> ég` | `on` |
+  | 8 | `remote.*` | `<name>` | not `off` |
+
+  Order: priority, then `entity_id`. Sorted rather than "append new entities at the end": an added entity
+  changes the hash and resyncs anyway, and priority order is the better display order. Texts are cut to 64
+  UTF-8 bytes. More than 32 entities: the first 31 stay and line 31 is the fixed catch-all `…és még több`,
+  active when any of the remaining entities is; its text never changes, so trimming causes no resyncs.
+  Like the dashboard, an `unavailable` sensor is not active. `ds_hash` = first 6 hex digits of the sha1 of
+  the lines joined by newlines (0 becomes 1).
+- **HA view** (5.2): `bits` (which lines have a member in its problem state), `view_id` = 24-bit hash of
+  `"<ds_hash>:<bits>"` (never 0), and `time` = now as local seconds since 1970.
+- **HA automation** (`mode: queued`, `max: 2`: a run can take a minute, and the waiting run reads the newest
+  values when it sends, so it covers any number of changes meanwhile), triggered by a change of the wake
+  counter or of `view_id` (which also changes with `ds_hash`):
   - on a wake counter change: (1) if the cached `dataset_hash` != `ds_hash`, run the dataset sync (6.5:
     every `ds_entry`, 100 ms apart, then `ds_commit`) and wait for `dataset_hash` to match, up to about 20 s;
     (2) send the view write (one message, all four attributes), **always**, even when `shown_view_id`

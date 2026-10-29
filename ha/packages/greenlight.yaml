@@ -1,0 +1,134 @@
+# config/packages/greenlight.yaml (source: greenlight repo, ha/packages/)
+# The Greenlight e-paper display (DESIGN.md 7): the dataset and view sensors and the push automation.
+# The dataset rules are in custom_templates/greenlight.jinja.
+
+template:
+  - sensor:
+      # state: the 24-bit dataset hash; lines: the texts; items: the members of each line
+      - name: Greenlight dataset
+        unique_id: greenlight_dataset
+        state: >
+          {% from 'greenlight.jinja' import gl_items, gl_hash24 %}
+          {{ (gl_hash24 | as_function)((gl_items | as_function)() | map(attribute='t') | join('\n')) }}
+        attributes:
+          lines: >
+            {% from 'greenlight.jinja' import gl_items %}
+            {{ (gl_items | as_function)() | map(attribute='t') | list }}
+          items: >
+            {% from 'greenlight.jinja' import gl_items %}
+            {{ (gl_items | as_function)() | map(attribute='m') | list }}
+
+      # state: the 24-bit view id (hash of ds and bits; the time is not part of it)
+      - name: Greenlight view
+        unique_id: greenlight_view
+        availability: "{{ states('sensor.greenlight_dataset') | int(0) > 0 }}"
+        state: >
+          {% from 'greenlight.jinja' import gl_bits, gl_hash24 %}
+          {% set bits = (gl_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) %}
+          {{ (gl_hash24 | as_function)(states('sensor.greenlight_dataset') ~ ':' ~ bits) }}
+        attributes:
+          bits: >
+            {% from 'greenlight.jinja' import gl_bits %}
+            {{ (gl_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
+          ds: "{{ states('sensor.greenlight_dataset') | int(0) }}"
+
+automation:
+  - id: greenlight_push
+    alias: Greenlight push
+    description: >-
+      Pushes the dataset (when the device has another one) and the view to the Greenlight display,
+      on every wake and on every view change while it is awake (DESIGN.md 7).
+    # queued: a run can take a minute (dataset sync, ack waits). One waiting run reads the newest
+    # values when it sends, so it covers any number of changes made meanwhile.
+    mode: queued
+    max: 2
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: sensor.gf_lobby_greenlight_wake_count
+        not_from: [unknown, unavailable]
+        not_to: [unknown, unavailable]
+        id: wake
+      - trigger: state
+        entity_id: sensor.greenlight_view
+        not_from: [unknown, unavailable]
+        not_to: [unknown, unavailable]
+        for: 1
+        id: change
+    conditions:
+      - condition: or
+        conditions:
+          - condition: trigger
+            id: wake
+          # awake, and heard from in the last 90 s (heartbeat every 30 s)
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: binary_sensor.gf_lobby_greenlight_awake
+                state: "on"
+              - condition: template
+                value_template: >
+                  {{ now() - states.binary_sensor.gf_lobby_greenlight_awake.last_reported < timedelta(seconds=90) }}
+      - condition: template
+        value_template: "{{ states('sensor.greenlight_dataset') | int(0) > 0 }}"
+    variables:
+      topic: zigbee2mqtt/gf_lobby_greenlight/set
+      device_ds: sensor.gf_lobby_greenlight_dataset_hash
+      device_view: sensor.gf_lobby_greenlight_shown_view_id
+    actions:
+      - alias: Dataset sync, if the device has another dataset
+        if:
+          - condition: template
+            value_template: "{{ states(device_ds) | int(0) != states('sensor.greenlight_dataset') | int(0) }}"
+        then:
+          - repeat:
+              sequence:
+                - variables:
+                    ds: "{{ states('sensor.greenlight_dataset') | int(0) }}"
+                    lines: "{{ state_attr('sensor.greenlight_dataset', 'lines') }}"
+                    entries: >
+                      {% from 'greenlight.jinja' import gl_entries %}
+                      {{ (gl_entries | as_function)(ds, lines) }}
+                - repeat:
+                    for_each: "{{ entries }}"
+                    sequence:
+                      - action: mqtt.publish
+                        data:
+                          topic: "{{ topic }}"
+                          payload: >
+                            {{ {'write': {'cluster': 64650, 'payload':
+                                {'48': {'value': repeat.item, 'type': 66}}}} | to_json }}
+                      - delay:
+                          milliseconds: 100
+                - action: mqtt.publish
+                  data:
+                    topic: "{{ topic }}"
+                    payload: >
+                      {{ {'write': {'cluster': 64650, 'payload':
+                          {'49': {'value': (lines | count) * 16777216 + ds, 'type': 35}}}} | to_json }}
+                - wait_template: "{{ states(device_ds) | int(0) == ds }}"
+                  timeout: 20
+              until:
+                - condition: template
+                  value_template: "{{ wait.completed or repeat.index >= 3 }}"
+      - alias: View write, always (it carries the new footer time)
+        repeat:
+          sequence:
+            - variables:
+                view_id: "{{ states('sensor.greenlight_view') | int(0) }}"
+                write:
+                  cluster: 64650
+                  payload:
+                    "32": {value: "{{ state_attr('sensor.greenlight_view', 'bits') | int(0) }}", type: 35}
+                    "33": {value: "{{ state_attr('sensor.greenlight_view', 'ds') | int(0) }}", type: 35}
+                    "34": {value: "{{ (now().timestamp() + now().utcoffset().total_seconds()) | int }}", type: 35}
+                    "35": {value: "{{ view_id }}", type: 35}
+            - action: mqtt.publish
+              data:
+                topic: "{{ topic }}"
+                payload: "{{ {'write': write} | to_json }}"
+            - wait_template: "{{ states(device_view) | int(0) == view_id }}"
+              timeout: 20
+          until:
+            - condition: template
+              value_template: "{{ wait.completed or repeat.index >= 3 }}"

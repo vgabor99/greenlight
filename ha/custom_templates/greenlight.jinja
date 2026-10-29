@@ -1,0 +1,122 @@
+{# config/custom_templates/greenlight.jinja (source: greenlight repo, ha/custom_templates/) #}
+{# Dataset and view for the Greenlight e-paper display (DESIGN.md 5, 7). The rules mirror the
+   "Bezárva?" dashboard (dashboard-away): every watched entity is one dataset line, whatever its
+   current state, so the dataset only changes when entities are added, removed or renamed. Nothing
+   is listed by hand: entities are found by domain / device class, and the label
+   `exclude_from_alerts` keeps one out. Order: rule priority, then entity_id.
+
+   Use with `as_function`, e.g. `{% set items = (gl_items | as_function)() %}`. #}
+
+{# The watched entities as dataset items: [{'t': text, 'm': [[entity_id, kind], ...]}, ...].
+   More than max_lines items: the first max_lines - 1 stay and the last line is a fixed
+   catch-all whose members are all the others. Texts are cut to 64 UTF-8 bytes. #}
+{% macro gl_items(max_lines=32, returns=none) %}
+  {%- set excl = label_entities('exclude_from_alerts') -%}
+  {%- set ns = namespace(items=[]) -%}
+  {%- for s in states.alarm_control_panel | rejectattr('entity_id', 'in', excl) | sort(attribute='entity_id') -%}
+    {%- set ns.items = ns.items + [{'t': s.name ~ ' kikapcsolva', 'm': [[s.entity_id, 'disarmed']]},
+                                   {'t': s.name ~ ' ismeretlen', 'm': [[s.entity_id, 'alarm_unknown']]}] -%}
+  {%- endfor -%}
+  {%- set bs = states.binary_sensor | rejectattr('entity_id', 'in', excl)
+               | selectattr('attributes.device_class', 'defined') | sort(attribute='entity_id') | list -%}
+  {%- for dc, suffix in [('moisture', ''), ('problem', ''), ('lock', ' nyitva'), ('door', ' nyitva'), ('window', ' nyitva')] -%}
+    {%- for s in bs | selectattr('attributes.device_class', 'eq', dc) -%}
+      {%- set ns.items = ns.items + [{'t': s.name ~ suffix, 'm': [[s.entity_id, 'on']]}] -%}
+    {%- endfor -%}
+  {%- endfor -%}
+  {#- light groups carry an entity_id attribute; their members are listed anyway -#}
+  {%- for s in states.light | rejectattr('entity_id', 'in', excl) | rejectattr('attributes.entity_id', 'defined') | sort(attribute='entity_id') -%}
+    {%- set ns.items = ns.items + [{'t': s.name ~ ' ég', 'm': [[s.entity_id, 'on']]}] -%}
+  {%- endfor -%}
+  {%- for s in states.remote | rejectattr('entity_id', 'in', excl) | sort(attribute='entity_id') -%}
+    {%- set ns.items = ns.items + [{'t': s.name, 'm': [[s.entity_id, 'not_off']]}] -%}
+  {%- endfor -%}
+
+  {%- if ns.items | length > max_lines -%}
+    {%- set rest = namespace(m=[]) -%}
+    {%- for i in ns.items[max_lines - 1:] -%}
+      {%- set rest.m = rest.m + i.m -%}
+    {%- endfor -%}
+    {%- set ns.items = ns.items[:max_lines - 1] + [{'t': '…és még több', 'm': rest.m}] -%}
+  {%- endif -%}
+
+  {%- set out = namespace(items=[]) -%}
+  {%- for i in ns.items -%}
+    {%- set c = namespace(t='', n=0, full=false) -%}
+    {%- for ch in i.t -%}
+      {%- set e = ch | urlencode -%}
+      {%- set b = (e | length) - 2 * e.count('%') -%}
+      {%- if c.full or c.n + b > 64 -%}
+        {%- set c.full = true -%}
+      {%- else -%}
+        {%- set c.t = c.t ~ ch -%}
+        {%- set c.n = c.n + b -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- set out.items = out.items + [{'t': c.t, 'm': i.m}] -%}
+  {%- endfor -%}
+  {% do returns(out.items) %}
+{% endmacro %}
+
+{# Whether one member is in its problem state. #}
+{% macro gl_active(entity_id, kind, returns=none) %}
+  {%- set s = states(entity_id) -%}
+  {%- if kind == 'disarmed' -%}
+    {% do returns(s == 'disarmed') %}
+  {%- elif kind == 'alarm_unknown' -%}
+    {% do returns(s != 'disarmed' and not s.startswith('armed_')) %}
+  {%- elif kind == 'not_off' -%}
+    {% do returns(s != 'off') %}
+  {%- else -%}
+    {% do returns(s == 'on') %}
+  {%- endif -%}
+{% endmacro %}
+
+{# The view bitfield over the dataset items' members (the `items` attribute of
+   sensor.greenlight_dataset): bit i set = some member of line i is active. #}
+{% macro gl_bits(items, returns=none) %}
+  {%- set active = gl_active | as_function -%}
+  {%- set ns = namespace(bits=0) -%}
+  {%- for members in items -%}
+    {%- set i = loop.index0 -%}
+    {%- for m in members if active(m[0], m[1]) -%}
+      {%- if loop.first -%}
+        {%- set ns.bits = ns.bits + 2 ** i -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endfor -%}
+  {% do returns(ns.bits) %}
+{% endmacro %}
+
+{# 24-bit hash of a text, never 0 (DESIGN.md 5.1, 5.2). #}
+{% macro gl_hash24(text, returns=none) %}
+  {%- set h = (text | sha1)[:6] | int(base=16) -%}
+  {% do returns(h if h else 1) %}
+{% endmacro %}
+
+{# The ds_entry strings of a dataset (DESIGN.md 6.5): `HHHHHH|II|text`, a line split into parts of
+   at most 26 UTF-8 bytes at character boundaries, II = index | part << 5 | more << 7. #}
+{% macro gl_entries(hash, lines, returns=none) %}
+  {%- set tag = '%06X' | format(hash) -%}
+  {%- set out = namespace(l=[]) -%}
+  {%- for line in lines -%}
+    {%- set i = loop.index0 -%}
+    {%- set p = namespace(parts=[''], n=0) -%}
+    {%- for ch in line -%}
+      {%- set e = ch | urlencode -%}
+      {%- set b = (e | length) - 2 * e.count('%') -%}
+      {%- if p.n + b > 26 -%}
+        {%- set p.parts = p.parts + [ch] -%}
+        {%- set p.n = b -%}
+      {%- else -%}
+        {%- set p.parts = p.parts[:-1] + [p.parts[-1] ~ ch] -%}
+        {%- set p.n = p.n + b -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- for part in p.parts -%}
+      {%- set ii = i + 32 * loop.index0 + (0 if loop.last else 128) -%}
+      {%- set out.l = out.l + [tag ~ '|' ~ '%02X' | format(ii) ~ '|' ~ part] -%}
+    {%- endfor -%}
+  {%- endfor -%}
+  {% do returns(out.l) %}
+{% endmacro %}
