@@ -8,28 +8,32 @@
    Use with `as_function`, e.g. `{% set items = (gl_items | as_function)() %}`. #}
 
 {# The watched entities as dataset items: [{'t': text, 'm': [[entity_id, kind], ...]}, ...].
-   More than max_lines items: the first max_lines - 1 stay and the last line is a fixed
-   catch-all whose members are all the others. Texts are cut to 64 UTF-8 bytes. #}
+   The text is `II|name|state` (DESIGN.md 5.1): II is the line icon's id in hex (the append-only
+   table in tools/gen_bitmaps.py: 00 alert-circle, 01 dots-horizontal, 02 door-open, 04 window-open,
+   08 lock-open-variant, 09 shield-off, 0D lightbulb-on, 13 remote-tv, 27 water), then the name and a
+   one- or two-word state. More than max_lines items: the first max_lines - 1 stay and the last line is
+   a fixed catch-all whose members are all the others. The name is cut so the text fits 64 UTF-8 bytes. #}
 {% macro gl_items(max_lines=32, returns=none) %}
   {%- set excl = label_entities('exclude_from_alerts') -%}
   {%- set ns = namespace(items=[]) -%}
   {%- for s in states.alarm_control_panel | rejectattr('entity_id', 'in', excl) | sort(attribute='entity_id') -%}
-    {%- set ns.items = ns.items + [{'t': s.name ~ ' kikapcsolva', 'm': [[s.entity_id, 'disarmed']]},
-                                   {'t': s.name ~ ' ismeretlen', 'm': [[s.entity_id, 'alarm_unknown']]}] -%}
+    {%- set ns.items = ns.items + [{'i': '09', 'n': s.name, 's': 'kikapcsolva', 'm': [[s.entity_id, 'disarmed']]},
+                                   {'i': '09', 'n': s.name, 's': 'ismeretlen', 'm': [[s.entity_id, 'alarm_unknown']]}] -%}
   {%- endfor -%}
   {%- set bs = states.binary_sensor | rejectattr('entity_id', 'in', excl)
                | selectattr('attributes.device_class', 'defined') | sort(attribute='entity_id') | list -%}
-  {%- for dc, suffix in [('moisture', ''), ('problem', ''), ('lock', ' nyitva'), ('door', ' nyitva'), ('window', ' nyitva')] -%}
+  {%- for dc, icon, state in [('moisture', '27', 'nedves'), ('problem', '00', 'hiba'), ('lock', '08', 'nyitva'),
+                              ('door', '02', 'nyitva'), ('window', '04', 'nyitva')] -%}
     {%- for s in bs | selectattr('attributes.device_class', 'eq', dc) -%}
-      {%- set ns.items = ns.items + [{'t': s.name ~ suffix, 'm': [[s.entity_id, 'on']]}] -%}
+      {%- set ns.items = ns.items + [{'i': icon, 'n': s.name, 's': state, 'm': [[s.entity_id, 'on']]}] -%}
     {%- endfor -%}
   {%- endfor -%}
   {#- light groups carry an entity_id attribute; their members are listed anyway -#}
   {%- for s in states.light | rejectattr('entity_id', 'in', excl) | rejectattr('attributes.entity_id', 'defined') | sort(attribute='entity_id') -%}
-    {%- set ns.items = ns.items + [{'t': s.name ~ ' ég', 'm': [[s.entity_id, 'on']]}] -%}
+    {%- set ns.items = ns.items + [{'i': '0D', 'n': s.name, 's': 'be', 'm': [[s.entity_id, 'on']]}] -%}
   {%- endfor -%}
   {%- for s in states.remote | rejectattr('entity_id', 'in', excl) | sort(attribute='entity_id') -%}
-    {%- set ns.items = ns.items + [{'t': s.name, 'm': [[s.entity_id, 'not_off']]}] -%}
+    {%- set ns.items = ns.items + [{'i': '13', 'n': s.name, 's': 'be', 'm': [[s.entity_id, 'not_off']]}] -%}
   {%- endfor -%}
 
   {%- if ns.items | length > max_lines -%}
@@ -37,13 +41,15 @@
     {%- for i in ns.items[max_lines - 1:] -%}
       {%- set rest.m = rest.m + i.m -%}
     {%- endfor -%}
-    {%- set ns.items = ns.items[:max_lines - 1] + [{'t': '…és még több', 'm': rest.m}] -%}
+    {%- set ns.items = ns.items[:max_lines - 1] + [{'i': '01', 'n': '…és még több', 's': '', 'm': rest.m}] -%}
   {%- endif -%}
 
   {%- set out = namespace(items=[]) -%}
   {%- for i in ns.items -%}
-    {%- set c = namespace(t='', n=0, full=false) -%}
-    {%- for ch in i.t -%}
+    {%- set tail = '|' ~ i.s -%}
+    {%- set e = tail | urlencode -%}
+    {%- set c = namespace(t='', n=3 + (e | length) - 2 * e.count('%'), full=false) -%}
+    {%- for ch in i.n -%}
       {%- set e = ch | urlencode -%}
       {%- set b = (e | length) - 2 * e.count('%') -%}
       {%- if c.full or c.n + b > 64 -%}
@@ -53,7 +59,7 @@
         {%- set c.n = c.n + b -%}
       {%- endif -%}
     {%- endfor -%}
-    {%- set out.items = out.items + [{'t': c.t, 'm': i.m}] -%}
+    {%- set out.items = out.items + [{'t': i.i ~ '|' ~ c.t ~ tail, 'm': i.m}] -%}
   {%- endfor -%}
   {% do returns(out.items) %}
 {% endmacro %}

@@ -4,6 +4,7 @@
 #include <time.h>
 #include "epd.h"
 #include "render.h"
+#include "screen.h"
 #include "u8g2.h"
 
 #define ADV   8   /* character advance of FONT (monospace) */
@@ -171,14 +172,13 @@ void render_build_rows(render_shown_t *out, const zb_dataset_t *ds, const zb_vie
         }
     }
     if (out->active > shown) {
-        snprintf(out->row[out->nrows++], sizeof(out->row[0]), "+%u more", out->active - shown);
+        snprintf(out->row[out->nrows++], sizeof(out->row[0]), "01|további %u|", out->active - shown);
     }
 }
 
-const uint8_t *render_status(const render_view_t *v)
+static void render_debug(const render_view_t *v)
 {
     text_init();
-    memset(fb, 0xFF, sizeof(fb));
 
     /* Header: state left, wake counter and uptime right */
     char right[24];
@@ -214,6 +214,16 @@ const uint8_t *render_status(const render_view_t *v)
     /* Received writes, newest first */
     for (int i = 0; i < v->rx_count && i < RENDER_RX_N; i++) {
         rx_row(Y_RX + i * PITCH, &v->rx[i]);
+    }
+}
+
+const uint8_t *render_status(const render_view_t *v)
+{
+    memset(fb, 0xFF, sizeof(fb));
+    if (RENDER_DEBUG_SCREEN) {
+        render_debug(v);
+    } else {
+        screen_draw(fb, v);
     }
     return fb;
 }

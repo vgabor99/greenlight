@@ -13,9 +13,9 @@ wakes got their view in 0.09-1.26 s (ZIGBEE_PAYLOAD.md 7.2).
 ## 1. Goal
 
 A battery-powered Zigbee device with a 4.2" 400x300 e-paper panel that shows Home Assistant's list of
-"problems" (doors and windows left open, lights left on, ...). Each line is a text (an icon later), e.g.
-`Living room door open`. An empty list shows a full-screen "All OK" graphic instead. A small footer shows
-when the screen was last confirmed up to date.
+"problems" (doors and windows left open, lights left on, ...). Each line is an icon, a name and a state,
+e.g. `Teraszajtó | nyitva`. An empty list shows a large "Minden OK" check instead. The header shows when the
+screen was last confirmed up to date.
 
 The device sleeps (deep sleep) whenever nobody is around and is alive and live-updating while someone is
 looking at it. The PIR sensor and the pair button are the only things that wake it, and the PIR (or the button) keeps it awake. Pairing to a Zigbee network
@@ -30,7 +30,7 @@ comes first: an unpaired device does nothing useful until it is paired.
                                                                                       PIR on -> wake
   automation <──── wake counter   <──────── standard cluster report <──────────────── rejoin, report wake
   dataset_hash (cached) != HA's?  ───────►  /set: ds_entry x N, ds_commit  ─────────► store dataset (rare)
-  every wake, and on any change   ───────►  /set: one view write (1 frame) ─────────► redraw lines + footer,
+  every wake, and on any change   ───────►  /set: one view write (1 frame) ─────────► redraw lines + time,  
                  shown_view_id    <──────── standard cluster report <──────────────── report shown_view_id
                                                                                       PIR off + timeout
                  awake=false      <──────────────────────────────────────────────────  report, deep sleep
@@ -110,8 +110,8 @@ States and transitions:
 |---|---|---|
 | **SLEEP** | nothing runs | PIR active or pair button pressed -> BOOT |
 | **BOOT** | init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
-| **UNPAIRED_WAIT** | shows the "press the pair button" screen; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN |
-| **PAIRING** | network steering; ignores the PIR; shows the pairing screen | joined -> INTERVIEW; `PAIR_MS` over -> "Pairing failed" screen, back to UNPAIRED_WAIT |
+| **UNPAIRED_WAIT** | shows "Csatlakozási hiba"; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN |
+| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIR_MS` over -> back to UNPAIRED_WAIT ("Csatlakozási hiba") |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state (6.4) so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `RUN_MS` as in 3.2 | `RUN_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK |
@@ -129,8 +129,8 @@ Rules that keep it simple:
 ### 3.4 MVP panel handling (full clear, optimize later)
 
 On every wake (BOOT), the panel gets a full clear (so the controller has a valid previous frame for
-partial updates, see CLAUDE.md), then the stored view (lines and footer time) is rendered right away, in
-parallel with the rejoin. When HA pushes the view (every wake: at least the footer time is new), the screen
+partial updates, see CLAUDE.md), then the stored view (lines and time) is rendered right away, in
+parallel with the rejoin. When HA pushes the view (every wake: at least the time is new), the screen
 is partially refreshed once more. Consequence: the screen flashes once per wake. The stored dataset and view (about
 1 KB) live in NVS (retained RAM later, 3.6), since the 15 KB framebuffer does not fit. Optimizations for later:
 
@@ -146,8 +146,7 @@ is partially refreshed once more. Consequence: the screen flashes once per wake.
 - all states exist; Zigbee is stubbed (join succeeds after 3 s, rejoin after 1 s, the pairing-window-over
   path is therefore not exercised); ERASE_NETWORK only clears the NVS flags;
 - `paired` and `pair_now` are in NVS; SLEEP is the simulation of 3.6;
-- every state shows the debug screen of 8.1 (state, shown view, last received writes) instead of the
-  real layout;
+- every state shows the proper screen of 8 (or, built with `DEBUG_SCREEN`, the debug screen of 8.1);
 - `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
 
 Tested on the board: unpaired start (no press: shutdown, still unpaired; press: pairing), 3 s hold erase and
@@ -206,21 +205,52 @@ often and is sent on every wake, in one Zigbee frame.
 
 ```json
 { "hash": 4821377,
-  "lines": [ "Front door open", "Garage door open", "Kitchen window open", "Living room light on" ] }
+  "lines": [ "02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "27|Mosogató|nedves" ] }
 ```
 
 - `lines`: **at most 32** entries (`ZB_DS_MAX`); the position is the line's **index** (0-31), which is its
   bit in the view. The order is the display order, so HA puts the most important lines first. Text is
   **UTF-8**, **at most 64 bytes** (`ZB_DS_CHARS`): HA cuts it at a character boundary. A Hungarian accented
   letter takes 2 bytes, so a line holds 32 to 64 characters. On the wire a line longer than 26 bytes comes in
-  up to 3 parts (6.5). The device replaces invalid UTF-8 and control characters with `?`. The panel shows
-  about 21 characters (8).
+  up to 3 parts (6.5). The device replaces invalid UTF-8 and control characters with `?`.
+- Line format (rev 8): `II|name|state`. `II` is the line icon's id, 2 hex digits (table below); `name` is
+  drawn in bold, `state` (one or two words, may be empty) right-aligned (8). HA cuts the name so the line
+  fits 64 bytes; the panel cuts what does not fit its row with "…". There is no other format: a line that
+  does not start with 2 hex digits and `|`, or has no second `|` or an empty name, is drawn as "??? ???"
+  with the fallback icon; an unknown icon id only gets the fallback icon.
 - `hash`: **24-bit**, chosen by HA, identifying the ordered list (e.g. the first 6 hex digits of a sha1 /
   md5 of the joined lines). **0 is reserved** for "no dataset" and never used. The device stores and echoes
   it; it never computes it. A changed text, a changed order or a new line gives a new hash, and HA resyncs.
 - The device keeps the accepted dataset in NVS (about 2.1 KB) and exposes its hash as `dataset_hash` (6.4).
 - Index stability: HA should append new entities rather than renumber, so a resync is a rare event, not
   part of every change. Correctness does not depend on it: any change of the list gives a new hash.
+
+**Line icons** (Material Design Icons 7.4.47, 25 px). The table is append-only, like the Zigbee model:
+HA's templates use the ids, so an entry is never moved or removed; new icons are added at the end
+(`LINE_ICONS` in `tools/gen_bitmaps.py`, then regenerate `main/bitmaps.c`). Most are not used yet; they are
+in the firmware so new kinds of lines need no reflash. Ids used by HA today: 00 (`problem`), 01 (catch-all),
+02 (door), 04 (window), 08 (lock), 09 (alarm), 0D (light), 13 (remote), 27 (moisture).
+
+| Id | Icon | Id | Icon | Id | Icon | Id | Icon |
+|---|---|---|---|---|---|---|---|
+| 00 | alert-circle (fallback) | 10 | led-strip-variant | 20 | washing-machine | 30 | thermometer |
+| 01 | dots-horizontal (overflow) | 11 | power-plug | 21 | tumble-dryer | 31 | water-percent |
+| 02 | door-open | 12 | television | 22 | dishwasher | 32 | weather-pouring |
+| 03 | door-sliding-open | 13 | remote-tv | 23 | robot-vacuum | 33 | weather-windy |
+| 04 | window-open | 14 | speaker | 24 | robot-mower | 34 | smoke-detector-variant |
+| 05 | window-shutter-open | 15 | fan | 25 | ev-station | 35 | fire |
+| 06 | garage-open-variant | 16 | air-conditioner | 26 | car | 36 | molecule-co |
+| 07 | gate-open | 17 | air-humidifier | 27 | water | 37 | molecule-co2 |
+| 08 | lock-open-variant | 18 | radiator | 28 | faucet | 38 | gas-burner |
+| 09 | shield-off | 19 | heat-pump | 29 | valve | 39 | trash-can |
+| 0A | shield-home | 1A | fireplace | 2A | water-pump | 3A | mailbox |
+| 0B | motion-sensor | 1B | stove | 2B | water-boiler | 3B | battery-low |
+| 0C | cctv | 1C | iron | 2C | sprinkler-variant | 3C | wifi-off |
+| 0D | lightbulb-on | 1D | coffee-maker | 2D | pool | | |
+| 0E | ceiling-light | 1E | kettle | 2E | fridge | | |
+| 0F | lamp | 1F | printer | 2F | snowflake | | |
+
+No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an alert device already.
 
 ### 5.2 View (HA side, pushed on every wake)
 
@@ -237,21 +267,20 @@ often and is sent on every wake, in one Zigbee frame.
 - `time`: the staleness time (5.3), local wall-clock time as seconds since 1970-01-01, i.e. HA's Unix time
   plus its UTC offset. The device formats it with no time zone knowledge. 0 = unknown.
 - Layout rule (device): the active lines in dataset order, at most 6 rows. With more than 6 active lines
-  the device shows the first 5 and "+N more" as the sixth row.
+  the device shows the first 5 and "további N" (dots icon) as the sixth row.
 
-### 5.3 Staleness footer
+### 5.3 Staleness time
 
-The screen is only as fresh as the last wake. The footer shows the view's `time`, meaning "the last time
+The screen is only as fresh as the last wake. The header shows the view's `time`, meaning "the last time
 this screen was confirmed in sync with HA". If the time is old, the viewer knows the data may be old.
 
 - HA sends the view **on every wake**, even when nothing changed, so the time advances; that is the one
   write per wake (6.5).
-- A view with the same `id` as the shown one only updates the time: the device redraws the footer (a
+- A view with the same `id` as the shown one only updates the time: the device redraws the time (a
   partial refresh) and reports `shown_view_id` again as the acknowledgement.
 - An out-of-sync view updates nothing, not even the time, so a device that cannot follow HA visibly ages.
-- The device stores the time with the view and draws it at every wake. The footer sits in a reserved strip
-  at the bottom of the screen (about 20 px), also on "All OK". Format: weekday and time, e.g. "Mon 14:32"
-  (final format in the renderer step).
+- The device stores the time with the view and draws it at every wake, at the right of the header, also
+  on "Minden OK": `update` icon, Hungarian weekday and time, e.g. "szombat, 18:46". No time (0): nothing.
 
 ### 5.4 State exposed by the device
 
@@ -409,7 +438,7 @@ matter:
 - `view_ds` != stored `dataset_hash`: **out of sync**. Nothing changes on the screen, not even the time;
   `shown_view_id` is not reported. The device reports `dataset_hash` (so HA's cached value is right) and
   counts it as activity, so it stays awake for the resync.
-- `view_id` == `shown_view_id`: only the time is new. Store it, redraw the footer, report `shown_view_id`
+- `view_id` == `shown_view_id`: only the time is new. Store it, redraw the time, report `shown_view_id`
   (the acknowledgement).
 - otherwise: build the rows from the dataset and the bits (layout rule in 5.2), store them with the id and the
   time, redraw, report `shown_view_id`.
@@ -573,7 +602,7 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   - on a wake counter change: (1) if the cached `dataset_hash` != `ds_hash`, run the dataset sync (6.5:
     every `ds_entry`, 100 ms apart, then `ds_commit`) and wait for `dataset_hash` to match, up to about 20 s;
     (2) send the view write (one message, all four attributes), **always**, even when `shown_view_id`
-    already equals `view_id`: it carries the new footer time (5.3).
+    already equals `view_id`: it carries the new time (5.3).
   - while `awake` is true and `view_id` changes: send the view write (after a dataset sync if `ds_hash`
     changed too). Debounce about 1 s, so a burst of entity changes gives one write. Also between the wake
     counter and the `awake` = true that follows it (6.4, a few seconds; 8 s seen): a change counts as awake
@@ -591,38 +620,72 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 - The MQTT state keys are the converter's names: `awake`, `shown_view_id`, `wake_count`, `dataset_hash`
   (plus `occupancy`, `battery`).
 
-## 8. Display (MVP)
+## 8. Display
 
-- 400x300, 1 bit. Current partial refresh ~470 ms; see CLAUDE.md for panel quirks (ghosting, grain).
-- UTF-8 text, drawn with u8g2's fonts (the `_te` variants cover Latin Extended-A, so all Hungarian letters
-  including ő and ű); u8g2 is used only for text and draws into the framebuffer. No icons in the MVP. At scale 3 a character is 18 px advance x 21 px high: about 21 characters per line
-  across 384 px. Dataset lines can be up to 32-64 characters (5.1), so the real layout must wrap or shrink
-  long lines; the debug screen (8.1) shows them whole.
-- 6 rows of about 46 px (text vertically centered or top-aligned in the row) plus a footer strip of about
-  20 px at the bottom, smaller font (scale 2). The rows are the active dataset lines in dataset order; with
-  more than 6 active lines, 5 lines and "+N more" (5.2). The footer is the view's time (5.3).
-- Static screens as full-screen drawings: "All OK", "Press the pair button", "Pairing...", "Pairing
-  failed". For the MVP these can be drawn with the same text routine.
-- Later: a larger proportional `_te` font for the real layout, and icons (1-bit bitmaps,
-  about 24x24, text shifted right; the icon number would become part of each dataset entry).
+- 400x300, 1 bit. Current partial refresh ~470 ms; see CLAUDE.md for panel quirks (ghosting, grain). A frame
+  identical to the one on the panel is not sent, so writes that change nothing on the screen cost no refresh.
+- The accepted UI spec is the Claude doc "Bezárva? e-paper kijelző – design specifikáció" (mockups at actual
+  size). `main/screen.c` draws it; the layout constants there are measured from the mockups.
+- Fonts and icons are bitmaps generated by `tools/gen_bitmaps.py` into `main/bitmaps.c` (committed): Inter
+  (SIL OFL) at the mockups' sizes (title 22 px bold, line name 20 px bold, state 17 px semibold, time 15 px,
+  big text 30 px bold, detail 17 px), thresholded to 1 bit; Material Design Icons 7.4.47 (the set HA uses):
+  the line icons of 5.1 at 25 px, the header icons, and the large status icons at 144-150 px. Name and state
+  fonts cover Latin-1 and Latin Extended-A, the fixed texts ASCII plus the Hungarian letters; a missing
+  character is drawn as `?`.
 
-### 8.1 Debug screen (current, ahead of the real layout)
+**House screens** (header on every one: `home-alert-outline` with problems, `home-outline` without; bold
+"Bezárva?"; at the right the `update` icon and the view's time, "szombat, 18:46"; a 2 px rule):
 
-`main/render.c`, u8g2 font `t0_16b_te` (Terminus Bold, 49 columns x 16 px rows), the same in every state:
+- Problems: up to 6 rows of about 43 px from the top, each the line icon, the bold name and the state
+  right-aligned, dotted separators between rows; unused rows stay blank. The name is cut with "…" to leave
+  room for the state (a state wider than 150 px is cut as well). More than 6 active lines: 5 rows and
+  "további N" with the dots icon (5.2).
+- No active lines: "Minden OK": a large solid `check-circle`, bold "Minden OK", and two fixed lines ("Ajtók,
+  ablakok zárva", "Készülékek kikapcsolva"). The only large black shape on any screen.
+
+**Device screens** (no header; a large outline icon, centred, one bold line):
+
+| Screen | Icon | Shown |
+|---|---|---|
+| Hálózatkeresés | access-point | PAIRING, ERASE_NETWORK (pairing follows the restart) |
+| Csatlakozás | access-point | INTERVIEW |
+| Szinkronizálás | sync | REJOIN / ACTIVE with no view stored yet, while dataset entries arrive (until their commit), and after an out-of-sync view |
+| Csatlakozási hiba | alert-outline | UNPAIRED_WAIT; and to sleep with, after a rejoin timeout or an unpaired wake |
+| Akkumulátor lemerült | battery-outline | not yet (the battery is a fixed 100 %, 6.6) |
+| Ismeretlen hiba | alert-outline | to sleep with, when the Zigbee stack did not start |
+
+Otherwise the house screen: BOOT draws the stored view (blank when there is none), SHUTDOWN the stored view
+(Szinkronizálás when there is none). A failure screen stays until the next wake.
+
+### 8.1 Debug screen (RnD)
+
+Built with `idf.py -DDEBUG_SCREEN=1 build` (macro `RENDER_DEBUG_SCREEN`; `-DDEBUG_SCREEN=0` switches back,
+CMake remembers the value) instead of the proper screen. `main/render.c`, u8g2 font `t0_16b_te` (Terminus
+Bold, 49 columns x 16 px rows), the same in every state; rows show the raw `II|name|state` text:
 
 ```
 ACTIVE          w412 37.2s          state, wake counter, uptime
 DS 499181 n=4  VIEW 969F82          stored dataset (hash, entries) and shown view id
 Mon 14:32  2 lines                  view time and active line count ("OUT OF SYNC" if the last view was)
-1 Front door open                   ... the shown rows (up to 6; "ALL OK" for none)
+1 02|Teraszajtó|nyitva              ... the shown rows (up to 6; "ALL OK" for none)
 36.9 V 969F82 b=00000005 OK         last received writes, newest first, uptime stamp:
 36.7 D 499181 n=4 OK                  V = view (OK, TIME, OOS ds=<hash>), E = ds_entry index and text,
-36.5 E 03 Living room light on        D = ds_commit (OK, REJ idx=<first missing>, BAD N)
+36.5 E 03 0D|Nappali lámpa|be         D = ds_commit (OK, REJ idx=<first missing>, BAD N)
 ```
 
 Received data is drawn as it arrives: one partial refresh at a time, writes that arrive during a refresh
 are drawn together by the next one. Rows longer than 49 characters are cut off. Outgoing reports are not
 shown. A dataset sync of 32 entries scrolls the receive log; only the last few are visible.
+
+### 8.2 Checking the screen against the mockups
+
+`idf.py -DSCREEN_DUMP=1 build` (`-DSCREEN_DUMP=0` to switch off) prints every frame sent to the panel on the
+console, and at boot every screen once with the mockups' content and a few edge cases (malformed line,
+unknown icon id, long name and state, empty state), without drawing them. `tools/fb_dump.py --reset` resets
+the board and saves the frames as PNGs. Costs about 2 s at boot and a few hundred ms per frame (the console
+is slow, and the Zigbee task logs through it too; a full hex dump took 3 s per frame and made HA's dataset
+commits time out), so it is off in normal builds. Result on 2026-10-31: all ten mockups reproduced, the
+differences being glyph hinting and a slightly heavier time font.
 
 ## 9. Failure modes
 
@@ -631,11 +694,11 @@ shown. A dataset sync of 32 entries scrolls the receive log; only the last few a
 | Frame lost | HA resends after its acknowledgement timeout; a repeated view with the shown id only refreshes the time, a repeated dataset entry overwrites the staged one. |
 | Device sleeps mid-sync | Staged dataset entries dropped; `dataset_hash` unchanged, so HA syncs again at the next wake. A view is one frame and cannot be half applied. |
 | View for another dataset | Out of sync (6.5): screen and time unchanged, `dataset_hash` reported, device stays awake for the sync. |
-| HA down / Zigbee down | Screen keeps the stored view; its footer time stops advancing, so the staleness shows. |
+| HA down / Zigbee down | Screen keeps the stored view; its time stops advancing, so the staleness shows. |
 | Rejoin fails (parent gone) | After `REJOIN_MS` the device shuts down with the stored view on screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. Set the end-device timeout as long as the stack allows. |
 | Device dies silently | `awake` expires in HA after about 90 s. |
-| Pairing fails | "Pairing failed" screen, UNPAIRED_WAIT; still factory new. |
+| Pairing fails | "Csatlakozási hiba" screen, UNPAIRED_WAIT; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it; verify. |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view and its old time. Seen once in 39 wakes (ZIGBEE_PAYLOAD.md 7.2). Next wake is normal. |
@@ -683,6 +746,11 @@ Also decided (rev 7, 2026-10-29): one endpoint; the device state (`wake_count`, 
 (`z2m/greenlight.mjs`) because Z2M's generated definition broke occupancy on the multi-endpoint device; the
 OTA client cluster declared (6.3); HA input unchanged (raw writes, 6.5).
 
+Also decided (rev 8, 2026-10-31): the proper screen of the UI spec (8) replaces the debug screen, which stays
+for RnD behind a build switch (8.1); a dataset line is `II|name|state` with a 2-hex-digit icon id from an
+append-only table, no other format accepted (5.1); fonts (Inter) and icons (MDI 7.4.47) are generated
+bitmaps, not u8g2 fonts; UNPAIRED_WAIT and a failed rejoin show "Csatlakozási hiba".
+
 Open:
 
 - **Q1** Real rejoin time (measure once Zigbee runs; until `join_time_ms` exists, from the serial log).
@@ -724,7 +792,7 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
    latency. Disable Z2M availability for the device.
 4. **Proper deep sleep:** wake on D0 and D1 (replace `st_sleep`), retained state in retained RAM. Then the
    optimizations O1-O3.
-5. **Renderer (last):** full-ASCII font (replace the 5x7 test glyphs), 6 rows plus footer strip, static
-   screens (All OK, press the pair button, pairing, pairing failed) replacing the placeholder words,
-   event-driven redraw in ACTIVE instead of the ONE..TEN test, redraw of the stored view after the MVP
-   full clear in BOOT. Later: accents and icons, and the future work of 6.7 (diagnostics, real battery handling).
+5. **Done: renderer (rev 8).** The proper screen of 8 (house screens and device screens, icons, Hungarian
+   text), the line format of 5.1 in HA's templates, the debug screen behind `DEBUG_SCREEN`. Checked against
+   the mockups with `SCREEN_DUMP` (8.2). Later: the battery screen once the battery is measured, and the
+   future work of 6.7 (diagnostics, real battery handling).

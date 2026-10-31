@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -193,12 +194,15 @@ static const char *const state_names[] = {
 static TickType_t boot_tick;
 static uint32_t   wake_n;  /* this wake's number */
 
-/* ---- Debug screen (render.c): the state, the dataset, the shown view and the last writes received ---- */
+/* ---- The panel (render.c): the proper screen, or the debug screen with the state, the dataset, the shown view
+ * and the last writes received ---- */
 #define CLEAR_EVERY 50  /* partial refreshes between full clears, against ghosting */
 
-static SemaphoreHandle_t view_lock;  /* guards ds, shown, oos and rx_log: the Zigbee task writes them */
+static SemaphoreHandle_t view_lock;  /* guards ds, shown, oos, syncing and rx_log: the Zigbee task writes them */
 static volatile bool     view_dirty;
 static state_t           view_state;
+static bool              syncing;  /* dataset entries arrived and their commit has not */
+static render_screen_t   failed;   /* RENDER_JOIN_FAILED or RENDER_ERROR once this wake failed, else RENDER_BLANK */
 static render_rx_t       rx_log[RENDER_RX_N];  /* ring; rx_head is the next slot */
 static int               rx_head, rx_count;
 static int               partials;   /* partial refreshes since the last full clear */
@@ -208,6 +212,93 @@ static void show_state(state_t st)
     view_state = st;
     view_dirty = true;
 }
+
+/* What the proper screen shows (DESIGN.md 8): the house status, unless the device is pairing, joining or
+ * syncing, or this wake failed. */
+static render_screen_t screen_for(state_t st)
+{
+    if (failed != RENDER_BLANK) {
+        return failed;
+    }
+    switch (st) {
+    case ST_UNPAIRED_WAIT:  return RENDER_JOIN_FAILED;
+    case ST_PAIRING:        return RENDER_SEARCHING;
+    case ST_ERASE_NETWORK:  return RENDER_SEARCHING;  /* pairing follows the restart */
+    case ST_INTERVIEW:      return RENDER_JOINING;
+    case ST_BOOT:           return shown.view.id ? RENDER_HOUSE : RENDER_BLANK;
+    case ST_SLEEP:          return shown.view.id ? RENDER_HOUSE : RENDER_SYNCING;  /* a stale view beats none */
+    default:                return shown.view.id && !syncing && !oos ? RENDER_HOUSE : RENDER_SYNCING;
+    }
+}
+
+#ifdef SCREEN_DUMP
+/* The frame on the console for tools/fb_dump.py, which makes PNGs of it: one line per pixel row that is not all
+ * white, "FB <row> <byte>:<hex> ...", each item a run of bytes (1 = white) that are not 0xFF. Compact, because
+ * the console is slow and the Zigbee task logs through it too: a full hex dump took ~3 s and stalled the sync. */
+static void dump_frame(const uint8_t *fb, const char *label)
+{
+    printf("FB begin %s\n", label);
+    for (int y = 0; y < EPD_HEIGHT; y++) {
+        const uint8_t *row = fb + y * EPD_STRIDE;
+        bool           any = false;
+        for (int i = 0; i < EPD_STRIDE; i++) {
+            if (row[i] == 0xFF) {
+                continue;
+            }
+            if (!any) {
+                printf("FB %d", y);
+                any = true;
+            }
+            printf(" %d:", i);
+            for (; i < EPD_STRIDE && row[i] != 0xFF; i++) {
+                printf("%02X", row[i]);
+            }
+        }
+        if (any) {
+            printf("\n");
+        }
+    }
+    printf("FB end\n");
+}
+
+/* Every screen once, with the content of the UI spec's mockups and a few edge cases, dumped but not drawn:
+ * to compare with the mockups without having to provoke each state. */
+static void dump_samples(void)
+{
+    static const char *const rows[][RENDER_ROWS] = {
+        {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "2E|Hűtő|túl meleg",
+         "2F|Fagyasztó|túl meleg", "27|Mosogató|nedves"},
+        {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "2E|Hűtő|túl meleg",
+         "2F|Fagyasztó|túl meleg", "01|további 4|"},
+        {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva"},
+        {"Teraszajtó nyitva", "7F|Ismeretlen ikon|nyitva", "02|Nagyon hosszú nevű ajtó a pincelépcső alatt|nyitva",
+         "0D|Lámpa|nagyon hosszú állapot szöveg, ami nem fér el", "13|Árvíztűrő tükörfúrógép|"},
+        {0},  /* Minden OK */
+    };
+    static const char *const names[] = {"problems", "overflow", "two", "edge", "ok"};
+    static render_view_t v;
+    vTaskDelay(pdMS_TO_TICKS(2000));  /* the USB console drops output until the host has reopened the port */
+    for (int s = 0; s < sizeof(rows) / sizeof(rows[0]); s++) {
+        memset(&v, 0, sizeof(v));
+        v.screen = RENDER_HOUSE;
+        v.shown.view = (zb_view_t){.id = 1, .time = 1793472360};  /* Sat 2026-10-31 18:46 */
+        for (int i = 0; i < RENDER_ROWS && rows[s][i]; i++) {
+            strlcpy(v.shown.row[v.shown.nrows++], rows[s][i], sizeof(v.shown.row[0]));
+        }
+        v.shown.active = s == 1 ? 9 : v.shown.nrows;
+        dump_frame(render_status(&v), names[s]);
+    }
+    static const struct { render_screen_t screen; const char *name; } dev[] = {
+        {RENDER_SEARCHING, "searching"}, {RENDER_JOINING, "joining"}, {RENDER_SYNCING, "syncing"},
+        {RENDER_JOIN_FAILED, "join_failed"}, {RENDER_BATTERY, "battery"}, {RENDER_ERROR, "error"},
+    };
+    for (int s = 0; s < sizeof(dev) / sizeof(dev[0]); s++) {
+        memset(&v, 0, sizeof(v));
+        v.screen = dev[s].screen;
+        dump_frame(render_status(&v), dev[s].name);
+    }
+}
+#endif
 
 /* Panel diagnostics (BUSY hang hunt): every clear and refresh logs its duration, the BUSY level before it
  * starts and, for a refresh, how many pixels are black and how many change. */
@@ -224,9 +315,16 @@ static esp_err_t panel_clear(const char *why)
     return err;
 }
 
-/* Partial refresh of fb (~0.5 s), with a full clear every CLEAR_EVERY partials. */
+/* Partial refresh of fb (~0.5 s), with a full clear every CLEAR_EVERY partials. Nothing when fb is already on
+ * the panel: most writes from HA do not change the proper screen. */
 static esp_err_t panel_refresh(const uint8_t *fb, const char *label)
 {
+    if (memcmp(fb, prev_fb, sizeof(prev_fb)) == 0) {
+        return ESP_OK;
+    }
+#ifdef SCREEN_DUMP
+    dump_frame(fb, label);
+#endif
     if (++partials >= CLEAR_EVERY) {
         partials = 0;
         if (panel_clear("periodic") != ESP_OK) {
@@ -253,6 +351,7 @@ static void redraw(void)
     static render_view_t v;
     xSemaphoreTake(view_lock, portMAX_DELAY);
     view_dirty  = false;
+    v.screen    = screen_for(view_state);
     v.state     = state_names[view_state];
     v.wake      = wake_n;
     v.uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount());
@@ -319,6 +418,11 @@ static void on_dataset(const zb_dataset_t *d)
 static void on_rx(const zb_rx_t *ev)
 {
     xSemaphoreTake(view_lock, portMAX_DELAY);
+    if (ev->kind == ZB_RX_ENTRY && ev->entry.tag >= 0) {
+        syncing = true;
+    } else if (ev->kind == ZB_RX_DS_COMMIT) {
+        syncing = false;
+    }
     rx_log[rx_head] = (render_rx_t){.ms = pdTICKS_TO_MS(xTaskGetTickCount()), .ev = *ev};
     rx_head = (rx_head + 1) % RENDER_RX_N;
     if (rx_count < RENDER_RX_N) {
@@ -349,6 +453,9 @@ static state_t st_boot(void)
     ESP_LOGI(TAG, "boot: pair_now=%d dataset=%06lx view=%06lx wake=%lu", pair_now, (unsigned long)ds.hash,
              (unsigned long)shown.view.id, (unsigned long)wake_n);
 
+#ifdef SCREEN_DUMP
+    dump_samples();  /* before the stack starts, so its log does not cut into the dump */
+#endif
     boot_tick = xTaskGetTickCount();
     zb_callbacks_t cbs = {.view = on_view, .dataset = on_dataset, .activity = touch_activity, .rx = on_rx};
     zb_start(&cbs, ds.hash, shown.view.id, wake_n);
@@ -366,6 +473,7 @@ static state_t st_boot(void)
     bool factory_new = false;
     if (!zb_wait_started(STACK_START_MS, &factory_new)) {
         ESP_LOGE(TAG, "Zigbee stack did not start");
+        failed = RENDER_ERROR;
         return ST_SHUTDOWN;
     }
     ESP_LOGI(TAG, "stack up after %lu ms: %s", (unsigned long)ms_since(boot_tick),
@@ -393,6 +501,7 @@ static state_t st_unpaired_wait(void)
         }
         if (idle_ms() >= RUN_MS) {
             ESP_LOGI(TAG, "no activity for %d ms", RUN_MS);
+            failed = RENDER_JOIN_FAILED;  /* still not paired */
             return ST_SHUTDOWN;
         }
         wait_ms(20);
@@ -449,6 +558,7 @@ static state_t st_rejoin(void)
         wait_ms(20);
     }
     ESP_LOGW(TAG, "rejoin failed");
+    failed = RENDER_JOIN_FAILED;
     return ST_SHUTDOWN;
 }
 
@@ -513,7 +623,7 @@ static state_t st_shutdown(void)
     if (zb_joined()) {
         zb_report_awake(false);  /* best effort; the panel refresh below gives the radio time to send it */
     }
-    /* Cleanest state for power-off: full white reset, then the debug screen saying SLEEP. */
+    /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
     if (panel_clear("shutdown") != ESP_OK) {
         ESP_LOGE(TAG, "e-paper final clear failed");
     }
