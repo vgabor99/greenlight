@@ -52,6 +52,9 @@ typedef struct {
     uint8_t         ds_count;
     render_shown_t  shown;
     bool            oos;        /* the last view received was for another dataset */
+    bool            stale;      /* the shown view is older than its validity (DESIGN.md 5.3) */
+    int64_t         age_ms;     /* age of the last received view, -1 = unknown */
+    uint32_t        valid_ms;   /* how long a received view stays fresh */
     int             rx_count;
     render_rx_t     rx[RENDER_RX_N];  /* newest first */
 } render_view_t;
@@ -59,6 +62,10 @@ typedef struct {
 /* Lay out a view: the active lines in dataset order; with more than RENDER_ROWS of them, the first
  * RENDER_ROWS - 1 and "további N" with the dots icon (DESIGN.md 5.2). */
 void render_build_rows(render_shown_t *out, const zb_dataset_t *ds, const zb_view_t *view);
+
+/* The age as the debug screen shows it: "12s", "5m", "3h", "-" when unknown. */
+#define RENDER_AGE_LEN 12
+void render_age(char out[RENDER_AGE_LEN], int64_t age_ms);
 
 /* Draw the view into the framebuffer and return it (EPD_STRIDE * EPD_HEIGHT bytes, 1 = white). */
 const uint8_t *render_status(const render_view_t *v);

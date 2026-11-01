@@ -30,7 +30,7 @@ comes first: an unpaired device does nothing useful until it is paired.
                                                                                       PIR on -> wake
   automation <──── wake counter   <──────── standard cluster report <──────────────── rejoin, report wake
   dataset_hash (cached) != HA's?  ───────►  /set: ds_entry x N, ds_commit  ─────────► store dataset (rare)
-  every wake, and on any change   ───────►  /set: one view write (1 frame) ─────────► redraw lines + time,  
+  every wake, any change, 5 s     ───────►  /set: one view write (1 frame) ─────────► redraw lines, fresh 8 s,
                  shown_view_id    <──────── standard cluster report <──────────────── report shown_view_id
                                                                                       PIR off + timeout
                  awake=false      <──────────────────────────────────────────────────  report, deep sleep
@@ -74,6 +74,7 @@ start pairing (unpaired) and to reset the network (paired).
 | `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
 | `REJOIN_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
 | `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend (7). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
+| `SCREEN_VALID_MS` | 8 s | a received view is fresh this long (5.3): HA's 5 s push period while awake plus 3 s for the push to arrive (normally 0.1-1.3 s, ZIGBEE_PAYLOAD.md 7.2). |
 
 ### 3.3 State machine
 
@@ -264,23 +265,34 @@ No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an 
 - `id`: **24-bit**, chosen by HA, identifying `ds` + `bits` (e.g. a hash of the two). **Not 0**. The device
   echoes it as `shown_view_id` when the view is on the panel; it never computes it. The time is **not** part
   of the id: a new time alone must not look like new content.
-- `time`: the staleness time (5.3), local wall-clock time as seconds since 1970-01-01, i.e. HA's Unix time
-  plus its UTC offset. The device formats it with no time zone knowledge. 0 = unknown.
+- `time`: local wall-clock time as seconds since 1970-01-01, i.e. HA's Unix time plus its UTC offset. The
+  device stores it with the view but no longer draws it (the staleness flag of 5.3 replaced it). 0 = unknown.
 - Layout rule (device): the active lines in dataset order, at most 6 rows. With more than 6 active lines
   the device shows the first 5 and "további N" (dots icon) as the sixth row.
 
-### 5.3 Staleness time
+### 5.3 Staleness flag
 
-The screen is only as fresh as the last wake. The header shows the view's `time`, meaning "the last time
-this screen was confirmed in sync with HA". If the time is old, the viewer knows the data may be old.
+The viewer must see at a glance whether the screen is current, without working out how old a time is. So the
+header shows the `update` icon while the view is **stale**, and nothing otherwise (no time).
 
-- HA sends the view **on every wake**, even when nothing changed, so the time advances; that is the one
-  write per wake (6.5).
-- A view with the same `id` as the shown one only updates the time: the device redraws the time (a
-  partial refresh) and reports `shown_view_id` again as the acknowledgement.
-- An out-of-sync view updates nothing, not even the time, so a device that cannot follow HA visibly ages.
-- The device stores the time with the view and draws it at every wake, at the right of the header, also
-  on "Minden OK": `update` icon, Hungarian weekday and time, e.g. "szombat, 18:46". No time (0): nothing.
+- Every received view (new content, or the same `id` again) is valid for `SCREEN_VALID_MS` (8 s): the device
+  stores `screen_valid_until` = now + 8 s. Stale means now > `screen_valid_until`. An out-of-sync or
+  incomplete view does not count.
+- "Now" is the RTC counter (`esp_rtc_get_time_us()`): monotonic, it keeps counting through deep sleep and a
+  software restart. `screen_valid_until` lives in RTC memory (`RTC_NOINIT_ATTR`), which survives the same,
+  so no flash writes. After a power-on or brownout reset (the counter starts at 0 again), or when the
+  stored deadline is implausibly far ahead, it is cleared: stale.
+- HA pushes the view on every wake, on every change while the device is awake, and **every 5 s while it is
+  awake** (7). The periodic push is the liveness signal: if HA, Z2M or the radio path stops, the icon
+  appears at most 8 s after the last view. A lost change push is repaired by the next periodic push.
+- At boot the stored view is normally stale (the last view is older than 8 s), so the boot screen has the
+  icon and the wake push removes it (one partial refresh per wake, as the time update used to cost).
+- The flag is redrawn when it flips: the state loops call `wait_ms()` every 20-100 ms, which redraws when
+  the flag (on the debug screen, the shown age) differs from what was drawn. No timer.
+- SHUTDOWN draws the flag as it is at that moment; the sleep screen keeps it until the next wake, so a wake
+  that ended without fresh data sleeps with the icon.
+- A view with the same `id` as the shown one changes nothing on the screen apart from the flag, and is
+  acknowledged with `shown_view_id` like any other.
 
 ### 5.4 State exposed by the device
 
@@ -438,7 +450,7 @@ matter:
 - `view_ds` != stored `dataset_hash`: **out of sync**. Nothing changes on the screen, not even the time;
   `shown_view_id` is not reported. The device reports `dataset_hash` (so HA's cached value is right) and
   counts it as activity, so it stays awake for the resync.
-- `view_id` == `shown_view_id`: only the time is new. Store it, redraw the time, report `shown_view_id`
+- `view_id` == `shown_view_id`: nothing new to draw, but the view is fresh again (5.3). Store the time, report `shown_view_id`
   (the acknowledgement).
 - otherwise: build the rows from the dataset and the bits (layout rule in 5.2), store them with the id and the
   time, redraw, report `shown_view_id`.
@@ -605,16 +617,19 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   push nothing. The alarm's `ismeretlen` line stays a problem.
 - **HA automation** (`mode: queued`, `max: 2`: a run can take a minute, and the waiting run reads the newest
   values when it sends, so it covers any number of changes meanwhile), triggered by a change of the wake
-  counter or of `view_id` (which also changes with `ds_hash`):
+  counter or of `view_id` (which also changes with `ds_hash`), and every 5 s (time_pattern `/5`, id `tick`):
   - on a wake counter change: (1) if the cached `dataset_hash` != `ds_hash`, run the dataset sync (6.5:
     every `ds_entry`, 100 ms apart, then `ds_commit`) and wait for `dataset_hash` to match, up to about 20 s;
     (2) send the view write (one message, all four attributes), **always**, even when `shown_view_id`
-    already equals `view_id`: it carries the new time (5.3).
+    already equals `view_id`: it makes the screen fresh (5.3).
   - while `awake` is true and `view_id` changes: send the view write (after a dataset sync if `ds_hash`
     changed too). Debounce about 1 s, so a burst of entity changes gives one write. Also between the wake
     counter and the `awake` = true that follows it (6.4, a few seconds; 8 s seen): a change counts as awake
     while the wake counter changed after `awake` last did, for up to 90 s. Without that, a change in this
     gap was dropped (2026-10-29: a lamp turned on 4.4 s after a wake never reached the panel).
+  - every 5 s, with the same awake gate: send the view write. It keeps the display's staleness flag off
+    (5.3), so it is HA's liveness signal, and it repairs a lost change push within 5 s. While asleep the gate
+    stops it; if `awake` = false was lost, HA keeps pushing (and Z2M logs failed sends) for up to 90 s.
   - after each write, wait for the acknowledgement (`shown_view_id` == `view_id`, or `dataset_hash` ==
     `ds_hash`) for up to about 20 s: a write right after a wake can take a Z2M recovery round of about 13 s.
     If it is still missing, resend (a few retries at most). Never resend while Z2M may still retry the
@@ -634,14 +649,14 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 - The accepted UI spec is the Claude doc "Bezárva? e-paper kijelző – design specifikáció" (mockups at actual
   size). `main/screen.c` draws it; the layout constants there are measured from the mockups.
 - Fonts and icons are bitmaps generated by `tools/gen_bitmaps.py` into `main/bitmaps.c` (committed): Inter
-  (SIL OFL) at the mockups' sizes (title 22 px bold, line name 20 px bold, state 17 px semibold, time 15 px,
+  (SIL OFL) at the mockups' sizes (title 22 px bold, line name 20 px bold, state 17 px semibold, time 15 px (no longer drawn, 5.3),
   big text 30 px bold, detail 17 px), thresholded to 1 bit; Material Design Icons 7.4.47 (the set HA uses):
   the line icons of 5.1 at 25 px, the header icons, and the large status icons at 144-150 px. Name and state
   fonts cover Latin-1 and Latin Extended-A, the fixed texts ASCII plus the Hungarian letters; a missing
   character is drawn as `?`.
 
 **House screens** (header on every one: `home-alert-outline` with problems, `home-outline` without; bold
-"Bezárva?"; at the right the `update` icon and the view's time, "szombat, 18:46"; a 2 px rule):
+"Bezárva?"; at the right the `update` icon while the view is stale (5.3), nothing otherwise; a 2 px rule):
 
 - Problems: up to 6 rows of about 43 px from the top, each the line icon, the bold name and the state
   right-aligned, dotted separators between rows; unused rows stay blank. The name is cut with "…" to leave
@@ -673,14 +688,15 @@ Bold, 49 columns x 16 px rows), the same in every state; rows show the raw `II|n
 ```
 ACTIVE          w412 37.2s          state, wake counter, uptime
 DS 499181 n=4  VIEW 969F82          stored dataset (hash, entries) and shown view id
-Mon 14:32  2 lines                  view time and active line count ("OUT OF SYNC" if the last view was)
+age 3s / 8s FRESH  2 lines         age of the last view received, its validity, the staleness flag (5.3),
+                                    active line count ("OUT OF SYNC" if the last view was); age "-" = unknown
 1 02|Teraszajtó|nyitva              ... the shown rows (up to 6; "ALL OK" for none)
 36.9 V 969F82 b=00000005 OK         last received writes, newest first, uptime stamp:
 36.7 D 499181 n=4 OK                  V = view (OK, TIME, OOS ds=<hash>), E = ds_entry index and text,
 36.5 E 03 0D|Nappali lámpa|be         D = ds_commit (OK, REJ idx=<first missing>, BAD N)
 ```
 
-Received data is drawn as it arrives: one partial refresh at a time, writes that arrive during a refresh
+The age ticks, so the debug screen refreshes about once a second while awake. Received data is drawn as it arrives: one partial refresh at a time, writes that arrive during a refresh
 are drawn together by the next one. Rows longer than 49 characters are cut off. Outgoing reports are not
 shown. A dataset sync of 32 entries scrolls the receive log; only the last few are visible.
 
@@ -698,17 +714,17 @@ differences being glyph hinting and a slightly heavier time font.
 
 | Situation | Behaviour |
 |---|---|
-| Frame lost | HA resends after its acknowledgement timeout; a repeated view with the shown id only refreshes the time, a repeated dataset entry overwrites the staged one. |
+| Frame lost | HA resends after its acknowledgement timeout; a repeated view with the shown id only makes the screen fresh again, a repeated dataset entry overwrites the staged one. |
 | Device sleeps mid-sync | Staged dataset entries dropped; `dataset_hash` unchanged, so HA syncs again at the next wake. A view is one frame and cannot be half applied. |
-| View for another dataset | Out of sync (6.5): screen and time unchanged, `dataset_hash` reported, device stays awake for the sync. |
-| HA down / Zigbee down | Screen keeps the stored view; its time stops advancing, so the staleness shows. |
+| View for another dataset | Out of sync (6.5): screen unchanged (it goes stale), `dataset_hash` reported, device stays awake for the sync. |
+| HA down / Zigbee down | Screen keeps the stored view; the `update` icon appears at most 8 s after the last view received (5.3). |
 | Rejoin fails (parent gone) | After `REJOIN_MS` the device shuts down with the stored view on screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. Set the end-device timeout as long as the stack allows. |
 | Device dies silently | `awake` expires in HA after about 90 s. |
 | Pairing fails | "Csatlakozási hiba" screen, UNPAIRED_WAIT; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it; verify. |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
-| Wake counter report lost | HA does not push in this wake; the screen keeps the last view and its old time. Seen once in 39 wakes (ZIGBEE_PAYLOAD.md 7.2). Next wake is normal. |
+| Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale (icon). Seen once in 39 wakes (ZIGBEE_PAYLOAD.md 7.2). Next wake is normal. |
 | Panel BUSY hang | Caused by a bad display GND contact on the breadboard (CLAUDE.md); fix in hardware (solid GND, bulk capacitor at the display). A refresh never finishes and the controller stays stuck until a hardware reset. **Current: no recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epd_init()` resets the panel. **Later option:** on a BUSY timeout, `epd_init()` + `epd_clear()` + redraw (about 1.5 s), with the timeout cut to about 2 s (a refresh takes 470 ms), and count recoveries in the log (or `panel_error`, 6.7). Turn it on once the cause is understood or the rate is known to be acceptable. |
 
 ## 10. Pins

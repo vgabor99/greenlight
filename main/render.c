@@ -1,7 +1,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 #include "epd.h"
 #include "render.h"
 #include "screen.h"
@@ -176,6 +175,20 @@ void render_build_rows(render_shown_t *out, const zb_dataset_t *ds, const zb_vie
     }
 }
 
+void render_age(char out[RENDER_AGE_LEN], int64_t age_ms)
+{
+    int64_t s = age_ms < 0 ? 0 : age_ms / 1000;
+    if (age_ms < 0) {
+        strlcpy(out, "-", RENDER_AGE_LEN);
+    } else if (s < 60) {
+        snprintf(out, RENDER_AGE_LEN, "%ds", (int)s);
+    } else if (s < 3600) {
+        snprintf(out, RENDER_AGE_LEN, "%dm", (int)(s / 60));
+    } else {
+        snprintf(out, RENDER_AGE_LEN, "%dh", (int)(s / 3600));
+    }
+}
+
 static void render_debug(const render_view_t *v)
 {
     text_init();
@@ -191,14 +204,10 @@ static void render_debug(const render_view_t *v)
     /* Dataset and the view on the panel */
     const render_shown_t *s = &v->shown;
     row(Y_SHOWN, "DS %06lX n=%u  VIEW %06lX", (unsigned long)v->ds_hash, v->ds_count, (unsigned long)s->view.id);
-    char when[16] = "no time";
-    if (s->view.time) {
-        time_t    t = s->view.time;  /* local wall-clock time, so format it as UTC */
-        struct tm tm;
-        gmtime_r(&t, &tm);
-        strftime(when, sizeof(when), "%a %H:%M", &tm);
-    }
-    row(Y_SHOWN + PITCH, "%s  %u lines%s", when, s->active, v->oos ? "  OUT OF SYNC" : "");
+    char age[RENDER_AGE_LEN];
+    render_age(age, v->age_ms);
+    row(Y_SHOWN + PITCH, "age %s / %lus %s  %u lines%s", age, (unsigned long)(v->valid_ms / 1000), v->stale ? "STALE" : "FRESH", s->active,
+        v->oos ? "  OUT OF SYNC" : "");
     for (int i = 0; i < RENDER_ROWS; i++) {
         int y = Y_SHOWN + (i + 2) * PITCH;
         if (i < s->nrows) {

@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+#include "esp_rtc_time.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "epd.h"
@@ -27,6 +28,7 @@ static const char *TAG = "greenlight";
 #define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_view_id this often */
 #define REPORT_DELAY_MS 3000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
 #define VIEW_WAIT_MS   45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
+#define SCREEN_VALID_MS 8000   /* a received view is fresh this long: HA pushes every 5 s while awake, + 3 s latency (5.3) */
 
 /* ---- Inputs: PIR (D0) and pair button (D1), level based, polled and debounced by a task ---- */
 #define INPUT_POLL_MS        10
@@ -174,6 +176,40 @@ static void blob_save(const char *key, const void *p, size_t size)
     nvs_commit(nvs);
 }
 
+/* Staleness (DESIGN.md 5.3): every received view is valid for SCREEN_VALID_MS. The deadline is in RTC time
+ * (esp_rtc_get_time_us(): monotonic, keeps counting through deep sleep and a software restart, 0 again after a
+ * power-on) and lives in RTC memory, which survives the same, so a wake sees how old the stored view is. */
+#define VALID_MAGIC 0x5CEE0A11u
+
+static RTC_NOINIT_ATTR uint32_t valid_magic;
+static RTC_NOINIT_ATTR uint64_t screen_valid_until;  /* RTC time in us; 0 = never received */
+
+static void staleness_init(void)
+{
+    esp_reset_reason_t why = esp_reset_reason();
+    if (valid_magic != VALID_MAGIC || why == ESP_RST_POWERON || why == ESP_RST_BROWNOUT || why == ESP_RST_UNKNOWN ||
+        screen_valid_until > esp_rtc_get_time_us() + SCREEN_VALID_MS * 1000ULL) {  /* the RTC counter restarted */
+        valid_magic = VALID_MAGIC;
+        screen_valid_until = 0;
+    }
+    ESP_LOGI(TAG, "rtc time %llu ms, view valid until %llu ms", esp_rtc_get_time_us() / 1000,
+             screen_valid_until / 1000);
+}
+
+static bool screen_stale(void)
+{
+    return esp_rtc_get_time_us() > screen_valid_until;
+}
+
+/* Age of the last received view in ms, -1 if none is known. */
+static int64_t screen_age_ms(void)
+{
+    if (!screen_valid_until) {
+        return -1;
+    }
+    return ((int64_t)esp_rtc_get_time_us() - (int64_t)screen_valid_until) / 1000 + SCREEN_VALID_MS;
+}
+
 static void state_load(void)
 {
     blob_load("ds", &ds, sizeof(ds));
@@ -286,6 +322,7 @@ static void dump_samples(void)
             strlcpy(v.shown.row[v.shown.nrows++], rows[s][i], sizeof(v.shown.row[0]));
         }
         v.shown.active = s == 1 ? 9 : v.shown.nrows;
+        v.stale = s == 0;  /* the update icon in the header */
         dump_frame(render_status(&v), names[s]);
     }
     static const struct { render_screen_t screen; const char *name; } dev[] = {
@@ -345,12 +382,38 @@ static esp_err_t panel_refresh(const uint8_t *fb, const char *label)
     return err;
 }
 
+/* What the last redraw showed of the staleness: the flag, and on the debug screen the age as drawn. */
+static bool drawn_stale;
+static char drawn_age[RENDER_AGE_LEN];
+
+/* The staleness on the screen is out of date (checked under view_lock). */
+static bool live_changed(void)
+{
+    if (screen_stale() != drawn_stale) {
+        return true;
+    }
+    if (RENDER_DEBUG_SCREEN) {
+        char age[RENDER_AGE_LEN];
+        render_age(age, screen_age_ms());
+        return strcmp(age, drawn_age) != 0;
+    }
+    return false;
+}
+
 /* Draw the screen now (~0.5 s). Blocks the state loop; input_task keeps polling the inputs meanwhile. */
 static void redraw(void)
 {
     static render_view_t v;
     xSemaphoreTake(view_lock, portMAX_DELAY);
     view_dirty  = false;
+    v.stale     = screen_stale();
+    v.age_ms    = screen_age_ms();
+    v.valid_ms  = SCREEN_VALID_MS;
+    if (v.stale != drawn_stale) {
+        ESP_LOGI(TAG, "screen %s (age %lld ms)", v.stale ? "stale" : "fresh", (long long)v.age_ms);
+    }
+    drawn_stale = v.stale;
+    render_age(drawn_age, v.age_ms);
     v.screen    = screen_for(view_state);
     v.state     = state_names[view_state];
     v.wake      = wake_n;
@@ -373,7 +436,10 @@ static void redraw(void)
  * refresh are drawn together by the next one. */
 static void wait_ms(uint32_t ms)
 {
-    if (view_dirty) {
+    xSemaphoreTake(view_lock, portMAX_DELAY);
+    bool dirty = view_dirty || live_changed();
+    xSemaphoreGive(view_lock);
+    if (dirty) {
         redraw();
     }
     vTaskDelay(pdMS_TO_TICKS(ms));
@@ -386,6 +452,7 @@ static void on_view(const zb_view_t *v, zb_view_result_t result)
     oos = result == ZB_VIEW_OOS;
     if (result == ZB_VIEW_OK || result == ZB_VIEW_TIME) {
         view_seen = true;
+        screen_valid_until = esp_rtc_get_time_us() + SCREEN_VALID_MS * 1000ULL;
     }
     if (result == ZB_VIEW_OK) {
         render_build_rows(&shown, &ds, v);
@@ -666,6 +733,7 @@ void app_main(void)
     rf_switch_init();
     view_lock = xSemaphoreCreateMutex();
     nvs_open_state();
+    staleness_init();
     inputs_init();
     state_t st = ST_BOOT;
     for (;;) {

@@ -1,7 +1,5 @@
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
-#include <time.h>
 #include "bitmaps.h"
 #include "epd.h"
 #include "screen.h"
@@ -12,9 +10,7 @@
 #define HDR_ICON_Y    20   /* house and update icons */
 #define HDR_TEXT_X    45
 #define HDR_BASE      29   /* "Bezárva?" */
-#define HDR_TIME_R    386  /* right end of the time */
-#define HDR_TIME_BASE 27
-#define HDR_GAP       7    /* from the update icon's right end to the time */
+#define HDR_ICON_R    386  /* right end of the update icon */
 #define HDR_RULE_Y    41   /* 2 px rule under the header */
 
 #define ROWS_TOP    43                       /* RENDER_ROWS rows of about 42.8 px down to the bottom */
@@ -171,24 +167,14 @@ static void draw_cut(const bm_font_t *f, int x, int base, const char *s, int len
 
 /* ---- House screens ---- */
 
-static const char *const weekdays[] = {"vasárnap", "hétfő", "kedd", "szerda", "csütörtök", "péntek", "szombat"};
-
-/* House icon, "Bezárva?", and the time of the view (DESIGN.md 5.3) at the right: "szombat, 18:46". */
-static void draw_header(const render_shown_t *s)
+/* House icon, "Bezárva?", and at the right the update icon while the view is stale (DESIGN.md 5.3). */
+static void draw_header(const render_view_t *v)
 {
-    draw_icon(s->active ? &bm_icon_home_alert_outline : &bm_icon_home_outline, HDR_ICON_X, HDR_ICON_Y);
+    draw_icon(v->shown.active ? &bm_icon_home_alert_outline : &bm_icon_home_outline, HDR_ICON_X, HDR_ICON_Y);
     draw_text(&bm_font_title, HDR_TEXT_X, HDR_BASE, "Bezárva?", strlen("Bezárva?"));
-    if (s->view.time) {
-        time_t    t = s->view.time;  /* local wall-clock time, so format it as UTC */
-        struct tm tm;
-        char      when[32];
-        gmtime_r(&t, &tm);
-        snprintf(when, sizeof(when), "%s, %d:%02d", weekdays[tm.tm_wday], tm.tm_hour, tm.tm_min);
-        int len = strlen(when);
-        int x = HDR_TIME_R - text_width(&bm_font_time, when, len);
-        draw_text(&bm_font_time, x, HDR_TIME_BASE, when, len);
+    if (v->stale) {
         const bm_icon_t *icon = &bm_icon_update;
-        draw_icon(icon, x - HDR_GAP - icon->w + icon->w / 2, HDR_ICON_Y);
+        draw_icon(icon, HDR_ICON_R - icon->w + icon->w / 2, HDR_ICON_Y);
     }
     fill_black(0, HDR_RULE_Y, EPD_WIDTH, 2);
 }
@@ -270,7 +256,7 @@ void screen_draw(uint8_t *frame, const render_view_t *v)
     case RENDER_BLANK:
         break;
     case RENDER_HOUSE:
-        draw_header(&v->shown);
+        draw_header(v);
         if (v->shown.nrows) {
             draw_rows(&v->shown);
         } else {
