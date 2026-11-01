@@ -19,17 +19,29 @@ template:
             {{ (gl_items | as_function)() | map(attribute='m') | list }}
 
       # state: the 24-bit view id (hash of ds and bits; the time is not part of it)
+      # raw_bits: the active lines; hidden: the lines expected at the install spot (gl_expected);
+      # bits: raw_bits without hidden, what the display gets
       - name: Greenlight view
         unique_id: greenlight_view
         availability: "{{ states('sensor.greenlight_dataset') | int(0) > 0 }}"
         state: >
-          {% from 'greenlight.jinja' import gl_bits, gl_hash24 %}
-          {% set bits = (gl_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) %}
+          {% from 'greenlight.jinja' import gl_bits, gl_hidden, gl_hash24 %}
+          {% set items = state_attr('sensor.greenlight_dataset', 'items') or [] %}
+          {% set raw = (gl_bits | as_function)(items) %}
+          {% set bits = raw - (raw | bitwise_and((gl_hidden | as_function)(items))) %}
           {{ (gl_hash24 | as_function)(states('sensor.greenlight_dataset') ~ ':' ~ bits) }}
         attributes:
-          bits: >
+          raw_bits: >
             {% from 'greenlight.jinja' import gl_bits %}
             {{ (gl_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
+          hidden: >
+            {% from 'greenlight.jinja' import gl_hidden %}
+            {{ (gl_hidden | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
+          bits: >
+            {% from 'greenlight.jinja' import gl_bits, gl_hidden %}
+            {% set items = state_attr('sensor.greenlight_dataset', 'items') or [] %}
+            {% set raw = (gl_bits | as_function)(items) %}
+            {{ raw - (raw | bitwise_and((gl_hidden | as_function)(items))) }}
           ds: "{{ states('sensor.greenlight_dataset') | int(0) }}"
 
 automation:

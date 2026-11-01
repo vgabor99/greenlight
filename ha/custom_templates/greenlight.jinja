@@ -95,6 +95,27 @@
   {% do returns(ns.bits) %}
 {% endmacro %}
 
+{# The members that are expected where the display hangs: in the lobby, next to the alarm's arm panel,
+   whoever reads it is about to arm and leave, so the lobby door is open, unlocked and the alarm is
+   disarmed. Their lines stay in the dataset; gl_hidden masks their bits out of the view. #}
+{% macro gl_expected(returns=none) %}
+  {% do returns([['alarm_control_panel.house_alarm', 'disarmed'],
+                 ['binary_sensor.gf_lobby_door_lock_contact', 'on'],
+                 ['binary_sensor.gf_lobby_door_contact', 'on']]) %}
+{% endmacro %}
+
+{# The view bits never shown (same items as gl_bits): bit i set = every member of line i is expected. #}
+{% macro gl_hidden(items, returns=none) %}
+  {%- set expected = (gl_expected | as_function)() -%}
+  {%- set ns = namespace(bits=0) -%}
+  {%- for members in items -%}
+    {%- if members and members | reject('in', expected) | list | count == 0 -%}
+      {%- set ns.bits = ns.bits + 2 ** loop.index0 -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {% do returns(ns.bits) %}
+{% endmacro %}
+
 {# 24-bit hash of a text, never 0 (DESIGN.md 5.1, 5.2). #}
 {% macro gl_hash24(text, returns=none) %}
   {%- set h = (text | sha1)[:6] | int(base=16) -%}

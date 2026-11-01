@@ -596,6 +596,13 @@ re-interview action (from memory: verify), which needs the device awake, hence t
   the lines joined by newlines (0 becomes 1).
 - **HA view** (5.2): `bits` (which lines have a member in its problem state), `view_id` = 24-bit hash of
   `"<ds_hash>:<bits>"` (never 0), and `time` = now as local seconds since 1970.
+  **Expected conditions** are filtered out in an explicit step: the display hangs in the lobby next to the
+  alarm's arm panel, where the lobby door is open, unlocked and the alarm disarmed by definition. Those
+  members (`gl_expected`: `alarm_control_panel.house_alarm` `disarmed`, `binary_sensor.gf_lobby_door_lock_contact`
+  and `binary_sensor.gf_lobby_door_contact` `on`) keep their dataset lines, but `gl_hidden` masks out every
+  line whose members are all expected: `bits` = `raw_bits` without `hidden` (all three are attributes of
+  `sensor.greenlight_view`), and `view_id` is computed from the filtered `bits`, so those entities changing
+  push nothing. The alarm's `ismeretlen` line stays a problem.
 - **HA automation** (`mode: queued`, `max: 2`: a run can take a minute, and the waiting run reads the newest
   values when it sends, so it covers any number of changes meanwhile), triggered by a change of the wake
   counter or of `view_id` (which also changes with `ds_hash`):
