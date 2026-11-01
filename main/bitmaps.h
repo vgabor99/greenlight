@@ -27,23 +27,20 @@ typedef struct {
     const uint8_t *bits;
 } bm_icon_t;
 
-extern const bm_font_t bm_font_title;  /* Inter 700, 22 px */
-extern const bm_font_t bm_font_time;  /* Inter 600, 15 px */
-extern const bm_font_t bm_font_name;  /* Inter 700, 20 px */
-extern const bm_font_t bm_font_state;  /* Inter 600, 17 px */
+extern const bm_font_t bm_font_name;  /* Inter 700, 24 px */
+extern const bm_font_t bm_font_state;  /* Inter 600, 22 px */
+extern const bm_font_t bm_font_ok;  /* Inter 700, 32 px */
 extern const bm_font_t bm_font_big;  /* Inter 700, 30 px */
-extern const bm_font_t bm_font_detail;  /* Inter 500, 17 px */
+extern const bm_font_t bm_font_detail;  /* Inter 500, 18 px */
 
-/* Line icons by icon id (DESIGN.md 5.1), 25 px. */
+/* Line icons by icon id (DESIGN.md 5.1), 30 px. */
 #define BM_LINE_ICONS 61
 #define BM_ICON_ALERT_CIRCLE 0x00
 #define BM_ICON_DOTS_HORIZONTAL 0x01
 extern const bm_icon_t bm_line_icon[BM_LINE_ICONS];
 
-extern const bm_icon_t bm_icon_home_outline;  /* 25 px */
-extern const bm_icon_t bm_icon_home_alert_outline;  /* 25 px */
-extern const bm_icon_t bm_icon_update;  /* 16 px */
-extern const bm_icon_t bm_icon_check_circle;  /* 144 px */
+extern const bm_icon_t bm_icon_sync_badge;  /* 24 px */
+extern const bm_icon_t bm_icon_check_circle;  /* 152 px */
 extern const bm_icon_t bm_icon_access_point;  /* 150 px */
 extern const bm_icon_t bm_icon_sync;  /* 150 px */
 extern const bm_icon_t bm_icon_alert_outline;  /* 150 px */

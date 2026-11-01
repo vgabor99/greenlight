@@ -310,8 +310,11 @@ static void dump_samples(void)
         {"Teraszajtó nyitva", "7F|Ismeretlen ikon|nyitva", "02|Nagyon hosszú nevű ajtó a pincelépcső alatt|nyitva",
          "0D|Lámpa|nagyon hosszú állapot szöveg, ami nem fér el", "13|Árvíztűrő tükörfúrógép|"},
         {0},  /* Minden OK */
+        {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "2E|Hűtő|túl meleg",
+         "2F|Fagyasztó|túl meleg", "27|Mosogató|nedves"},
+        {0},
     };
-    static const char *const names[] = {"problems", "overflow", "two", "edge", "ok"};
+    static const char *const names[] = {"problems", "overflow", "two", "edge", "ok", "problems_stale", "ok_stale"};
     static render_view_t v;
     vTaskDelay(pdMS_TO_TICKS(2000));  /* the USB console drops output until the host has reopened the port */
     for (int s = 0; s < sizeof(rows) / sizeof(rows[0]); s++) {
@@ -322,7 +325,7 @@ static void dump_samples(void)
             strlcpy(v.shown.row[v.shown.nrows++], rows[s][i], sizeof(v.shown.row[0]));
         }
         v.shown.active = s == 1 ? 9 : v.shown.nrows;
-        v.stale = s == 0;  /* the update icon in the header */
+        v.stale = s >= 5;  /* the sync badge */
         dump_frame(render_status(&v), names[s]);
     }
     static const struct { render_screen_t screen; const char *name; } dev[] = {

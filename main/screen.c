@@ -6,59 +6,47 @@
 
 /* Layout, measured from the accepted mockups ("Bezárva? e-paper kijelző – design specifikáció").
  * Text is placed by its baseline, icons by their centre. */
-#define HDR_ICON_X    24   /* house icon */
-#define HDR_ICON_Y    20   /* house and update icons */
-#define HDR_TEXT_X    45
-#define HDR_BASE      29   /* "Bezárva?" */
-#define HDR_ICON_R    386  /* right end of the update icon */
-#define HDR_RULE_Y    41   /* 2 px rule under the header */
+#define ROW_H       (EPD_HEIGHT / RENDER_ROWS)  /* RENDER_ROWS rows of 50 px fill the screen, no header */
+#define ROW_ICON_X  27                          /* line icon centre */
+#define ROW_ICON_DY 25                          /* line icon centre below the row top */
+#define ROW_BASE_DY 33                          /* baseline below the row top */
+#define ROW_NAME_X  56
+#define ROW_RIGHT   387                         /* right end of the state */
+#define ROW_GAP     12                          /* least room between the name and the state */
+#define STATE_MAX_W 180                         /* a longer state is cut */
+#define SEP_X0      56                          /* dotted separator above a row: 2 px on, 3 off */
+#define SEP_X1      387
 
-#define ROWS_TOP    43                       /* RENDER_ROWS rows of about 42.8 px down to the bottom */
-#define ROWS_H      (EPD_HEIGHT - ROWS_TOP)
-#define ROW_ICON_X  26                       /* line icon centre */
-#define ROW_ICON_DY 22                       /* line icon centre below the row top */
-#define ROW_BASE_DY 29                       /* baseline below the row top */
-#define ROW_NAME_X  53
-#define ROW_RIGHT   385                      /* right end of the state */
-#define ROW_GAP     12                       /* least room between the name and the state */
-#define STATE_MAX_W 150                      /* a longer state is cut */
-#define SEP_X0      52                       /* dotted separator between rows: 2 px on, 3 off */
-#define SEP_X1      383
-
-#define OK_ICON_Y     118  /* "Minden OK" screen */
-#define OK_TITLE_BASE 220
+#define OK_ICON_Y     97   /* "Minden OK" screen */
+#define OK_TITLE_BASE 214
 #define OK_LINE1_BASE 248
-#define OK_LINE2_BASE 272
+#define OK_LINE2_BASE 274
+
+#define BADGE_R    17  /* stale badge: black disc 34 px across, right edge at ROW_RIGHT, centred on the */
+#define BADGE_RING 4   /* first row's icon, with a white ring around it, 4.5 px wide (DESIGN.md 5.3) */
 
 #define DEV_ICON_Y    112  /* device screens: icon and one line */
 #define DEV_TEXT_BASE 240
 
 static uint8_t *fb;
 
-static void set_black(int x, int y)
+static void set_pixel(int x, int y, bool black)
 {
     if (x >= 0 && x < EPD_WIDTH && y >= 0 && y < EPD_HEIGHT) {
-        fb[y * EPD_STRIDE + x / 8] &= ~(0x80 >> (x & 7));
+        uint8_t *b = &fb[y * EPD_STRIDE + x / 8];
+        *b = black ? *b & ~(0x80 >> (x & 7)) : *b | 0x80 >> (x & 7);
     }
 }
 
-static void fill_black(int x, int y, int w, int h)
-{
-    for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            set_black(x + i, y + j);
-        }
-    }
-}
-
-/* A 1-bit bitmap (rows of (w + 7) / 8 bytes, MSB first, 1 = black) with its top left corner at x, y. */
-static void blit(int x, int y, int w, int h, const uint8_t *bits)
+/* A 1-bit bitmap (rows of (w + 7) / 8 bytes, MSB first, 1 = ink) with its top left corner at x, y; the ink is
+ * painted black, or white over a black background. */
+static void blit(int x, int y, int w, int h, const uint8_t *bits, bool black)
 {
     int stride = (w + 7) / 8;
     for (int j = 0; j < h; j++) {
         for (int i = 0; i < w; i++) {
             if (bits[j * stride + i / 8] & (0x80 >> (i & 7))) {
-                set_black(x + i, y + j);
+                set_pixel(x + i, y + j, black);
             }
         }
     }
@@ -66,7 +54,7 @@ static void blit(int x, int y, int w, int h, const uint8_t *bits)
 
 static void draw_icon(const bm_icon_t *icon, int cx, int cy)
 {
-    blit(cx - icon->w / 2, cy - icon->h / 2, icon->w, icon->h, icon->bits);
+    blit(cx - icon->w / 2, cy - icon->h / 2, icon->w, icon->h, icon->bits, true);
 }
 
 /* The code point at *s, and *s moved past it; '?' for a broken sequence. */
@@ -121,7 +109,7 @@ static int draw_text(const bm_font_t *f, int x, int base, const char *s, int len
     const char *end = s + len;
     while (s < end) {
         const bm_glyph_t *g = glyph(f, utf8_next(&s));
-        blit((pen16 + 8) / 16 + g->x, base + g->y, g->w, g->h, f->bits + g->off);
+        blit((pen16 + 8) / 16 + g->x, base + g->y, g->w, g->h, f->bits + g->off, true);
         pen16 += g->adv;
     }
     return (pen16 + 8) / 16 - x;
@@ -167,18 +155,6 @@ static void draw_cut(const bm_font_t *f, int x, int base, const char *s, int len
 
 /* ---- House screens ---- */
 
-/* House icon, "Bezárva?", and at the right the update icon while the view is stale (DESIGN.md 5.3). */
-static void draw_header(const render_view_t *v)
-{
-    draw_icon(v->shown.active ? &bm_icon_home_alert_outline : &bm_icon_home_outline, HDR_ICON_X, HDR_ICON_Y);
-    draw_text(&bm_font_title, HDR_TEXT_X, HDR_BASE, "Bezárva?", strlen("Bezárva?"));
-    if (v->stale) {
-        const bm_icon_t *icon = &bm_icon_update;
-        draw_icon(icon, HDR_ICON_R - icon->w + icon->w / 2, HDR_ICON_Y);
-    }
-    fill_black(0, HDR_RULE_Y, EPD_WIDTH, 2);
-}
-
 /* A dataset line, "II|name|state" (DESIGN.md 5.1): icon id in hex, name, state (may be empty). */
 typedef struct {
     const bm_icon_t *icon;
@@ -215,11 +191,11 @@ static line_t parse_line(const char *s)
 static void draw_rows(const render_shown_t *s)
 {
     for (int i = 0; i < s->nrows; i++) {
-        int top = (ROWS_TOP * RENDER_ROWS + i * ROWS_H + RENDER_ROWS / 2) / RENDER_ROWS;
+        int top = i * ROW_H;
         if (i > 0) {
             for (int x = SEP_X0; x <= SEP_X1; x++) {
                 if ((x - SEP_X0) % 5 < 2) {
-                    set_black(x, top);
+                    set_pixel(x, top - 1, true);
                 }
             }
         }
@@ -236,9 +212,29 @@ static void draw_rows(const render_shown_t *s)
 static void draw_all_ok(void)
 {
     draw_icon(&bm_icon_check_circle, EPD_WIDTH / 2, OK_ICON_Y);
-    draw_centered(&bm_font_big, OK_TITLE_BASE, "Minden OK");
+    draw_centered(&bm_font_ok, OK_TITLE_BASE, "Minden OK");
     draw_centered(&bm_font_detail, OK_LINE1_BASE, "Ajtók, ablakok zárva");
     draw_centered(&bm_font_detail, OK_LINE2_BASE, "Készülékek kikapcsolva");
+}
+
+/* The stale flag (DESIGN.md 5.3), drawn over whatever is under it: white sync arrows on a black disc in a
+ * white ring. Distances are in half pixels, from pixel centres. */
+static void draw_badge(void)
+{
+    int x0 = ROW_RIGHT + 1 - 2 * BADGE_R, y0 = ROW_ICON_DY - BADGE_R;  /* the disc's bounding box */
+    int cx2 = 2 * x0 + 2 * BADGE_R, cy2 = 2 * y0 + 2 * BADGE_R;
+    int r2 = 2 * (BADGE_R + BADGE_RING) + 1;  /* the ring's outer radius, in half pixels */
+    for (int y = y0 - BADGE_RING - 1; y <= y0 + 2 * BADGE_R + BADGE_RING; y++) {
+        for (int x = x0 - BADGE_RING - 1; x <= x0 + 2 * BADGE_R + BADGE_RING; x++) {
+            int dx = 2 * x + 1 - cx2, dy = 2 * y + 1 - cy2, d = dx * dx + dy * dy;
+            if (d <= r2 * r2) {
+                set_pixel(x, y, d <= 4 * BADGE_R * BADGE_R);
+            }
+        }
+    }
+    const bm_icon_t *icon = &bm_icon_sync_badge;
+    blit(x0 + (2 * BADGE_R - icon->w + 1) / 2, y0 + (2 * BADGE_R - icon->h + 1) / 2, icon->w, icon->h, icon->bits,
+         false);
 }
 
 /* ---- Device screens: a large icon and one line, no header ---- */
@@ -256,11 +252,13 @@ void screen_draw(uint8_t *frame, const render_view_t *v)
     case RENDER_BLANK:
         break;
     case RENDER_HOUSE:
-        draw_header(v);
         if (v->shown.nrows) {
             draw_rows(&v->shown);
         } else {
             draw_all_ok();
+        }
+        if (v->stale) {
+            draw_badge();
         }
         break;
     case RENDER_SEARCHING:   draw_device(&bm_icon_access_point, "Hálózatkeresés"); break;

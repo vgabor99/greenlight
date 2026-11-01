@@ -36,16 +36,15 @@ FULL = BASIC + "".join(chr(c) for c in range(0xA0, 0x180)) + "…·–—‘’�
 
 # name: (weight, pixel size, charset). Sizes and weights fitted to the mockups.
 TEXT_FONTS = {
-    "title":  (700, 22, BASIC),  # "Bezárva?"
-    "time":   (600, 15, BASIC),  # "szombat, 18:46"
-    "name":   (700, 20, FULL),   # problem line name, "további N"
-    "state":  (600, 17, FULL),   # problem line state
-    "big":    (700, 30, BASIC),  # "Minden OK", device screen text
-    "detail": (500, 17, BASIC),  # the two lines under "Minden OK"
+    "name":   (700, 24, FULL),   # problem line name, "további N"
+    "state":  (600, 22, FULL),   # problem line state
+    "ok":     (700, 32, BASIC),  # "Minden OK"
+    "big":    (700, 30, BASIC),  # device screen text
+    "detail": (500, 18, BASIC),  # the two lines under "Minden OK"
 }
 
-# Line icons, indexed by icon id (append-only, see above). 25 px like the mockups.
-LINE_ICON_PX = 25
+# Line icons, indexed by icon id (append-only, see above). 30 px like the mockups.
+LINE_ICON_PX = 30
 LINE_ICONS = [
     ("alert-circle", 0xF0028),  # 00: fallback for an unknown id or a malformed line
     ("dots-horizontal", 0xF01D8),  # 01: overflow line, "további N"
@@ -112,10 +111,8 @@ LINE_ICONS = [
 
 # Other icons: C name, MDI codepoint, pixel size
 ICONS = [
-    ("home_outline", 0xF06A1, 25),        # header, Minden OK
-    ("home_alert_outline", 0xF15D0, 25),  # header, problems
-    ("update", 0xF06B0, 16),              # header, next to the time
-    ("check_circle", 0xF05E0, 144),       # Minden OK
+    ("sync_badge", 0xF04E6, 24),          # stale badge, drawn white on a black disc
+    ("check_circle", 0xF05E0, 152),       # Minden OK
     ("access_point", 0xF0003, 150),       # Hálózatkeresés, Csatlakozás
     ("sync", 0xF04E6, 150),               # Szinkronizálás
     ("alert_outline", 0xF002A, 150),      # Csatlakozási hiba, Ismeretlen hiba
