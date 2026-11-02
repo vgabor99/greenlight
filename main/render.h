@@ -39,7 +39,7 @@ typedef enum {
     RENDER_JOINING,      /* "Csatlakozás": interview */
     RENDER_SYNCING,      /* "Szinkronizálás": no view yet, or a dataset sync under way */
     RENDER_JOIN_FAILED,  /* "Csatlakozási hiba": unpaired, or the rejoin failed */
-    RENDER_BATTERY,      /* "Akkumulátor lemerült" (not used yet: the battery is a fixed 100 %) */
+    RENDER_BATTERY,      /* "Akkumulátor lemerült": to sleep with in LOW_BATTERY */
     RENDER_ERROR,        /* "Ismeretlen hiba" */
 } render_screen_t;
 
@@ -55,6 +55,9 @@ typedef struct {
     bool            stale;      /* the shown view is older than its validity (DESIGN.md 5.3) */
     int64_t         age_ms;     /* age of the last received view, -1 = unknown */
     uint32_t        valid_ms;   /* how long a received view stays fresh */
+    uint16_t        battery_mv;
+    bool            usb;        /* on USB power */
+    bool            bat_low;    /* low battery (latched or below the threshold) */
     int             rx_count;
     render_rx_t     rx[RENDER_RX_N];  /* newest first */
 } render_view_t;

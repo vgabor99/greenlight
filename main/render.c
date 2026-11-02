@@ -193,10 +193,11 @@ static void render_debug(const render_view_t *v)
 {
     text_init();
 
-    /* Header: state left, wake counter and uptime right */
-    char right[24];
-    snprintf(right, sizeof(right), "w%lu %lu.%lus", (unsigned long)v->wake, (unsigned long)(v->uptime_ms / 1000),
-             (unsigned long)(v->uptime_ms % 1000 / 100));
+    /* Header: state left; battery, wake counter and uptime right */
+    char right[40];
+    snprintf(right, sizeof(right), "%u.%02uV%s w%lu %lu.%lus", v->battery_mv / 1000, v->battery_mv % 1000 / 10,
+             v->usb ? " USB" : v->bat_low ? " LOW" : "", (unsigned long)v->wake,
+             (unsigned long)(v->uptime_ms / 1000), (unsigned long)(v->uptime_ms % 1000 / 100));
     row(Y_HEADER, "%s", v->state);
     draw_text(EPD_WIDTH - X0 - u8g2_GetUTF8Width(&u8g2, right), Y_HEADER, right);
     fill_rect(0, Y_RULE1, EPD_WIDTH, 2, 1);

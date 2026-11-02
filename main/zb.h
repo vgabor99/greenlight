@@ -80,8 +80,10 @@ typedef struct {
 } zb_callbacks_t;
 
 /* Start the Zigbee stack task. ds_hash and shown_view_id are the stored dataset and view (0 = none);
- * wake_count is this wake's number (0 .. 2^24-1, different from the previous wake's). */
-void zb_start(const zb_callbacks_t *cb, uint32_t ds_hash, uint32_t shown_view_id, uint32_t wake_count);
+ * wake_count is this wake's number (0 .. 2^24-1, different from the previous wake's); battery_mv the battery
+ * voltage at boot, for the Power Configuration attributes' first values. */
+void zb_start(const zb_callbacks_t *cb, uint32_t ds_hash, uint32_t shown_view_id, uint32_t wake_count,
+              uint16_t battery_mv);
 
 /* Wait for the stack to report whether a network was restored from storage. Returns false on timeout. */
 bool zb_wait_started(uint32_t timeout_ms, bool *factory_new);
@@ -97,7 +99,7 @@ void zb_pairing_stop(void);
 void zb_erase_network(void);
 
 /* Reports to the coordinator (DESIGN.md 6.4). */
-void zb_report_battery(void);               /* the three Power Configuration attributes, fixed 100 % in the MVP */
+void zb_report_battery(uint16_t mv, bool low);  /* Power Configuration: charge from mv, alarm bit 0 = low */
 void zb_report_occupancy(bool occupied);
 void zb_report_shown_view_id(void);         /* 0xFC8A shown_view_id */
 void zb_report_dataset_hash(void);          /* 0xFC8A dataset_hash */

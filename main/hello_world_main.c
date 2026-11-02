@@ -6,6 +6,8 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_rtc_time.h"
@@ -29,6 +31,12 @@ static const char *TAG = "greenlight";
 #define REPORT_DELAY_MS 3000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
 #define VIEW_WAIT_MS   45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
 #define SCREEN_VALID_MS 8000   /* a received view is fresh this long: HA pushes every 5 s while awake, + 3 s latency (5.3) */
+
+/* ---- Battery (DESIGN.md 6.6) ---- */
+#define BAT_ENTER_MV   3500  /* below this the wake ends in LOW_BATTERY */
+#define BAT_EXIT_MV    3700  /* LOW_BATTERY is left only at or above this, or on USB power */
+#define BAT_CHECK_MS   1000  /* mid-wake check period */
+#define SIM_MV_DEFAULT 4100  /* simulated voltage until the console sets one */
 
 /* ---- Inputs: PIR (D0) and pair button (D1), level based, polled and debounced by a task ---- */
 #define INPUT_POLL_MS        10
@@ -217,14 +225,56 @@ static void state_load(void)
     nvs_erase_key(nvs, "snap");  /* rev 5 snapshot, no longer used */
 }
 
+/* Battery: simulated until the hardware is there. The voltage and USB power are set over the console and kept
+ * in NVS ("sim_mv", "sim_usb"), so they survive the sleep, a power cycle and a reflash like a real battery's
+ * charge. "bat_low" latches LOW_BATTERY: while it is set, the exit threshold applies (hysteresis). USB power
+ * overrides a low battery: the device then runs from USB. */
+static volatile uint16_t sim_mv = SIM_MV_DEFAULT;
+static volatile bool     sim_usb;
+static volatile bool     bat_latched;
+static volatile bool     bat_changed;  /* the console changed the simulation: report it */
+
+static void battery_load(void)
+{
+    uint16_t mv;
+    if (nvs_get_u16(nvs, "sim_mv", &mv) == ESP_OK) {
+        sim_mv = mv;
+    }
+    sim_usb     = nv_get("sim_usb");
+    bat_latched = nv_get("bat_low");
+    ESP_LOGI(TAG, "battery: %u mV (simulated), usb %d, latched %d", sim_mv, sim_usb, bat_latched);
+}
+
+static uint16_t battery_mv(void)
+{
+    return sim_mv;  /* later the ADC, sampled at rest and averaged */
+}
+
+static bool usb_powered(void)
+{
+    return sim_usb;  /* later the VBUS sense pin */
+}
+
+static bool battery_low(void)
+{
+    return !usb_powered() && battery_mv() < (bat_latched ? BAT_EXIT_MV : BAT_ENTER_MV);
+}
+
+static void bat_latch(bool on)
+{
+    bat_latched = on;
+    nv_set("bat_low", on);
+}
+
 /* ---- State machine (DESIGN.md 3.3) ---- */
 typedef enum {
     ST_BOOT, ST_UNPAIRED_WAIT, ST_PAIRING, ST_INTERVIEW, ST_REJOIN, ST_ACTIVE, ST_ERASE_NETWORK,
-    ST_SHUTDOWN, ST_SLEEP,
+    ST_SHUTDOWN, ST_SLEEP, ST_LOW_BATTERY,
 } state_t;
 
 static const char *const state_names[] = {
     "BOOT", "UNPAIRED_WAIT", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
+    "LOW_BATTERY",
 };
 
 static TickType_t boot_tick;
@@ -238,7 +288,8 @@ static SemaphoreHandle_t view_lock;  /* guards ds, shown, oos, syncing and rx_lo
 static volatile bool     view_dirty;
 static state_t           view_state;
 static bool              syncing;  /* dataset entries arrived and their commit has not */
-static render_screen_t   failed;   /* RENDER_JOIN_FAILED or RENDER_ERROR once this wake failed, else RENDER_BLANK */
+static render_screen_t   failed;   /* RENDER_JOIN_FAILED, RENDER_ERROR or RENDER_BATTERY once this wake failed,
+                                      * else RENDER_BLANK */
 static render_rx_t       rx_log[RENDER_RX_N];  /* ring; rx_head is the next slot */
 static int               rx_head, rx_count;
 static int               partials;   /* partial refreshes since the last full clear */
@@ -425,6 +476,9 @@ static void redraw(void)
     v.ds_count  = ds.count;
     v.shown     = shown;
     v.oos       = oos;
+    v.battery_mv = battery_mv();
+    v.usb       = usb_powered();
+    v.bat_low   = bat_latched || battery_low();
     v.rx_count  = rx_count;
     for (int i = 0; i < rx_count; i++) {
         v.rx[i] = rx_log[(rx_head - 1 - i + RENDER_RX_N) % RENDER_RX_N];
@@ -502,6 +556,68 @@ static void on_rx(const zb_rx_t *ev)
     xSemaphoreGive(view_lock);
 }
 
+/* ---- Console (USB-Serial-JTAG): the battery simulation, see tools/console.py ----
+ * "bat <mV>" sets the simulated battery voltage, "usb 0|1" the simulated USB power, "bat" or "usb" alone print
+ * them. Applied at once; the state loops pick them up. */
+static void console_task(void *arg)
+{
+    char line[32];
+    for (;;) {
+        if (!fgets(line, sizeof(line), stdin)) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        int v;
+        if (line[0] == '\r' || line[0] == '\n') {
+            continue;
+        } else if (sscanf(line, "bat %d", &v) == 1) {
+            if (v < 2500 || v > 4500) {
+                ESP_LOGW(TAG, "console: bat %d out of range (2500-4500)", v);
+                continue;
+            }
+            sim_mv = v;
+            nvs_set_u16(nvs, "sim_mv", v);
+            nvs_commit(nvs);
+        } else if (sscanf(line, "usb %d", &v) == 1) {
+            sim_usb = v != 0;
+            nv_set("sim_usb", sim_usb);
+        } else if (strncmp(line, "bat", 3) != 0 && strncmp(line, "usb", 3) != 0) {
+            ESP_LOGW(TAG, "console: unknown command (bat <mV>, usb 0|1)");
+            continue;
+        }
+        ESP_LOGI(TAG, "battery: %u mV (simulated), usb %d, latched %d", sim_mv, sim_usb, bat_latched);
+        bat_changed = true;
+        view_dirty  = true;
+    }
+}
+
+static void console_init(void)
+{
+    usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
+    usb_serial_jtag_vfs_use_driver();  /* blocking reads; writes are dropped while no host listens */
+    usb_serial_jtag_vfs_set_rx_line_endings(ESP_LINE_ENDINGS_LF);
+    setvbuf(stdin, NULL, _IONBF, 0);
+    xTaskCreate(console_task, "console", 3072, NULL, 4, NULL);
+}
+
+/* Mid-wake battery check, at most every BAT_CHECK_MS: true when the wake must end in LOW_BATTERY (the caller
+ * returns ST_SHUTDOWN, which draws the battery screen). */
+static bool battery_check(void)
+{
+    static TickType_t last;
+    if (ms_since(last) < BAT_CHECK_MS) {
+        return false;
+    }
+    last = xTaskGetTickCount();
+    if (!battery_low()) {
+        return false;
+    }
+    ESP_LOGW(TAG, "battery low (%u mV): shutting down", battery_mv());
+    failed = RENDER_BATTERY;
+    return true;
+}
+
 /* The reports of a wake other than the wake counter (DESIGN.md 6.4). After a rejoin they follow the wake counter
  * by REPORT_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
 static void report_wake_rest(void)
@@ -509,7 +625,7 @@ static void report_wake_rest(void)
     zb_report_dataset_hash();
     zb_report_shown_view_id();
     zb_report_awake(true);
-    zb_report_battery();
+    zb_report_battery(battery_mv(), battery_low());
     zb_report_occupancy(pir_active);
 }
 
@@ -517,6 +633,23 @@ static bool rest_pending;  /* ACTIVE: report_wake_rest() still to do */
 
 static state_t st_boot(void)
 {
+    /* The battery first, before the radio, the panel and any NVS write (DESIGN.md 6.6). */
+    if (bat_latched) {
+        if (battery_low()) {
+            ESP_LOGW(TAG, "boot: battery still low (%u mV)", battery_mv());
+            return ST_LOW_BATTERY;  /* the panel still shows the battery screen */
+        }
+        ESP_LOGI(TAG, "boot: battery recovered (%u mV%s)", battery_mv(), usb_powered() ? ", USB" : "");
+        bat_latch(false);
+    } else if (battery_low()) {
+        ESP_LOGW(TAG, "boot: battery low (%u mV)", battery_mv());
+        if (epd_init() != ESP_OK) {
+            ESP_LOGE(TAG, "e-paper init failed");
+        }
+        failed = RENDER_BATTERY;
+        return ST_SHUTDOWN;  /* the stack is not started: no reports */
+    }
+
     bool pair_now = nv_get("pair_now");
     state_load();
     wake_n = wake_count_next();
@@ -528,7 +661,7 @@ static state_t st_boot(void)
 #endif
     boot_tick = xTaskGetTickCount();
     zb_callbacks_t cbs = {.view = on_view, .dataset = on_dataset, .activity = touch_activity, .rx = on_rx};
-    zb_start(&cbs, ds.hash, shown.view.id, wake_n);
+    zb_start(&cbs, ds.hash, shown.view.id, wake_n, battery_mv());
 
     /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
      * releases the pin hold and recreates the SPI bus left by epd_poweroff(). */
@@ -574,6 +707,9 @@ static state_t st_unpaired_wait(void)
             failed = RENDER_JOIN_FAILED;  /* still not paired */
             return ST_SHUTDOWN;
         }
+        if (battery_check()) {
+            return ST_SHUTDOWN;
+        }
         wait_ms(20);
     }
 }
@@ -588,6 +724,10 @@ static state_t st_pairing(void)
             zb_pairing_stop();
             ESP_LOGI(TAG, "joined after %lu ms", (unsigned long)ms_since(start));
             return ST_INTERVIEW;
+        }
+        if (battery_check()) {
+            zb_pairing_stop();
+            return ST_SHUTDOWN;
         }
         wait_ms(100);
     }
@@ -650,6 +790,13 @@ static state_t st_active(void)
             last_pir = pir_active;
             zb_report_occupancy(last_pir);
         }
+        if (battery_check()) {
+            return ST_SHUTDOWN;
+        }
+        if (bat_changed && !rest_pending) {  /* the console changed the simulation */
+            bat_changed = false;
+            zb_report_battery(battery_mv(), battery_low());
+        }
         if (ms_since(last_beat) >= HEARTBEAT_MS) {  /* tell HA we are still awake */
             last_beat = xTaskGetTickCount();
             zb_report_shown_view_id();
@@ -690,7 +837,14 @@ static state_t st_erase_network(void)
 
 static state_t st_shutdown(void)
 {
+    bool low_battery = failed == RENDER_BATTERY;
+    if (low_battery) {
+        bat_latch(true);
+    }
     if (zb_joined()) {
+        if (low_battery) {
+            zb_report_battery(battery_mv(), true);  /* HA learns why the device went quiet */
+        }
         zb_report_awake(false);  /* best effort; the panel refresh below gives the radio time to send it */
     }
     /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
@@ -698,14 +852,14 @@ static state_t st_shutdown(void)
         ESP_LOGE(TAG, "e-paper final clear failed");
     }
     partials = 0;
-    show_state(ST_SLEEP);
+    show_state(low_battery ? ST_LOW_BATTERY : ST_SLEEP);
     redraw();
     ESP_LOGI(TAG, "final refresh done");
     TickType_t t0 = xTaskGetTickCount();
     epd_poweroff();
     ESP_LOGI(TAG, "panel: poweroff %lu ms", (unsigned long)ms_since(t0));
     ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
-    return ST_SLEEP;
+    return low_battery ? ST_LOW_BATTERY : ST_SLEEP;
 }
 
 /* Simulated deep sleep: wait for either wake input, then restart the chip, which runs the same boot path
@@ -717,6 +871,21 @@ static state_t st_sleep(void)
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     ESP_LOGI(TAG, "wake: %s", pair_active ? "pair button" : "PIR");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    esp_restart();
+    return ST_BOOT;
+}
+
+/* Low battery (DESIGN.md 6.6): the battery screen is on the panel and the radio is off. The PIR and the pair
+ * button are ignored: only USB power wakes the device, and the boot then finds the battery recovered. Simulated
+ * like SLEEP; the final firmware replaces this with esp_deep_sleep_start() with VBUS as the only wake source. */
+static state_t st_low_battery(void)
+{
+    ESP_LOGI(TAG, "low battery: waiting for USB power");
+    while (!usb_powered()) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    ESP_LOGI(TAG, "wake: USB power");
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
     return ST_BOOT;
@@ -736,6 +905,8 @@ void app_main(void)
     rf_switch_init();
     view_lock = xSemaphoreCreateMutex();
     nvs_open_state();
+    battery_load();
+    console_init();
     staleness_init();
     inputs_init();
     state_t st = ST_BOOT;
@@ -750,6 +921,7 @@ void app_main(void)
         case ST_ACTIVE:        next = st_active(); break;
         case ST_ERASE_NETWORK: next = st_erase_network(); break;
         case ST_SHUTDOWN:      next = st_shutdown(); break;
+        case ST_LOW_BATTERY:   next = st_low_battery(); break;
         default:               next = st_sleep(); break;
         }
         ESP_LOGI(TAG, "%s -> %s", state_names[st], state_names[next]);

@@ -35,9 +35,8 @@ static const char *TAG = "zb";
 #define VIEW_ALL  0x0F                         /* all four view_* attributes received */
 #define ENTRY_MAX (6 + 1 + 2 + 1 + ZB_PART_CHARS)  /* "HHHHHH|II|text": 36 characters */
 
-/* MVP battery: fixed 100 % (DESIGN.md 6.6) */
-#define BATTERY_VOLTAGE_100MV 42
-#define BATTERY_PERCENT_HALF  200
+/* Battery (DESIGN.md 6.6): batteryAlarmState bit 0 (BatteryMinThreshold) = low, Z2M's battery_low */
+#define BATTERY_ALARM_LOW 0x00000001u
 
 /* End device timeout requested from the parent. The longest value (16384 min) made the join fail with a TCLK
  * exchange error on Z2M, so use the value of the Espressif examples; revisit when the device sleeps for hours. */
@@ -55,6 +54,7 @@ static zb_callbacks_t     s_cb;
 static uint32_t           s_shown_view_id;
 static uint32_t           s_ds_hash;
 static uint32_t           s_wake_count;
+static uint16_t           s_battery_mv;
 static esp_timer_handle_t s_retry_timer;
 static volatile bool      s_pairing;
 static uint8_t            s_retry_mode;
@@ -117,6 +117,27 @@ static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
         ESP_LOGW(TAG, "set cluster 0x%04x attr 0x%04x failed: 0x%02x", cluster, attr, st);
     }
     report_attr(cluster, attr);
+}
+
+/* LiPo charge in half percents (ZCL batteryPercentageRemaining, 200 = 100 %), interpolated in a rough open-circuit
+ * voltage curve. */
+static uint8_t battery_half_percent(uint16_t mv)
+{
+    static const struct { uint16_t mv; uint8_t pct; } curve[] = {
+        {3300, 0}, {3500, 5}, {3600, 12}, {3700, 30}, {3800, 50}, {4000, 80}, {4200, 100},
+    };
+    const int n = sizeof(curve) / sizeof(curve[0]);
+    if (mv <= curve[0].mv) {
+        return 0;
+    }
+    for (int i = 1; i < n; i++) {
+        if (mv < curve[i].mv) {
+            uint32_t pct = curve[i - 1].pct * 2 + (uint32_t)(curve[i].pct - curve[i - 1].pct) * 2 *
+                                                      (mv - curve[i - 1].mv) / (curve[i].mv - curve[i - 1].mv);
+            return (uint8_t)pct;
+        }
+    }
+    return 200;
 }
 
 static void report_shown_view_id_nolock(void)
@@ -553,14 +574,14 @@ static esp_err_t create_device(void)
     ezb_zcl_basic_cluster_desc_add_attr(basic, EZB_ZCL_ATTR_BASIC_SW_BUILD_ID_ID, s_build_id);
     ezb_zcl_basic_cluster_desc_add_attr(basic, EZB_ZCL_ATTR_BASIC_DATE_CODE_ID, s_date_code);
 
-    /* Power Configuration: fixed 100 % for the MVP */
+    /* Power Configuration: the battery as measured at boot (simulated for now, DESIGN.md 6.6) */
     ezb_zcl_power_config_cluster_server_config_t power_cfg = {
         .mains_voltage               = EZB_ZCL_POWER_CONFIG_MAINS_VOLTAGE_DEFAULT_VALUE,
         .mains_voltage_min_threshold = EZB_ZCL_POWER_CONFIG_MAINS_VOLTAGE_MIN_THRESHOLD_DEFAULT_VALUE,
         .mains_voltage_max_threshold = EZB_ZCL_POWER_CONFIG_MAINS_VOLTAGE_MAX_THRESHOLD_DEFAULT_VALUE,
     };
     ezb_zcl_cluster_desc_t power = ezb_zcl_power_config_create_cluster_desc(&power_cfg, EZB_ZCL_CLUSTER_SERVER);
-    uint8_t  voltage = BATTERY_VOLTAGE_100MV, percent = BATTERY_PERCENT_HALF;
+    uint8_t  voltage = s_battery_mv / 100, percent = battery_half_percent(s_battery_mv);
     uint8_t  size = EZB_ZCL_POWER_CONFIG_BATTERY_SIZE_OTHER, quantity = 1, rated = 37;
     uint16_t ahr = 100;  /* 1000 mAh in units of 10 mAh */
     uint32_t alarm = 0;
@@ -666,9 +687,11 @@ static void stack_task(void *arg)
 
 /* ---- public API ---- */
 
-void zb_start(const zb_callbacks_t *cb, uint32_t ds_hash, uint32_t shown_view_id, uint32_t wake_count)
+void zb_start(const zb_callbacks_t *cb, uint32_t ds_hash, uint32_t shown_view_id, uint32_t wake_count,
+              uint16_t battery_mv)
 {
     s_cb            = *cb;
+    s_battery_mv    = battery_mv;
     s_ds_hash       = ds_hash;
     s_shown_view_id = shown_view_id;
     s_wake_count    = wake_count;
@@ -691,7 +714,7 @@ bool zb_wait_started(uint32_t timeout_ms, bool *factory_new)
 
 bool zb_joined(void)
 {
-    return (xEventGroupGetBits(s_events) & BIT_JOINED) != 0;
+    return s_events && (xEventGroupGetBits(s_events) & BIT_JOINED) != 0;  /* false before zb_start() */
 }
 
 void zb_pairing_start(void)
@@ -721,12 +744,16 @@ void zb_erase_network(void)
     esp_zigbee_factory_reset();  /* clears all datasets and restarts the chip */
 }
 
-void zb_report_battery(void)
+void zb_report_battery(uint16_t mv, bool low)
 {
+    uint8_t  voltage = mv / 100, percent = battery_half_percent(mv);
+    uint32_t alarm   = low ? BATTERY_ALARM_LOW : 0;
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    /* BatteryVoltage (0x0020) is declared but not reported: the stack answers "not found" for it. */
-    report_attr(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID);
-    report_attr(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID);
+    /* BatteryVoltage (0x0020) is set but not reported: the stack answers "not found" for it. A read gets it. */
+    ezb_zcl_set_attr_value(ZB_EP, EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_CLUSTER_SERVER,
+                           EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, EZB_ZCL_STD_MANUF_CODE, &voltage, false);
+    set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, &percent);
+    set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID, &alarm);
     esp_zigbee_lock_release();
 }
 

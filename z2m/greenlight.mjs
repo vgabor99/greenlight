@@ -37,7 +37,7 @@ export default {
             commands: {},
             commandsResponse: {},
         }),
-        m.battery({percentage: true, voltage: false, lowStatus: false, percentageReporting: false}),
+        m.battery({percentage: true, voltage: false, lowStatus: true, percentageReporting: false}),
         m.occupancy({reporting: false}),
         m.numeric({
             name: "wake_count",

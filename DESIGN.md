@@ -100,6 +100,13 @@ stateDiagram-v2
     ACTIVE --> ERASE_NETWORK: pair button held 3 s
     ERASE_NETWORK --> BOOT: restart
     SHUTDOWN --> SLEEP: panel off
+    BOOT --> LOW_BATTERY: battery still low (latched)
+    BOOT --> SHUTDOWN: battery low
+    ACTIVE --> SHUTDOWN: battery low
+    UNPAIRED_WAIT --> SHUTDOWN: battery low
+    PAIRING --> SHUTDOWN: battery low
+    SHUTDOWN --> LOW_BATTERY: battery low, panel off
+    LOW_BATTERY --> BOOT: USB power only
 ```
 
 (Mermaid: renders on GitHub and in VS Code with a Mermaid preview extension. The table below says the same
@@ -110,14 +117,15 @@ States and transitions:
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
-| **UNPAIRED_WAIT** | shows "Csatlakozási hiba"; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN |
-| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIR_MS` over -> back to UNPAIRED_WAIT ("Csatlakozási hiba") |
+| **BOOT** | first the battery check (6.6), before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
+| **UNPAIRED_WAIT** | shows "Csatlakozási hiba"; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
+| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIR_MS` over -> back to UNPAIRED_WAIT ("Csatlakozási hiba"); battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state (6.4) so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
-| **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `RUN_MS` as in 3.2 | `RUN_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK |
+| **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `RUN_MS` as in 3.2 | `RUN_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | polite leave, erase the Zigbee storage, clear the stored dataset and view, set the `pair_now` flag, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view), report `awake = false` (best effort), `epd_poweroff()` | -> SLEEP; if an input is already active, the next wake is immediate |
+| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view), report `awake = false` (best effort), `epd_poweroff()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before `awake = false`, latch `bat_low`, draw the battery screen, -> LOW_BATTERY |
+| **LOW_BATTERY** | the battery screen is on the panel, the radio is off; the PIR and the pair button are ignored (6.6) | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
 
@@ -515,8 +523,11 @@ and that the device's write callback sees all four records.)
 ### 6.6 Battery
 
 Hardware: a single 1000 mAh LiPo cell with a protection circuit (the cell is cut off by the protection board
-before it is damaged, around 2.5-3 V). **MVP: no real battery handling.** The device just reports 100 %
-(`batteryPercentageRemaining` = 200, `batteryVoltage` = 42, `batteryAlarmState` = 0) once per wake. The static
+before it is damaged, around 2.5-3 V). **The battery voltage and USB power are simulated** until the
+hardware exists (below). Once per wake the device reports `batteryPercentageRemaining` (half percents, from
+a rough LiPo curve: 3.3 V 0 %, 3.5 V 5 %, 3.6 V 12 %, 3.7 V 30 %, 3.8 V 50 %, 4.0 V 80 %, 4.2 V 100 %,
+interpolated) and `batteryAlarmState` (bit 0 = low); `batteryVoltage` (100 mV units) is set but not
+reported (the stack refuses it). A change made over the console while ACTIVE is reported at once. The static
 Power Configuration attributes are set from the start: `batterySize` 0x0031 = 2 (Other), `batteryQuantity`
 0x0033 = 1, `batteryRatedVoltage` 0x0034 = 37 (3.7 V), `batteryAHrRating` 0x0032 = 100 (units of 10 mAh).
 
@@ -525,6 +536,36 @@ names are `battery` (%), `voltage` (mV) and `battery_low` (binary, true = low), 
 there is no `battery_ok`. HA's battery binary sensor also reads on = low. The `voltage` entity has only 100 mV
 resolution via the standard attribute (too coarse for a LiPo: 3.0-4.2 V is 12 steps), which is why exact mV
 is on the future-work list below.
+
+**Low battery.** Below `BAT_ENTER_MV` (3.5 V) the wake ends: BOOT checks first, before the radio, the panel
+and any NVS write, and ACTIVE, UNPAIRED_WAIT and PAIRING check every `BAT_CHECK_MS` (1 s) and go to SHUTDOWN
+with the battery screen ("Akkumulátor lemerült", one final refresh, the farewell `battery_low` report when
+joined). INTERVIEW and REJOIN (bounded) and ERASE_NETWORK are not interrupted. SHUTDOWN sets the NVS latch
+`bat_low` and goes to LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power
+does**. While latched, the exit threshold `BAT_EXIT_MV` (3.7 V) applies. 100 mV were too little, because the
+voltage that triggers entry may be read under load while the exit check runs at rest, and a nearly empty
+LiPo recovers tens of mV just by resting; a charger raises it at once anyway. **USB power overrides a low
+battery** (the device then runs from USB, and a device that slept while already on USB would never see a wake
+edge), so a USB wake clears the latch; unplugging with the cell still low ends the next wake the same way. A
+low battery found at boot does not start the radio, so HA keeps the last wake's report.
+
+Why not a "monitoring" LOW_BATTERY state that the main loop forces at any transition: monitoring means
+staying awake or waking by timer, and after real deep sleep every check is a boot anyway; a transition-only
+check misses ACTIVE and UNPAIRED_WAIT, which can run indefinitely; and the cleanup depends on the state.
+
+The ESP32-C6 cannot switch itself off; deep sleep is its floor. On the XIAO the cell, the charger and the system
+share the BAT pad, so a switch that cuts the system would also stop charging. So the real LOW_BATTERY is
+`esp_deep_sleep_start()` with VBUS sense as the only wake source: planned as a divider from the 5V pad to D2
+(GPIO2, an LP wake pin, ext1 any-high), and the PIR's supply cut if it is switchable. The protection circuit is
+the last cutoff.
+
+**Simulation.** The voltage and USB power are set over the USB-Serial-JTAG console (the primary console):
+`bat <mV>` (2500-4500), `usb 0|1`, `bat` / `usb` alone print them, with `tools/console.py` (log monitor and
+sender in one, since the port is exclusive; `--reset` stands in for a wake). They are kept in NVS (`sim_mv`,
+default 4100; `sim_usb`, default 0 = on battery), so they survive the sleep, a power cycle and a reflash like a
+real battery's charge. Tested on the board 2026-11-02: USB override, mid-wake entry with the battery screen
+in one refresh, buttons and voltage ignored in LOW_BATTERY, USB wake, boot-gate entry, the latched boot
+(184 ms, no radio, no panel), the hysteresis (3.6 V stays low, 3.7 V recovers), HA's battery % following.
 
 ### 6.7 Future work (after the MVP; none of this is in the MVP firmware)
 
@@ -677,7 +718,7 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 | Csatlakozás | access-point | INTERVIEW |
 | Szinkronizálás | sync | REJOIN / ACTIVE with no view stored yet, while dataset entries arrive (until their commit), and after an out-of-sync view |
 | Csatlakozási hiba | alert-outline | UNPAIRED_WAIT; and to sleep with, after a rejoin timeout or an unpaired wake |
-| Akkumulátor lemerült | battery-outline | not yet (the battery is a fixed 100 %, 6.6) |
+| Akkumulátor lemerült | battery-outline | to sleep with in LOW_BATTERY (6.6), until USB power |
 | Ismeretlen hiba | alert-outline | to sleep with, when the Zigbee stack did not start |
 
 Otherwise the house screen: BOOT draws the stored view (blank when there is none), SHUTDOWN the stored view
@@ -728,6 +769,7 @@ differences being glyph hinting and a slightly heavier time font.
 | Pairing fails | "Csatlakozási hiba" screen, UNPAIRED_WAIT; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it; verify. |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
+| Battery low | Battery screen, `battery_low` reported when joined, LOW_BATTERY until USB power (6.6). |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale (icon). Seen once in 39 wakes (ZIGBEE_PAYLOAD.md 7.2). Next wake is normal. |
 | Panel BUSY hang | Caused by a bad display GND contact on the breadboard (CLAUDE.md); fix in hardware (solid GND, bulk capacitor at the display). A refresh never finishes and the controller stays stuck until a hardware reset. **Current: no recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epd_init()` resets the panel. **Later option:** on a BUSY timeout, `epd_init()` + `epd_clear()` + redraw (about 1.5 s), with the timeout cut to about 2 s (a refresh takes 470 ms), and count recoveries in the log (or `panel_error`, 6.7). Turn it on once the cause is understood or the rate is known to be acceptable. |
 
@@ -740,7 +782,7 @@ D1, D2). The panel's DC and RST lines were moved off D1/D2 for that reason (done
 |---|---|
 | D0 (GPIO0) | button now (simulates the PIR), PIR output later; wake pin |
 | D1 (GPIO1) | **pair button** (`PAIR_BUTTON_PIN`), to GND, internal pull-up; wake pin |
-| D2 (GPIO2) | free (spare wake pin) |
+| D2 (GPIO2) | free (spare wake pin); planned: VBUS sense, the only wake source in LOW_BATTERY (6.6) |
 | D3 (GPIO21) | panel BUSY |
 | D4 (GPIO22) | panel DC |
 | D5 (GPIO23) | panel RST |
