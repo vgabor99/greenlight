@@ -658,9 +658,11 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 - **HA view** (5.2): `bits` (which lines have a member in its problem state), `view_id` = 24-bit hash of
   `"<ds_hash>:<bits>"` (never 0), and `time` = now as local seconds since 1970.
   **Expected conditions** are filtered out in an explicit step: the display hangs in the lobby next to the
-  alarm's arm panel, where the lobby door is open, unlocked and the alarm disarmed by definition. Those
-  members (`gl_expected`: `alarm_control_panel.house_alarm` `disarmed`, `binary_sensor.gf_lobby_door_lock_contact`
-  and `binary_sensor.gf_lobby_door_contact` `on`) keep their dataset lines, but `gl_hidden` masks out every
+  alarm's arm panel, where the lobby door is open, unlocked and the alarm disarmed by definition. The small
+  living-room lamp is the night light: moving around the ground floor at dusk turns it on and arming turns
+  it off, so it is no problem for whoever is leaving. Those members (`gl_expected`:
+  `alarm_control_panel.house_alarm` `disarmed`, `binary_sensor.gf_lobby_door_lock_contact`,
+  `binary_sensor.gf_lobby_door_contact` and `light.gf_living_light_sw` `on`) keep their dataset lines, but `gl_hidden` masks out every
   line whose members are all expected: `bits` = `raw_bits` without `hidden` (all three are attributes of
   `sensor.greenlight_view`), and `view_id` is computed from the filtered `bits`, so those entities changing
   push nothing. The alarm's `ismeretlen` line stays a problem.

@@ -97,11 +97,14 @@
 
 {# The members that are expected where the display hangs: in the lobby, next to the alarm's arm panel,
    whoever reads it is about to arm and leave, so the lobby door is open, unlocked and the alarm is
-   disarmed. Their lines stay in the dataset; gl_hidden masks their bits out of the view. #}
+   disarmed. The small living-room lamp is the night light (living_room_lighting.yaml): moving around the
+   ground floor at dusk turns it on and arming turns it off. Their lines stay in the dataset; gl_hidden
+   masks their bits out of the view. #}
 {% macro gl_expected(returns=none) %}
   {% do returns([['alarm_control_panel.house_alarm', 'disarmed'],
                  ['binary_sensor.gf_lobby_door_lock_contact', 'on'],
-                 ['binary_sensor.gf_lobby_door_contact', 'on']]) %}
+                 ['binary_sensor.gf_lobby_door_contact', 'on'],
+                 ['light.gf_living_light_sw', 'on']]) %}
 {% endmacro %}
 
 {# The view bits never shown (same items as gl_bits): bit i set = every member of line i is expected. #}
