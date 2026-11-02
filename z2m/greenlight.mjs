@@ -29,6 +29,7 @@ export default {
                 dsEntry: {name: "dsEntry", ID: 0x0030, type: T.CHAR_STR, write: true},
                 dsCommit: {name: "dsCommit", ID: 0x0031, type: T.UINT32, write: true, max: 0xffffffff},
                 // state, reported by the device
+                batteryMv: {name: "batteryMv", ID: 0x0013, type: T.UINT16},
                 wakeCount: {name: "wakeCount", ID: 0x0040, type: T.UINT32},
                 shownViewId: {name: "shownViewId", ID: 0x0041, type: T.UINT32},
                 datasetHash: {name: "datasetHash", ID: 0x0042, type: T.UINT32},
@@ -39,6 +40,15 @@ export default {
         }),
         m.battery({percentage: true, voltage: false, lowStatus: true, percentageReporting: false}),
         m.occupancy({reporting: false}),
+        m.numeric({
+            name: "voltage",
+            cluster: "greenlight",
+            attribute: "batteryMv",
+            description: "Battery voltage (exact; the standard attribute has 100 mV steps)",
+            unit: "mV",
+            access: "STATE",
+            entityCategory: "diagnostic",
+        }),
         m.numeric({
             name: "wake_count",
             cluster: "greenlight",

@@ -27,6 +27,7 @@ static const char *TAG = "zb";
 #define ATTR_VIEW_ID       0x0023
 #define ATTR_DS_ENTRY      0x0030
 #define ATTR_DS_COMMIT     0x0031
+#define ATTR_BATTERY_MV    0x0013  /* exact battery voltage in mV (DESIGN.md 6.6), reported, read-only */
 #define ATTR_WAKE_COUNT    0x0040  /* reported state, read-only */
 #define ATTR_SHOWN_VIEW_ID 0x0041
 #define ATTR_DATASET_HASH  0x0042
@@ -412,7 +413,7 @@ static void custom_write_attr(uint8_t ep_id, uint16_t attr_id, void *new_value, 
     } else if (attr_id == ATTR_DS_COMMIT) {
         memcpy(&v, new_value, sizeof(v));
         ds_commit_write(v);
-    } else if (attr_id >= ATTR_WAKE_COUNT && attr_id <= ATTR_AWAKE) {
+    } else if ((attr_id >= ATTR_WAKE_COUNT && attr_id <= ATTR_AWAKE) || attr_id == ATTR_BATTERY_MV) {
         /* our own set_and_report() (the attributes are read-only for the network) */
     } else {
         ESP_LOGW(TAG, "write to unknown attribute 0x%04x", attr_id);
@@ -636,6 +637,8 @@ static esp_err_t create_device(void)
     }
     ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_AWAKE, EZB_ZCL_ATTR_TYPE_BOOL,
                                          EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_REPORTING, &s_awake_attr);
+    ezb_zcl_custom_cluster_desc_add_attr(custom, ATTR_BATTERY_MV, EZB_ZCL_ATTR_TYPE_UINT16,
+                                         EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_REPORTING, &s_battery_mv);
 
     ezb_af_ep_config_t ep_cfg = {
         .ep_id              = ZB_EP,
@@ -754,6 +757,7 @@ void zb_report_battery(uint16_t mv, bool low)
                            EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, EZB_ZCL_STD_MANUF_CODE, &voltage, false);
     set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, &percent);
     set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID, &alarm);
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_BATTERY_MV, &mv);  /* the exact voltage: 0x0020 has 100 mV steps */
     esp_zigbee_lock_release();
 }
 

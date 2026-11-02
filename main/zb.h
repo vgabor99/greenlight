@@ -99,7 +99,8 @@ void zb_pairing_stop(void);
 void zb_erase_network(void);
 
 /* Reports to the coordinator (DESIGN.md 6.4). */
-void zb_report_battery(uint16_t mv, bool low);  /* Power Configuration: charge from mv, alarm bit 0 = low */
+void zb_report_battery(uint16_t mv, bool low);  /* Power Configuration (charge from mv, alarm bit 0 = low) and
+                                                 * 0xFC8A battery_mv */
 void zb_report_occupancy(bool occupied);
 void zb_report_shown_view_id(void);         /* 0xFC8A shown_view_id */
 void zb_report_dataset_hash(void);          /* 0xFC8A dataset_hash */

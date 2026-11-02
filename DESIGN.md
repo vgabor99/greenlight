@@ -526,16 +526,18 @@ Hardware: a single 1000 mAh LiPo cell with a protection circuit (the cell is cut
 before it is damaged, around 2.5-3 V). **The battery voltage and USB power are simulated** until the
 hardware exists (below). Once per wake the device reports `batteryPercentageRemaining` (half percents, from
 a rough LiPo curve: 3.3 V 0 %, 3.5 V 5 %, 3.6 V 12 %, 3.7 V 30 %, 3.8 V 50 %, 4.0 V 80 %, 4.2 V 100 %,
-interpolated) and `batteryAlarmState` (bit 0 = low); `batteryVoltage` (100 mV units) is set but not
-reported (the stack refuses it). A change made over the console while ACTIVE is reported at once. The static
+interpolated), `batteryAlarmState` (bit 0 = low) and the exact voltage as 0xFC8A `battery_mv` 0x0013 (uint16,
+mV; Z2M `voltage`); `batteryVoltage` (100 mV units) is set but not reported (the stack refuses it). The same
+reports go out in the farewell before a low-battery shutdown, and a change made over the console while ACTIVE
+is reported at once. The static
 Power Configuration attributes are set from the start: `batterySize` 0x0031 = 2 (Other), `batteryQuantity`
 0x0033 = 1, `batteryRatedVoltage` 0x0034 = 37 (3.7 V), `batteryAHrRating` 0x0032 = 100 (units of 10 mAh).
 
 Conventions the real implementation will follow (from the zigbee-herdsman-converters `battery()` helper): Z2M
 names are `battery` (%), `voltage` (mV) and `battery_low` (binary, true = low), all diagnostic entities;
 there is no `battery_ok`. HA's battery binary sensor also reads on = low. The `voltage` entity has only 100 mV
-resolution via the standard attribute (too coarse for a LiPo: 3.0-4.2 V is 12 steps), which is why exact mV
-is on the future-work list below.
+resolution via the standard attribute (too coarse for a LiPo: 3.0-4.2 V is 12 steps), which is why `voltage`
+comes from `battery_mv` instead (`battery()` with `voltage: false`, plus a numeric expose in the converter).
 
 **Low battery.** Below `BAT_ENTER_MV` (3.5 V) the wake ends: BOOT checks first, before the radio, the panel
 and any NVS write, and ACTIVE, UNPAIRED_WAIT and PAIRING check every `BAT_CHECK_MS` (1 s) and go to SHUTDOWN
@@ -578,7 +580,7 @@ added later without a re-pair (a new attribute of the custom cluster also needs 
 | 0x0010 | `join_time_ms` | uint16 | boot to joined of the latest wake (the rejoin-time measurement, Q1) |
 | 0x0011 | `wake_reason` | enum8 | 0 cold boot, 1 PIR, 2 pair button, 3 other / unknown |
 | 0x0012 | `last_awake_s` | uint16 | duration of the previous wake cycle, for battery life insight |
-| 0x0013 | `battery_mv` | uint16 | exact battery voltage, exposed under the name `voltage` |
+| 0x0013 | `battery_mv` | uint16 | **done** (6.6): exact battery voltage, exposed under the name `voltage` |
 | 0x0014 | `panel_error` | enum8 | 0 ok, 1 panel init failed, 2 refresh failed, 3 BUSY timeout |
 
 Also future: real battery measurement (ADC on a spare pin, e.g. D2 / GPIO2, with a high-value divider and a
