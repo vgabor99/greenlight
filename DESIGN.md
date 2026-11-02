@@ -1,7 +1,8 @@
 # Greenlight: design (draft for review)
 
-Status: draft, 2026-10-27 (rev 6). Implemented and tested on the hardware: the e-paper driver, the pin
-move, and plan step 1 (inputs, state machine, simulated sleep; Zigbee stubbed, see 3.5 and 12).
+Status: draft, 2026-11-02 (rev 8). Implemented and tested on the hardware: the e-paper driver, the pin
+move, plan steps 1, 2, 2b, 2c, 5 and most of 3 (inputs, state machine, real Zigbee, the HA side, the proper
+screen, the low-battery path with a simulated battery). Still simulated: deep sleep and the battery (3.5, 12).
 
 Rev 6 replaces the snapshot of text lines (6 tagged lines + footer + commit, 8 writes per push) with a
 **dataset + view** model (5, 6.5). The dataset is the fixed list of possible lines, synced rarely. The view is
@@ -147,14 +148,18 @@ is partially refreshed once more. Consequence: the screen flashes once per wake.
 - O2: skip the final clean refresh at SHUTDOWN when no partial update happened since the last one.
 - O3: (done) dataset and view are in NVS, so they survive a battery change.
 
-### 3.5 Current code (plan step 1 done)
+### 3.5 Current code
 
-`main/hello_world_main.c` implements the state machine of 3.3 and the timeouts of 3.2:
+`main/hello_world_main.c` implements the state machine of 3.3 and the timeouts of 3.2, `main/zb.c` the Zigbee
+side (6):
 
 - inputs (D0, D1) are polled and debounced by a task, level based; `RUN_MS` = 20 s;
-- all states exist; Zigbee is stubbed (join succeeds after 3 s, rejoin after 1 s, the pairing-window-over
-  path is therefore not exercised); ERASE_NETWORK only clears the NVS flags;
-- `paired` and `pair_now` are in NVS; SLEEP is the simulation of 3.6;
+- all states exist; Zigbee is real: a sleepy end device (rx-on-when-idle off, polls its parent every 50 ms
+  while awake), BDB network steering with retries in PAIRING, rejoin with `REJOIN_MS`, and ERASE_NETWORK
+  leaves the network and erases the Zigbee storage (4);
+- whether the device is paired comes from the Zigbee stack at BOOT (4); `pair_now` is in NVS; SLEEP is the
+  simulation of 3.6;
+- the battery voltage and USB power are simulated from the serial console (6.6);
 - every state shows the proper screen of 8 (or, built with `DEBUG_SCREEN`, the debug screen of 8.1);
 - `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
 
@@ -835,8 +840,8 @@ Open:
   ... 0xc7: NWK_TABLE_FULL` (Z-Stack's route request table), and Z2M then drops the write: 2 of 39 wakes on
   the rev 6 bench (ZIGBEE_PAYLOAD.md 7.2). Possibly caused by the test resetting the device every ~10 s. To
   check at a normal wake rate; `VIEW_WAIT_MS` plus HA's resend cover it meanwhile.
-- **Q5** Whether the SDK lets the device be rx-on-when-idle only while awake; fallback is a short poll
-  interval (100-200 ms) while awake, a long one otherwise.
+- **Q5** Settled: a sleepy end device that polls every 50 ms while awake (`POLL_MS`; ZIGBEE_PAYLOAD.md 6).
+  The first attempt with rx-on-when-idle lost about half of Z2M's writes.
 
 ## 12. Implementation plan
 
@@ -856,11 +861,12 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
    6.5, endpoint 3 for `dataset_hash`, the wake report order of 6.4 (wake counter first, the rest after
    `REPORT_DELAY_MS`), dataset and shown view in NVS, the debug screen of 8.1. Re-pair. Bench test with the
    paced write test extended for views and datasets, with a reset before every wake.
-2c. **Rev 7: one endpoint + converter.** Device state in 0xFC8A (6.4), the OTA client declared, the
+2c. **Done: rev 7, one endpoint + converter.** Device state in 0xFC8A (6.4), the OTA client declared, the
    converter of 6.8 installed in Z2M. Re-pair; check the exposes, then rerun the paced write test.
-3. **HA side and first pairing checks:** pair with Z2M and settle Q3 (what is exposed, whether the raw writes
-   work, settled in rev 7); then the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Measure end-to-end
-   latency. Disable Z2M availability for the device.
+3. **Mostly done: HA side and first pairing checks.** Done: pair with Z2M and settle Q3 (settled in rev 7);
+   the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Open:
+   measure end-to-end latency (and the rejoin time, Q1); disable Z2M availability for the device.
+   Also still open from step 2: set `INTERVIEW_MS` back to 60 s.
 4. **Proper deep sleep:** wake on D0 and D1 (replace `st_sleep`), retained state in retained RAM. Then the
    optimizations O1-O3.
 5. **Done: renderer (rev 8).** The proper screen of 8 (house screens and device screens, icons, Hungarian
