@@ -6,11 +6,13 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_rtc_time.h"
+#include "esp_sleep.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "epd.h"
@@ -108,6 +110,9 @@ static void input_task(void *arg)
 
 static void inputs_init(void)
 {
+    /* Deep sleep left both pins held on the LP IO mux (st_sleep); gpio_config() routes them back to digital. */
+    rtc_gpio_hold_dis(PIR_PIN);
+    rtc_gpio_hold_dis(PAIR_BUTTON_PIN);
     gpio_config_t pair_cfg = {
         .pin_bit_mask = 1ULL << PAIR_BUTTON_PIN,
         .mode = GPIO_MODE_INPUT,
@@ -165,7 +170,7 @@ static render_shown_t shown;
 static bool           oos;  /* the last view received was for another dataset (not stored) */
 static volatile bool  view_seen;  /* a view was applied in this wake (VIEW_WAIT_MS) */
 
-/* Every boot is a wake (the sleep ends in a restart), so count boots. 24 bits, like the ids and hashes
+/* Every boot is a wake (a deep-sleep wake is a reset), so count boots. 24 bits, like the ids and hashes
  * (DESIGN.md 6.4); one u32 write per wake is negligible flash wear for NVS. */
 static uint32_t wake_count_next(void)
 {
@@ -286,6 +291,24 @@ static const char *const state_names[] = {
 
 static TickType_t boot_tick;
 static uint32_t   wake_n;  /* this wake's number */
+static char       woke_by[24];  /* what ended the sleep; BOOT itself only looks at the input levels */
+
+/* The start of the log is lost after a deep-sleep wake on USB (the host re-enumerates the port, and on Windows no
+ * data comes through at all, DESIGN.md 3.6), so the wake cause is logged again with the stack start-up. */
+static void wake_cause_init(void)
+{
+    uint32_t causes = esp_sleep_get_wakeup_causes();
+    if (causes & BIT(ESP_SLEEP_WAKEUP_EXT1)) {
+        uint64_t pins = esp_sleep_get_ext1_wakeup_status();
+        snprintf(woke_by, sizeof woke_by, "%s%s", pins & (1ULL << PIR_PIN) ? "PIR " : "",
+                 pins & (1ULL << PAIR_BUTTON_PIN) ? "pair button" : "");
+    } else if (causes & BIT(ESP_SLEEP_WAKEUP_TIMER)) {
+        snprintf(woke_by, sizeof woke_by, "timer");
+    } else {
+        snprintf(woke_by, sizeof woke_by, "reset %d", esp_reset_reason());
+    }
+    ESP_LOGI(TAG, "wake: %s", woke_by);
+}
 
 /* ---- The panel (render.c): the proper screen, or the debug screen with the state, the dataset, the shown view
  * and the last writes received ---- */
@@ -686,8 +709,8 @@ static state_t st_boot(void)
         failed = RENDER_ERROR;
         return ST_SHUTDOWN;
     }
-    ESP_LOGI(TAG, "stack up after %lu ms: %s", (unsigned long)ms_since(boot_tick),
-             factory_new ? "no network" : "network restored");
+    ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)ms_since(boot_tick),
+             factory_new ? "no network" : "network restored", woke_by);
     touch_activity();
     if (!factory_new) {
         return ST_REJOIN;
@@ -869,17 +892,44 @@ static state_t st_shutdown(void)
     return low_battery ? ST_LOW_BATTERY : ST_SLEEP;
 }
 
-/* Simulated deep sleep: wait for either wake input, then restart the chip, which runs the same boot path
- * as a real wake (only NVS carries over). The final firmware replaces this with esp_deep_sleep_start()
- * and both pins as wake sources. */
+/* Deep sleep (DESIGN.md 3.6): the PIR (D0) and the pair button (D1) wake the chip, each on its own active level,
+ * so an input that is still active wakes it at once. The wake is a reset: only NVS and RTC memory carry over.
+ * The internal pulls are set on the LP IO side, which the sleep code holds. Built with -DSLEEP_TIMER_S=N, a timer
+ * also wakes it after N s, for bench tests (the USB port, and so a reset over it, is gone while it sleeps).
+ * Built with -DSIM_SLEEP=1, the sleep is simulated instead: wait for either input, then restart. USB stays up, so
+ * every wake logs and the console and a reset over USB keep working (tools/console.py, paced_write_test.py). */
 static state_t st_sleep(void)
 {
+#ifdef SIM_SLEEP
+    ESP_LOGI(TAG, "simulated deep sleep");
     while (!active()) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     ESP_LOGI(TAG, "wake: %s", pair_active ? "pair button" : "PIR");
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
+#else
+    const uint64_t pir = 1ULL << PIR_PIN, pair = 1ULL << PAIR_BUTTON_PIN;
+    ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup_io(pir, PIR_ACTIVE_LEVEL ? ESP_EXT1_WAKEUP_ANY_HIGH
+                                                                          : ESP_EXT1_WAKEUP_ANY_LOW));
+    ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup_io(pair, ESP_EXT1_WAKEUP_ANY_LOW));
+    if (PIR_ACTIVE_LEVEL) {
+        rtc_gpio_pullup_dis(PIR_PIN);  /* the external pull-down sets the idle level */
+    } else {
+        rtc_gpio_pullup_en(PIR_PIN);
+    }
+    rtc_gpio_pulldown_dis(PIR_PIN);
+    rtc_gpio_pullup_en(PAIR_BUTTON_PIN);
+    rtc_gpio_pulldown_dis(PAIR_BUTTON_PIN);
+#ifdef SLEEP_TIMER_S
+    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(SLEEP_TIMER_S * 1000000ULL));
+    ESP_LOGI(TAG, "deep sleep (timer wake after %d s)", SLEEP_TIMER_S);
+#else
+    ESP_LOGI(TAG, "deep sleep");
+#endif
+    vTaskDelay(pdMS_TO_TICKS(100));  /* let the log out before USB goes away */
+    esp_deep_sleep_start();
+#endif
     return ST_BOOT;
 }
 
@@ -914,6 +964,7 @@ void app_main(void)
     nvs_open_state();
     battery_load();
     console_init();
+    wake_cause_init();
     staleness_init();
     inputs_init();
     state_t st = ST_BOOT;

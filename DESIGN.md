@@ -2,7 +2,8 @@
 
 Status: draft, 2026-11-02 (rev 8). Implemented and tested on the hardware: the e-paper driver, the pin
 move, plan steps 1, 2, 2b, 2c, 5 and most of 3 (inputs, state machine, real Zigbee, the HA side, the proper
-screen, the low-battery path with a simulated battery). Still simulated: deep sleep and the battery (3.5, 12).
+screen, the low-battery path with a simulated battery) and real deep sleep (3.6). Still simulated: the battery
+(3.5, 6.6, 12).
 
 Rev 6 replaces the snapshot of text lines (6 tagged lines + footer + commit, 8 writes per push) with a
 **dataset + view** model (5, 6.5). The dataset is the fixed list of possible lines, synced rarely. The view is
@@ -157,8 +158,8 @@ side (6):
 - all states exist; Zigbee is real: a sleepy end device (rx-on-when-idle off, polls its parent every 50 ms
   while awake), BDB network steering with retries in PAIRING, rejoin with `REJOIN_MS`, and ERASE_NETWORK
   leaves the network and erases the Zigbee storage (4);
-- whether the device is paired comes from the Zigbee stack at BOOT (4); `pair_now` is in NVS; SLEEP is the
-  simulation of 3.6;
+- whether the device is paired comes from the Zigbee stack at BOOT (4); `pair_now` is in NVS; SLEEP is real
+  deep sleep (3.6);
 - the battery voltage and USB power are simulated from the serial console (6.6);
 - every state shows the proper screen of 8 (or, built with `DEBUG_SCREEN`, the debug screen of 8.1);
 - `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
@@ -167,24 +168,38 @@ Tested on the board: unpaired start (no press: shutdown, still unpaired; press: 
 re-pair, wake by PIR and by pair button, hold keeps awake, re-arm during the countdown, 2 s hold does not
 erase. A factory-new device: erase the NVS partition (command in CLAUDE.md).
 
-### 3.6 MVP sleep simulation and rejoin budget
+### 3.6 Deep sleep and rejoin budget
 
-Deep sleep is the last step. Until then a top-level loop simulates it:
+SLEEP is `esp_deep_sleep_start()` (`st_sleep`), on USB power as well as on the battery:
 
-```
-app_main():  BOOT -> ... -> SHUTDOWN -> sleep_wait_for_wake() -> esp_restart()
-```
-
-- `sleep_wait_for_wake()` blocks until the PIR input (D0) or the pair button is active. In the final
-  firmware it is replaced by `esp_deep_sleep_start()` with both pins as wake sources (the wake-up status
-  register tells which one fired, though BOOT only needs the pin levels); nothing else changes.
-- `esp_restart()` makes the next cycle run the complete real boot path: stack init, restore from NVS, rejoin.
-  Only retained RAM and NVS carry over, as after a real deep-sleep wake. It is not known whether
-  retained RAM (`RTC_DATA_ATTR`) survives a software restart on the C6; the MVP assumes it does not and
-  keeps those few fields (dataset, view, `pair_now`, wake counter) in NVS. At the final deep-sleep
-  step they can move to retained RAM to save flash writes.
-- The radio stays powered during the simulated sleep, so the power numbers mean nothing yet; the
-  functional behaviour (cold stack start, rejoin, resync via `dataset_hash` / `shown_view_id`) is the same.
+- Wake sources: ext1 with a level per pin, D0 (PIR) on high, D1 (pair button) on low. Level, not edge: an
+  input still active when the device goes to sleep wakes it at once, as SHUTDOWN expects. The internal pulls do not
+  carry into deep sleep, so `st_sleep` sets them again on the LP IO side (D1 pull-up, D0 none; the sleep code
+  holds them), and `inputs_init()` releases that hold at boot.
+- The wake is a reset: the complete boot path runs (stack init, restore from NVS, rejoin). NVS and RTC memory
+  (`RTC_NOINIT_ATTR`, the staleness deadline of 5.3) carry over. The dataset, the view, `pair_now` and the wake
+  counter stay in NVS: they must survive a battery change anyway, and one wake-counter write per wake is
+  negligible wear.
+- The panel pins stay low and held through deep sleep (`epd_poweroff()`; the C6 holds digital pads in deep
+  sleep); `epd_init()` releases them.
+- The wake cause (PIR / pair button / timer / reset) is logged at boot and again on the "stack up" line.
+- **No log after a deep-sleep wake (Windows, 2026-11-03).** The USB port is gone while the chip sleeps; at the
+  wake Windows lists COM5 again and opens it, but no byte arrives for the whole wake (with or without DTR).
+  IDF's USB Serial/JTAG console guide: after sleeping while connected, the connection "can be re-established
+  by unplugging and re-plugging the USB cable". Tried without effect: a clean disconnect before the sleep (D+
+  pull-up off), installing the console driver only after the host settled. Boots after a reset over USB
+  (flash, esptool) log normally. Without the battery a replug is a power-on reset (`wake: reset 1`), so it
+  logs a fresh boot, not the wake. HA (`wake_count`, `awake`) is the way to watch wakes.
+- Bench consequences: a sleeping board cannot be flashed or reset over USB (wake it first, or BOOT + RESET),
+  so `console.py --reset` and `paced_write_test.py --reset-each` only work on an awake board. For bench tests,
+  `idf.py -DSLEEP_TIMER_S=N build` adds a timer wake after N s (`=0` switches it off), and
+  `idf.py -DSIM_SLEEP=1 build` brings back the simulated sleep (wait for D0 or D1, then `esp_restart()`): USB
+  stays up, so every wake logs and the console, `--reset` and `--reset-each` work (`=0` switches back).
+- LOW_BATTERY is still simulated (a wait, then `esp_restart()`, 6.6): its wake source, VBUS sense on D2, is not
+  wired, and the simulated `usb 1` cannot reach a sleeping chip.
+- On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
+- The parent ages the device out after `ED_TIMEOUT` (64 min) without a poll. A wake after a longer sleep
+  depends on the rejoin finding the network again: to verify (Q1).
 
 **Rejoin time.** A web search found no measured wake-to-rejoin number for the ESP32-C6 with the
 esp-zigbee-sdk, and some reports of lengthy commissioning after leaving deep sleep. MVP budget: assume 3 s
@@ -804,7 +819,7 @@ D1 as well (earlier drafts said D4).
 ## 11. Decisions so far and open questions
 
 Decided: `RUN_MS` 20 s; `PAIR_MS` 180 s; `INTERVIEW_MS` 60 s; 3 s hold, no feedback; MVP full clear; no
-accents and no icons; 6 lines; PIR's own hold time is ignored; deep sleep simulated by a top-level loop;
+accents and no icons; 6 lines; PIR's own hold time is ignored; real deep sleep, wake on the input levels (3.6);
 PIR and pair button both wake the device; the pair button is on D1 (panel DC/RST moved to D4/D5, done);
 retained RAM assumed not to survive a software restart (NVS in the MVP).
 
@@ -869,8 +884,10 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
    the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Open:
    measure end-to-end latency (and the rejoin time, Q1); disable Z2M availability for the device.
    Also still open from step 2: set `INTERVIEW_MS` back to 60 s.
-4. **Proper deep sleep:** wake on D0 and D1 (replace `st_sleep`), retained state in retained RAM. Then the
-   optimizations O1-O3.
+4. **Done: deep sleep (2026-11-03).** `st_sleep` is `esp_deep_sleep_start()` with D0 and D1 as level wake
+   sources (3.6); the state stays in NVS. Tested on USB power: 31 wakes in 35 min by
+   the PIR and the pair button, each one rejoined (1.4-1.5 s after boot) and reported `awake` to HA. Open: a wake
+   after more than `ED_TIMEOUT` (64 min) asleep; the optimizations O1-O3.
 5. **Done: renderer (rev 8).** The proper screen of 8 (house screens and device screens, icons, Hungarian
    text), the line format of 5.1 in HA's templates, the debug screen behind `DEBUG_SCREEN`. Checked against
    the mockups with `SCREEN_DUMP` (8.2). Later: the battery screen once the battery is measured, and the

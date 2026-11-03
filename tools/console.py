@@ -19,6 +19,11 @@ import threading
 import time
 
 import serial
+from serial.tools import list_ports
+
+
+def port_present(name):
+    return any(p.device == name for p in list_ports.comports())
 
 
 def main():
@@ -48,6 +53,7 @@ def main():
 
     log = open(args.log, "a", encoding="utf-8") if args.log else None
     start = time.time()
+    last_err = None
     while args.duration is None or time.time() - start < args.duration:
         try:
             port = serial.Serial()
@@ -63,6 +69,7 @@ def main():
                     port.rts = False
                     port.dtr = False
                 buf = b""
+                last_rx = time.time()
                 while args.duration is None or time.time() - start < args.duration:
                     now = time.time() - start
                     with lock:
@@ -75,7 +82,15 @@ def main():
                         print(f">>> {cmd}", flush=True)
                         if log:
                             log.write(f">>> {cmd}\n")
-                    buf += port.read(4096)
+                    data = port.read(4096)
+                    if data:
+                        last_rx = time.time()
+                    elif time.time() - last_rx > 1:  # silent for a second: check the port list
+                        if not port_present(args.port):
+                            # deep sleep: the port is gone, but on Windows the open handle just stays silent
+                            raise serial.SerialException("port gone")
+                        last_rx = time.time()
+                    buf += data
                     *done, buf = buf.split(b"\n")
                     for line in done:
                         text = line.decode("utf-8", errors="replace").rstrip("\r")
@@ -83,7 +98,10 @@ def main():
                         if log:
                             log.write(text + "\n")
                             log.flush()
-        except serial.SerialException:  # the port goes away while the board restarts
+        except serial.SerialException as e:  # the port goes away while the board restarts or sleeps
+            if str(e) != last_err:
+                last_err = str(e)
+                print(f"[{time.time() - start:.1f}] {e}", file=sys.stderr, flush=True)
             time.sleep(0.5)
     if log:
         log.close()
