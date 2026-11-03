@@ -142,10 +142,12 @@ static void inputs_init(void)
     /* Start with the real levels: a button still held from the wake-up counts at once. */
     pir_active = gpio_get_level(PIR_PIN) == PIR_ACTIVE_LEVEL;
     pair_active = gpio_get_level(PAIR_BUTTON_PIN) == PAIR_BUTTON_ACTIVE_LEVEL;
-    pair_since = last_activity = xTaskGetTickCount();
-    /* Ticks start at 0 on every wake: without a PIR, the hold starts out expired. */
+    TickType_t now = xTaskGetTickCount();
+    pair_since = last_activity = now;
+    /* Ticks start at 0 on every wake: a PIR wake counts as seen at boot, without a PIR the hold starts out expired
+     * (unsigned, so "-2 holds" is long ago). */
     bool pir_wake = esp_sleep_get_ext1_wakeup_status() & (1ULL << PIR_PIN);
-    last_pir = pair_since - (pir_active || pir_wake ? 0 : pdMS_TO_TICKS(OCC_HOLD_MS));
+    last_pir = pir_active ? now : pir_wake ? 0 : -2 * pdMS_TO_TICKS(OCC_HOLD_MS);
     ESP_LOGI(TAG, "inputs at boot: PIR(D0)=%d pair(D1)=%d", gpio_get_level(PIR_PIN), gpio_get_level(PAIR_BUTTON_PIN));
     xTaskCreate(input_task, "inputs", 2048, NULL, 5, NULL);
 }
