@@ -76,7 +76,7 @@ start pairing (unpaired) and to reset the network (paired).
 | `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
 | `REJOIN_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
 | `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend (7). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
-| `OCC_HOLD_MS` | 5 s | reported occupancy: the PIR was active within this long (6.4). A PIR wake counts as PIR activity at boot, so the wake's short pulse, long over when the wake's reports go out (about 4.5 s after boot after a fast rejoin), is still reported. After a slow rejoin it may be lost. |
+| `OCC_HOLD_MS` | 5 s | reported occupancy: the PIR was active within this long (6.4). A PIR wake counts as PIR activity at boot, so the wake's short pulse, long over when the wake's reports go out (about 3.5 s after boot after a fast rejoin), is still reported. After a slow rejoin it may be lost. |
 | `GOODBYE_MS` | 5 s | SHUTDOWN waits up to this long for Z2M to confirm `occupancy` = 0 and `awake` = false (6.4). |
 | `SCREEN_VALID_MS` | 8 s | a received view is fresh this long (5.3): HA's 5 s push period while awake plus 3 s for the push to arrive (normally 0.1-1.3 s, ZIGBEE_PAYLOAD.md 7.2). |
 
@@ -446,8 +446,8 @@ divides by 2, so 100 % is the raw value 200.
 (re)join, **only the wake counter**: it is the one uplink frame the push depends on (every frame after a
 wake risks a 13 s stall, ZIGBEE_PAYLOAD.md 7.2). HA decides from the values Z2M has cached:
 `dataset_hash` and `shown_view_id` only change when the device reports them, and the device does not change
-them while asleep, so the cached values are current. `REPORT_DELAY_MS` (3 s) after the wake counter, when
-the view push has normally been handled, the rest follows: `dataset_hash`, `shown_view_id`, `awake` = true, Power Configuration, Occupancy. In INTERVIEW (after a pairing, when Z2M has no cached
+them while asleep, so the cached values are current. `REPORT_DELAY_MS` (2 s) after the wake counter, when
+the view push has normally been handled (bench: 1.2-1.4 s after the push, after every fast one, ZIGBEE_PAYLOAD.md 7.2), the rest follows: `dataset_hash`, `shown_view_id`, `awake` = true, Power Configuration, Occupancy. In INTERVIEW (after a pairing, when Z2M has no cached
 values) all of them are reported at once, the wake counter last.
 
 **Why a counter and not `awake`.** `awake = false` is sent just before the radio goes off, and can be lost (the goodbye gives up after `GOODBYE_MS`). If it

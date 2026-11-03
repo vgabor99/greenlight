@@ -287,6 +287,12 @@ Paced snapshot test (6 lines + commit, 100 ms apart, 50 ms polling), device in t
     unchanged, `dataset_hash` reported.
   - `--same`, the same view id 3 times: first `accepted`, then `time only` twice (bits ignored, as the id
     defines the content).
+- **`REPORT_DELAY_MS` 3 s -> 2 s (2026-11-03, `--reset-each`, 39 wakes, 0 Z2M errors)**: does reporting the rest
+  of the wake 1 s sooner hold up the view? 35 fast (0.05-0.56 s), 4 stalled and delivered by Z2M's retry
+  (13.2 s, 3 of them with parent 0x28b5), none lost. The rest went out 1.24-1.39 s after the view write in
+  every wake, after every fast push had landed; in the 4 stalls the write was already overdue by then, so the
+  reports did not cause them. Kept at 2 s (it brings `awake` and occupancy to HA 1 s sooner). The test pushes
+  0.5 s after the wake counter; HA's own delay before its push is not measured.
 - **Next test**: device next to the coordinator, so that it rejoins with the coordinator as parent, then the
   same reset-each run. Clean: the Tuya routers' handling of a rejoined sleepy child is the cause. Still lossy:
   look at the device's stack after a reboot.

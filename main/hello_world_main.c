@@ -30,7 +30,7 @@ static const char *TAG = "greenlight";
 
 #define STACK_START_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
 #define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_view_id this often */
-#define REPORT_DELAY_MS 3000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
+#define REPORT_DELAY_MS 2000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
 #define VIEW_WAIT_MS   45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
 #define OCC_HOLD_MS     5000   /* occupancy: the PIR was seen within this long (a PIR wake counts as seen at boot) */
 #define GOODBYE_MS      5000   /* SHUTDOWN: wait this long for Z2M to confirm occupancy 0 and awake false */
