@@ -57,7 +57,7 @@ Principles:
 
 | Input | Pin | Meaning |
 |---|---|---|
-| PIR | D0 (GPIO0) | "somebody is around". The button on D0 simulates it: pressed = PIR active. Active-low button vs. active-high PIR: polarity behind one macro. A deep-sleep wake pin (GPIO0-7). |
+| PIR | D0 (GPIO0) | "somebody is around". Panasonic EKMB1205111 (2 uA, 36°x150°), active high with an external 100k pull-down. `PIR_ACTIVE_LEVEL` 0 switches back to a test button to GND (internal pull-up). A deep-sleep wake pin (GPIO0-7). |
 | Pair button | D1 (GPIO1), see 10 | also a deep-sleep wake source. Active-low, internal pull-up. A 3 s hold (`RESET_HOLD_MS`) does the one thing it is for, with no feedback while holding: unpaired, it starts pairing; paired, it clears the network and starts pairing. Short presses only wake the device. |
 
 "Activity" below means: PIR active **or** pair button pressed. Either one wakes the device from sleep, and
@@ -789,7 +789,7 @@ D1, D2). The panel's DC and RST lines were moved off D1/D2 for that reason (done
 
 | Pin | Use |
 |---|---|
-| D0 (GPIO0) | button now (simulates the PIR), PIR output later; wake pin |
+| D0 (GPIO0) | **PIR output** (`PIR_PIN`, Panasonic EKMB1205111, VDD on 3V3), active high, external 100k pull-down to GND (no internal pull; keeps the sensor's output current under 100 uA); wake pin |
 | D1 (GPIO1) | **pair button** (`PAIR_BUTTON_PIN`), to GND, internal pull-up; wake pin |
 | D2 (GPIO2) | free (spare wake pin); planned: VBUS sense, the only wake source in LOW_BATTERY (6.6) |
 | D3 (GPIO21) | panel BUSY |

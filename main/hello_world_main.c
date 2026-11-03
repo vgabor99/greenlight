@@ -108,12 +108,19 @@ static void input_task(void *arg)
 
 static void inputs_init(void)
 {
-    gpio_config_t cfg = {
-        .pin_bit_mask = (1ULL << PIR_PIN) | (1ULL << PAIR_BUTTON_PIN),
+    gpio_config_t pair_cfg = {
+        .pin_bit_mask = 1ULL << PAIR_BUTTON_PIN,
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,  /* buttons between the pin and GND */
+        .pull_up_en = GPIO_PULLUP_ENABLE,  /* button between the pin and GND */
     };
-    ESP_ERROR_CHECK(gpio_config(&cfg));
+    ESP_ERROR_CHECK(gpio_config(&pair_cfg));
+    /* Active-high PIR: no internal pull, the external pull-down sets the idle level. Active-low button: pull-up. */
+    gpio_config_t pir_cfg = {
+        .pin_bit_mask = 1ULL << PIR_PIN,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = PIR_ACTIVE_LEVEL ? GPIO_PULLUP_DISABLE : GPIO_PULLUP_ENABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&pir_cfg));
     /* Start with the real levels: a button still held from the wake-up counts at once. */
     pir_active = gpio_get_level(PIR_PIN) == PIR_ACTIVE_LEVEL;
     pair_active = gpio_get_level(PAIR_BUTTON_PIN) == PAIR_BUTTON_ACTIVE_LEVEL;

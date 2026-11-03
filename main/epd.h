@@ -15,11 +15,11 @@
 #define EPD_PIN_RST  23  /* D5 */
 #define EPD_PIN_BUSY 21  /* D3 */
 
-/* "Somebody is around" input. A push button between the pin and GND stands in for the PIR for now
- * (internal pull-up, active low); a real PIR output is active high: set PIR_ACTIVE_LEVEL to 1.
- * Deep-sleep wake pin. */
+/* "Somebody is around" input: Panasonic EKMB PIR output (active high, floats when idle; external 100k
+ * pull-down to GND, which keeps the output current under the sensor's 100 uA). Set PIR_ACTIVE_LEVEL to 0
+ * for a push button to GND instead: the pin then gets the internal pull-up. Deep-sleep wake pin. */
 #define PIR_PIN          0   /* D0 */
-#define PIR_ACTIVE_LEVEL 0
+#define PIR_ACTIVE_LEVEL 1
 
 /* Pair button between this pin and GND (internal pull-up, active low); deep-sleep wake pin (GPIO0-7) */
 #define PAIR_BUTTON_PIN          1  /* D1 */
