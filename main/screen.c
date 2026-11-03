@@ -28,6 +28,11 @@
 #define DEV_ICON_Y    112  /* device screens: icon and one line */
 #define DEV_TEXT_BASE 240
 
+#define PAIR_ICON_Y     94   /* "Párosítás": a smaller icon, the title and two instruction lines */
+#define PAIR_TITLE_BASE 180
+#define PAIR_LINE1_BASE 217
+#define PAIR_LINE2_BASE 249
+
 static uint8_t *fb;
 
 static void set_pixel(int x, int y, bool black)
@@ -237,12 +242,20 @@ static void draw_badge(void)
          false);
 }
 
-/* ---- Device screens: a large icon and one line, no header ---- */
+/* ---- Device screens: a large icon and one line, no header ("Párosítás" adds two instruction lines) ---- */
 
 static void draw_device(const bm_icon_t *icon, const char *text)
 {
     draw_icon(icon, EPD_WIDTH / 2, DEV_ICON_Y);
     draw_centered(&bm_font_big, DEV_TEXT_BASE, text);
+}
+
+static void draw_unpaired(void)
+{
+    draw_icon(&bm_icon_gesture_tap_hold, EPD_WIDTH / 2, PAIR_ICON_Y);
+    draw_centered(&bm_font_big, PAIR_TITLE_BASE, "Párosítás");
+    draw_centered(&bm_font_hint, PAIR_LINE1_BASE, "Engedélyezd a csatlakozást");
+    draw_centered(&bm_font_hint, PAIR_LINE2_BASE, "Nyomd a gombot 3 mp-ig");
 }
 
 void screen_draw(uint8_t *frame, const render_view_t *v)
@@ -261,6 +274,7 @@ void screen_draw(uint8_t *frame, const render_view_t *v)
             draw_badge();
         }
         break;
+    case RENDER_UNPAIRED:    draw_unpaired(); break;
     case RENDER_SEARCHING:   draw_device(&bm_icon_access_point, "Hálózatkeresés"); break;
     case RENDER_JOINING:     draw_device(&bm_icon_access_point, "Csatlakozás"); break;
     case RENDER_SYNCING:     draw_device(&bm_icon_sync, "Szinkronizálás"); break;

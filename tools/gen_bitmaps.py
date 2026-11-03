@@ -41,6 +41,7 @@ TEXT_FONTS = {
     "ok":     (700, 32, BASIC),  # "Minden OK"
     "big":    (700, 30, BASIC),  # device screen text
     "detail": (500, 18, BASIC),  # the two lines under "Minden OK"
+    "hint":   (500, 22, BASIC),  # the two instruction lines of "Párosítás"
 }
 
 # Line icons, indexed by icon id (append-only, see above). 30 px like the mockups.
@@ -113,6 +114,7 @@ LINE_ICONS = [
 ICONS = [
     ("sync_badge", 0xF04E6, 24),          # stale badge, drawn white on a black disc
     ("check_circle", 0xF05E0, 152),       # Minden OK
+    ("gesture_tap_hold", 0xF0D77, 120),   # Párosítás
     ("access_point", 0xF0003, 150),       # Hálózatkeresés, Csatlakozás
     ("sync", 0xF04E6, 150),               # Szinkronizálás
     ("alert_outline", 0xF002A, 150),      # Csatlakozási hiba, Ismeretlen hiba

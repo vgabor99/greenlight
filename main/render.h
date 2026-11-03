@@ -35,10 +35,11 @@ typedef struct {
 typedef enum {
     RENDER_BLANK,        /* white */
     RENDER_HOUSE,        /* the shown view: problem lines or "Minden OK" */
+    RENDER_UNPAIRED,     /* "Párosítás" with how to pair: not paired */
     RENDER_SEARCHING,    /* "Hálózatkeresés": pairing */
     RENDER_JOINING,      /* "Csatlakozás": interview */
     RENDER_SYNCING,      /* "Szinkronizálás": no view yet, or a dataset sync under way */
-    RENDER_JOIN_FAILED,  /* "Csatlakozási hiba": unpaired, or the rejoin failed */
+    RENDER_JOIN_FAILED,  /* "Csatlakozási hiba": the rejoin failed */
     RENDER_BATTERY,      /* "Akkumulátor lemerült": to sleep with in LOW_BATTERY */
     RENDER_ERROR,        /* "Ismeretlen hiba" */
 } render_screen_t;

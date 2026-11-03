@@ -32,6 +32,7 @@ extern const bm_font_t bm_font_state;  /* Inter 600, 22 px */
 extern const bm_font_t bm_font_ok;  /* Inter 700, 32 px */
 extern const bm_font_t bm_font_big;  /* Inter 700, 30 px */
 extern const bm_font_t bm_font_detail;  /* Inter 500, 18 px */
+extern const bm_font_t bm_font_hint;  /* Inter 500, 22 px */
 
 /* Line icons by icon id (DESIGN.md 5.1), 30 px. */
 #define BM_LINE_ICONS 61
@@ -41,6 +42,7 @@ extern const bm_icon_t bm_line_icon[BM_LINE_ICONS];
 
 extern const bm_icon_t bm_icon_sync_badge;  /* 24 px */
 extern const bm_icon_t bm_icon_check_circle;  /* 152 px */
+extern const bm_icon_t bm_icon_gesture_tap_hold;  /* 120 px */
 extern const bm_icon_t bm_icon_access_point;  /* 150 px */
 extern const bm_icon_t bm_icon_sync;  /* 150 px */
 extern const bm_icon_t bm_icon_alert_outline;  /* 150 px */

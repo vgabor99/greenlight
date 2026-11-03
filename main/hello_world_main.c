@@ -336,8 +336,8 @@ static SemaphoreHandle_t view_lock;  /* guards ds, shown, oos, syncing and rx_lo
 static volatile bool     view_dirty;
 static state_t           view_state;
 static bool              syncing;  /* dataset entries arrived and their commit has not */
-static render_screen_t   failed;   /* RENDER_JOIN_FAILED, RENDER_ERROR or RENDER_BATTERY once this wake failed,
-                                      * else RENDER_BLANK */
+static render_screen_t   failed;   /* RENDER_UNPAIRED, RENDER_JOIN_FAILED, RENDER_ERROR or RENDER_BATTERY once
+                                      * this wake failed, else RENDER_BLANK */
 static render_rx_t       rx_log[RENDER_RX_N];  /* ring; rx_head is the next slot */
 static int               rx_head, rx_count;
 static int               partials;   /* partial refreshes since the last full clear */
@@ -356,7 +356,7 @@ static render_screen_t screen_for(state_t st)
         return failed;
     }
     switch (st) {
-    case ST_UNPAIRED:       return RENDER_JOIN_FAILED;
+    case ST_UNPAIRED:       return RENDER_UNPAIRED;
     case ST_PAIRING:        return RENDER_SEARCHING;
     case ST_ERASE_NETWORK:  return RENDER_SEARCHING;  /* pairing follows the restart */
     case ST_INTERVIEW:      return RENDER_JOINING;
@@ -428,8 +428,8 @@ static void dump_samples(void)
         dump_frame(render_status(&v), names[s]);
     }
     static const struct { render_screen_t screen; const char *name; } dev[] = {
-        {RENDER_SEARCHING, "searching"}, {RENDER_JOINING, "joining"}, {RENDER_SYNCING, "syncing"},
-        {RENDER_JOIN_FAILED, "join_failed"}, {RENDER_BATTERY, "battery"}, {RENDER_ERROR, "error"},
+        {RENDER_UNPAIRED, "unpaired"}, {RENDER_SEARCHING, "searching"}, {RENDER_JOINING, "joining"},
+        {RENDER_SYNCING, "syncing"}, {RENDER_JOIN_FAILED, "join_failed"}, {RENDER_BATTERY, "battery"}, {RENDER_ERROR, "error"},
     };
     for (int s = 0; s < sizeof(dev) / sizeof(dev[0]); s++) {
         memset(&v, 0, sizeof(v));
@@ -752,7 +752,7 @@ static state_t st_unpaired(void)
         }
         if (idle_ms() >= RUN_MS) {
             ESP_LOGI(TAG, "no activity for %d ms", RUN_MS);
-            failed = RENDER_JOIN_FAILED;  /* still not paired */
+            failed = RENDER_UNPAIRED;  /* still not paired: sleep with how to pair */
             return ST_SHUTDOWN;
         }
         if (battery_check()) {
