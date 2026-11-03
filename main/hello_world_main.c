@@ -298,12 +298,12 @@ static void bat_latch(bool on)
 
 /* ---- State machine (DESIGN.md 3.3) ---- */
 typedef enum {
-    ST_BOOT, ST_UNPAIRED_WAIT, ST_PAIRING, ST_INTERVIEW, ST_REJOIN, ST_ACTIVE, ST_ERASE_NETWORK,
+    ST_BOOT, ST_UNPAIRED, ST_PAIRING, ST_INTERVIEW, ST_REJOIN, ST_ACTIVE, ST_ERASE_NETWORK,
     ST_SHUTDOWN, ST_SLEEP, ST_LOW_BATTERY,
 } state_t;
 
 static const char *const state_names[] = {
-    "BOOT", "UNPAIRED_WAIT", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
+    "BOOT", "UNPAIRED", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
     "LOW_BATTERY",
 };
 
@@ -356,7 +356,7 @@ static render_screen_t screen_for(state_t st)
         return failed;
     }
     switch (st) {
-    case ST_UNPAIRED_WAIT:  return RENDER_JOIN_FAILED;
+    case ST_UNPAIRED:       return RENDER_JOIN_FAILED;
     case ST_PAIRING:        return RENDER_SEARCHING;
     case ST_ERASE_NETWORK:  return RENDER_SEARCHING;  /* pairing follows the restart */
     case ST_INTERVIEW:      return RENDER_JOINING;
@@ -737,12 +737,12 @@ static state_t st_boot(void)
         nv_set("pair_now", 0);
         return ST_PAIRING;
     }
-    return ST_UNPAIRED_WAIT;
+    return ST_UNPAIRED;
 }
 
-static state_t st_unpaired_wait(void)
+static state_t st_unpaired(void)
 {
-    show_state(ST_UNPAIRED_WAIT);
+    show_state(ST_UNPAIRED);
     touch_activity();
     for (;;) {
         /* Long press, like the network reset in ACTIVE. A button still held from the wake-up counts from boot. */
@@ -781,7 +781,7 @@ static state_t st_pairing(void)
     }
     zb_pairing_stop();
     ESP_LOGW(TAG, "pairing window over");
-    return ST_UNPAIRED_WAIT;
+    return ST_UNPAIRED;
 }
 
 static state_t st_interview(void)
@@ -990,7 +990,7 @@ void app_main(void)
         state_t next;
         switch (st) {
         case ST_BOOT:          next = st_boot(); break;
-        case ST_UNPAIRED_WAIT: next = st_unpaired_wait(); break;
+        case ST_UNPAIRED:      next = st_unpaired(); break;
         case ST_PAIRING:       next = st_pairing(); break;
         case ST_INTERVIEW:     next = st_interview(); break;
         case ST_REJOIN:        next = st_rejoin(); break;

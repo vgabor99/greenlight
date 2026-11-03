@@ -93,7 +93,7 @@ stateDiagram-v2
     state REJOIN
     state ACTIVE
     state ERASE_NETWORK
-    state UNPAIRED_WAIT
+    state UNPAIRED
     state PAIRING
     state INTERVIEW
     state SHUTDOWN
@@ -101,19 +101,19 @@ stateDiagram-v2
     [*] --> SLEEP
     SLEEP --> BOOT: PIR or pair button
     BOOT --> REJOIN: paired
-    BOOT --> UNPAIRED_WAIT: unpaired
+    BOOT --> UNPAIRED: unpaired
     BOOT --> PAIRING: unpaired and pair_now
     REJOIN --> ACTIVE: joined
     REJOIN --> SHUTDOWN: REJOIN_MS over
     ACTIVE --> ERASE_NETWORK: pair button held 3 s
     ERASE_NETWORK --> BOOT: restart
     ACTIVE --> SHUTDOWN: RUN_MS expired or battery low
-    UNPAIRED_WAIT --> PAIRING: pair button held 3 s
-    PAIRING --> UNPAIRED_WAIT: PAIR_MS over
+    UNPAIRED --> PAIRING: pair button held 3 s
+    PAIRING --> UNPAIRED: PAIR_MS over
     PAIRING --> INTERVIEW: joined
     INTERVIEW --> ACTIVE: INTERVIEW_MS over
     PAIRING --> SHUTDOWN: battery low
-    UNPAIRED_WAIT --> SHUTDOWN: RUN_MS expired or battery low
+    UNPAIRED --> SHUTDOWN: RUN_MS expired or battery low
     BOOT --> SHUTDOWN: battery low
     BOOT --> LOW_BATTERY: battery still low (latched)
     SHUTDOWN --> LOW_BATTERY: battery low, panel off
@@ -129,9 +129,9 @@ States and transitions:
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | first the battery check (6.6), before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED_WAIT |
-| **UNPAIRED_WAIT** | shows "Csatlakozási hiba"; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
-| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIR_MS` over -> back to UNPAIRED_WAIT ("Csatlakozási hiba"); battery low -> SHUTDOWN |
+| **BOOT** | first the battery check (6.6), before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
+| **UNPAIRED** | shows "Csatlakozási hiba"; `RUN_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `RUN_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
+| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIR_MS` over -> back to UNPAIRED ("Csatlakozási hiba"); battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state (6.4) so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `RUN_MS` as in 3.2 | `RUN_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
@@ -143,7 +143,7 @@ Rules that keep it simple:
 
 - One timer per state, no hidden state elsewhere. The only things that survive SLEEP are the retained
   data (stored dataset and view, `pair_now`, the wake counter) and the Zigbee network in NVS.
-- The pair button is only acted on in UNPAIRED_WAIT and ACTIVE, both times as a 3 s hold. In every other state it is ignored, apart from waking the device.
+- The pair button is only acted on in UNPAIRED and ACTIVE, both times as a 3 s hold. In every other state it is ignored, apart from waking the device.
 - A failed pairing never erases anything; the device stays factory new.
 - A failed rejoin never erases the network; only the pair button does.
 
@@ -572,7 +572,7 @@ resolution via the standard attribute (too coarse for a LiPo: 3.0-4.2 V is 12 st
 comes from `battery_mv` instead (`battery()` with `voltage: false`, plus a numeric expose in the converter).
 
 **Low battery.** Below `BAT_ENTER_MV` (3.5 V) the wake ends: BOOT checks first, before the radio, the panel
-and any NVS write, and ACTIVE, UNPAIRED_WAIT and PAIRING check every `BAT_CHECK_MS` (1 s) and go to SHUTDOWN
+and any NVS write, and ACTIVE, UNPAIRED and PAIRING check every `BAT_CHECK_MS` (1 s) and go to SHUTDOWN
 with the battery screen ("Akkumulátor lemerült", one final refresh, the farewell `battery_low` report when
 joined). INTERVIEW and REJOIN (bounded) and ERASE_NETWORK are not interrupted. SHUTDOWN sets the NVS latch
 `bat_low` and goes to LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power
@@ -585,7 +585,7 @@ low battery found at boot does not start the radio, so HA keeps the last wake's 
 
 Why not a "monitoring" LOW_BATTERY state that the main loop forces at any transition: monitoring means
 staying awake or waking by timer, and after real deep sleep every check is a boot anyway; a transition-only
-check misses ACTIVE and UNPAIRED_WAIT, which can run indefinitely; and the cleanup depends on the state.
+check misses ACTIVE and UNPAIRED, which can run indefinitely; and the cleanup depends on the state.
 
 The ESP32-C6 cannot switch itself off; deep sleep is its floor. On the XIAO the cell, the charger and the system
 share the BAT pad, so a switch that cuts the system would also stop charging. So the real LOW_BATTERY is
@@ -753,7 +753,7 @@ re-interview action (from memory: verify), which needs the device awake, hence t
 | Hálózatkeresés | access-point | PAIRING, ERASE_NETWORK (pairing follows the restart) |
 | Csatlakozás | access-point | INTERVIEW |
 | Szinkronizálás | sync | REJOIN / ACTIVE with no view stored yet, while dataset entries arrive (until their commit), and after an out-of-sync view |
-| Csatlakozási hiba | alert-outline | UNPAIRED_WAIT; and to sleep with, after a rejoin timeout or an unpaired wake |
+| Csatlakozási hiba | alert-outline | UNPAIRED; and to sleep with, after a rejoin timeout or an unpaired wake |
 | Akkumulátor lemerült | battery-outline | to sleep with in LOW_BATTERY (6.6), until USB power |
 | Ismeretlen hiba | alert-outline | to sleep with, when the Zigbee stack did not start |
 
@@ -802,7 +802,7 @@ differences being glyph hinting and a slightly heavier time font.
 | Rejoin fails (parent gone) | After `REJOIN_MS` the device shuts down with the stored view on screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. Set the end-device timeout as long as the stack allows. |
 | Device dies silently | `awake` expires in HA after about 90 s. |
-| Pairing fails | "Csatlakozási hiba" screen, UNPAIRED_WAIT; still factory new. |
+| Pairing fails | "Csatlakozási hiba" screen, UNPAIRED; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it; verify. |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
 | Battery low | Battery screen, `battery_low` reported when joined, LOW_BATTERY until USB power (6.6). |
@@ -854,7 +854,7 @@ OTA client cluster declared (6.3); HA input unchanged (raw writes, 6.5).
 Also decided (rev 8, 2026-10-31): the proper screen of the UI spec (8) replaces the debug screen, which stays
 for RnD behind a build switch (8.1); a dataset line is `II|name|state` with a 2-hex-digit icon id from an
 append-only table, no other format accepted (5.1); fonts (Inter) and icons (MDI 7.4.47) are generated
-bitmaps, not u8g2 fonts; UNPAIRED_WAIT and a failed rejoin show "Csatlakozási hiba".
+bitmaps, not u8g2 fonts; UNPAIRED and a failed rejoin show "Csatlakozási hiba".
 
 Open:
 
