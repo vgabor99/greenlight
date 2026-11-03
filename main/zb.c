@@ -44,11 +44,14 @@ static const char *TAG = "zb";
 #define ZB_ALL_CHANNELS_MASK 0x07FFF800U  /* channels 11-26 */
 #define ED_TIMEOUT EZB_NWK_ED_TIMEOUT_64MIN
 #define POLL_MS    50    /* how often the awake device polls its parent for queued messages (ZIGBEE_PAYLOAD.md 6) */
+#define GOODBYE_RETRY_MS 1000  /* zb_report_goodbye(): resend an unconfirmed report this often */
 
 #define BIT_STARTED     BIT0
 #define BIT_FACTORY_NEW BIT1
 #define BIT_JOINED      BIT2
 #define BIT_LEFT        BIT3
+#define BIT_ACK_OCC     BIT4  /* Z2M confirmed the goodbye's occupancy report */
+#define BIT_ACK_AWAKE   BIT5  /* ... and its awake report */
 
 static EventGroupHandle_t s_events;
 static zb_callbacks_t     s_cb;
@@ -91,7 +94,8 @@ static void zcl_string(char *buf, size_t size, const char *text)
     memcpy(buf + 1, text, n);
 }
 
-static void report_attr(uint16_t cluster, uint16_t attr)
+/* want_rsp asks the coordinator for a default response: only the goodbye reports do, so nothing else adds a downlink. */
+static void report_attr(uint16_t cluster, uint16_t attr, bool want_rsp)
 {
     ezb_zcl_report_attr_cmd_t cmd = {
         .cmd_ctrl = {
@@ -100,7 +104,7 @@ static void report_attr(uint16_t cluster, uint16_t attr)
             .src_ep     = ZB_EP,
             .cluster_id = cluster,
             .manuf_code = EZB_ZCL_STD_MANUF_CODE,
-            .fc = {.manuf_specific = 0, .direction = EZB_ZCL_CMD_DIRECTION_TO_CLI, .dis_default_rsp = 1},
+            .fc = {.manuf_specific = 0, .direction = EZB_ZCL_CMD_DIRECTION_TO_CLI, .dis_default_rsp = !want_rsp},
         },
         .payload = {.attr_id = attr},
     };
@@ -110,14 +114,19 @@ static void report_attr(uint16_t cluster, uint16_t attr)
     }
 }
 
-static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
+static void set_value(uint16_t cluster, uint16_t attr, void *value)
 {
     ezb_zcl_status_t st = ezb_zcl_set_attr_value(ZB_EP, cluster, EZB_ZCL_CLUSTER_SERVER, attr, EZB_ZCL_STD_MANUF_CODE,
                                                  value, false);
     if (st != EZB_ZCL_STATUS_SUCCESS) {
         ESP_LOGW(TAG, "set cluster 0x%04x attr 0x%04x failed: 0x%02x", cluster, attr, st);
     }
-    report_attr(cluster, attr);
+}
+
+static void set_and_report(uint16_t cluster, uint16_t attr, void *value)
+{
+    set_value(cluster, attr, value);
+    report_attr(cluster, attr, false);
 }
 
 /* LiPo charge in half percents (ZCL batteryPercentageRemaining, 200 = 100 %), interpolated in a rough open-circuit
@@ -545,7 +554,15 @@ static void core_action_handler(ezb_zcl_core_action_callback_id_t callback_id, v
     } break;
     case EZB_ZCL_CORE_DEFAULT_RSP_CB_ID: {
         ezb_zcl_cmd_default_rsp_message_t *rsp = message;
-        ESP_LOGI(TAG, "default response, status 0x%02x", rsp->in.status_code);
+        ESP_LOGI(TAG, "default response: cluster 0x%04x cmd 0x%02x status 0x%02x", rsp->info.cluster_id,
+                 rsp->in.rsp_to_cmd, rsp->in.status_code);
+        if (rsp->in.rsp_to_cmd == EZB_ZCL_CMD_REPORT_ATTRIBUTES) {  /* only the goodbye reports ask for one */
+            if (rsp->info.cluster_id == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING) {
+                xEventGroupSetBits(s_events, BIT_ACK_OCC);
+            } else if (rsp->info.cluster_id == CUSTOM_CLUSTER_ID) {
+                xEventGroupSetBits(s_events, BIT_ACK_AWAKE);
+            }
+        }
     } break;
     default:
         ESP_LOGI(TAG, "ZCL core action 0x%04lx", (unsigned long)callback_id);
@@ -764,6 +781,7 @@ void zb_report_battery(uint16_t mv, bool low)
 void zb_report_occupancy(bool occupied)
 {
     uint8_t v = occupied ? 1 : 0;
+    ESP_LOGI(TAG, "report occupancy %u", v);
     esp_zigbee_lock_acquire(portMAX_DELAY);
     set_and_report(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, 0x0000, &v);
     esp_zigbee_lock_release();
@@ -788,6 +806,38 @@ void zb_report_awake(bool awake)
     esp_zigbee_lock_acquire(portMAX_DELAY);
     set_and_report(CUSTOM_CLUSTER_ID, ATTR_AWAKE, &awake);
     esp_zigbee_lock_release();
+}
+
+bool zb_report_goodbye(uint32_t timeout_ms)
+{
+    uint8_t    occ = 0;
+    bool       awake = false;
+    TickType_t start = xTaskGetTickCount();
+    xEventGroupClearBits(s_events, BIT_ACK_OCC | BIT_ACK_AWAKE);
+    esp_zigbee_lock_acquire(portMAX_DELAY);
+    set_value(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, 0x0000, &occ);
+    set_value(CUSTOM_CLUSTER_ID, ATTR_AWAKE, &awake);
+    esp_zigbee_lock_release();
+    const EventBits_t both = BIT_ACK_OCC | BIT_ACK_AWAKE;
+    EventBits_t       got = 0;
+    int               sends = 0;
+    while ((got & both) != both && pdTICKS_TO_MS(xTaskGetTickCount() - start) < timeout_ms) {
+        esp_zigbee_lock_acquire(portMAX_DELAY);  /* resend what is not confirmed yet */
+        if (!(got & BIT_ACK_OCC)) {
+            report_attr(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, 0x0000, true);
+        }
+        if (!(got & BIT_ACK_AWAKE)) {
+            report_attr(CUSTOM_CLUSTER_ID, ATTR_AWAKE, true);
+        }
+        esp_zigbee_lock_release();
+        sends++;
+        got = xEventGroupWaitBits(s_events, both, pdFALSE, pdTRUE, pdMS_TO_TICKS(GOODBYE_RETRY_MS));
+    }
+    bool ok = (got & both) == both;
+    ESP_LOGI(TAG, "goodbye %s: %d send(s), %lu ms (occupancy %s, awake %s)", ok ? "confirmed" : "timed out", sends,
+             (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start), got & BIT_ACK_OCC ? "ok" : "lost",
+             got & BIT_ACK_AWAKE ? "ok" : "lost");
+    return ok;
 }
 
 void zb_report_wake(void)

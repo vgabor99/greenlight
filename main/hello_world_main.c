@@ -32,6 +32,8 @@ static const char *TAG = "greenlight";
 #define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_view_id this often */
 #define REPORT_DELAY_MS 3000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
 #define VIEW_WAIT_MS   45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
+#define OCC_HOLD_MS     5000   /* occupancy: the PIR was seen within this long (a PIR wake counts as seen at boot) */
+#define GOODBYE_MS      5000   /* SHUTDOWN: wait this long for Z2M to confirm occupancy 0 and awake false */
 #define SCREEN_VALID_MS 8000   /* a received view is fresh this long: HA pushes every 5 s while awake, + 3 s latency (5.3) */
 
 /* ---- Battery (DESIGN.md 6.6) ---- */
@@ -48,6 +50,7 @@ static volatile bool pir_active;
 static volatile bool pair_active;
 static volatile TickType_t last_activity;  /* last time any input was active */
 static volatile TickType_t pair_since;     /* when the pair button went down (valid while pair_active) */
+static volatile TickType_t last_pir;       /* last time the PIR was active */
 
 static bool active(void)
 {
@@ -63,6 +66,13 @@ static uint32_t ms_since(TickType_t t)
 static uint32_t idle_ms(void)
 {
     return active() ? 0 : ms_since(last_activity);
+}
+
+/* Reported occupancy (DESIGN.md 6.4): a short PIR pulse, the one that woke the device included, is long over by
+ * the time the wake's reports go out, so it holds for OCC_HOLD_MS. */
+static bool occupied(void)
+{
+    return ms_since(last_pir) < OCC_HOLD_MS;
 }
 
 static uint32_t pair_held_ms(void)
@@ -105,6 +115,9 @@ static void input_task(void *arg)
         if (pir_active || pair_active) {
             last_activity = now;
         }
+        if (pir_active) {
+            last_pir = now;
+        }
     }
 }
 
@@ -130,6 +143,9 @@ static void inputs_init(void)
     pir_active = gpio_get_level(PIR_PIN) == PIR_ACTIVE_LEVEL;
     pair_active = gpio_get_level(PAIR_BUTTON_PIN) == PAIR_BUTTON_ACTIVE_LEVEL;
     pair_since = last_activity = xTaskGetTickCount();
+    /* Ticks start at 0 on every wake: without a PIR, the hold starts out expired. */
+    bool pir_wake = esp_sleep_get_ext1_wakeup_status() & (1ULL << PIR_PIN);
+    last_pir = pair_since - (pir_active || pir_wake ? 0 : pdMS_TO_TICKS(OCC_HOLD_MS));
     ESP_LOGI(TAG, "inputs at boot: PIR(D0)=%d pair(D1)=%d", gpio_get_level(PIR_PIN), gpio_get_level(PAIR_BUTTON_PIN));
     xTaskCreate(input_task, "inputs", 2048, NULL, 5, NULL);
 }
@@ -656,7 +672,7 @@ static void report_wake_rest(void)
     zb_report_shown_view_id();
     zb_report_awake(true);
     zb_report_battery(battery_mv(), battery_low());
-    zb_report_occupancy(pir_active);
+    zb_report_occupancy(occupied());
 }
 
 static bool rest_pending;  /* ACTIVE: report_wake_rest() still to do */
@@ -806,7 +822,7 @@ static state_t st_active(void)
 {
     show_state(ST_ACTIVE);
     touch_activity();
-    bool      last_pir = pir_active;
+    bool       last_occ = occupied();
     TickType_t last_beat = xTaskGetTickCount();
     TickType_t start = last_beat;
     bool       waiting = false;
@@ -814,11 +830,11 @@ static state_t st_active(void)
         if (rest_pending && ms_since(start) >= REPORT_DELAY_MS) {
             rest_pending = false;
             report_wake_rest();
-            last_pir = pir_active;
+            last_occ = occupied();
         }
-        if (pir_active != last_pir) {
-            last_pir = pir_active;
-            zb_report_occupancy(last_pir);
+        if (!rest_pending && occupied() != last_occ) {
+            last_occ = !last_occ;
+            zb_report_occupancy(last_occ);
         }
         if (battery_check()) {
             return ST_SHUTDOWN;
@@ -875,7 +891,7 @@ static state_t st_shutdown(void)
         if (low_battery) {
             zb_report_battery(battery_mv(), true);  /* HA learns why the device went quiet */
         }
-        zb_report_awake(false);  /* best effort; the panel refresh below gives the radio time to send it */
+        zb_report_goodbye(GOODBYE_MS);  /* not joined (failed rejoin, unpaired, stack down): nothing to send */
     }
     /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
     if (panel_clear("shutdown") != ESP_OK) {

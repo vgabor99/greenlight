@@ -105,5 +105,8 @@ void zb_report_occupancy(bool occupied);
 void zb_report_shown_view_id(void);         /* 0xFC8A shown_view_id */
 void zb_report_dataset_hash(void);          /* 0xFC8A dataset_hash */
 void zb_report_awake(bool awake);           /* 0xFC8A awake */
+/* SHUTDOWN: occupancy 0 and awake false, each asking Z2M for a default response, resent every second until both
+ * are confirmed or timeout_ms is over. True when both were confirmed. */
+bool zb_report_goodbye(uint32_t timeout_ms);
 void zb_log_neighbors(void);                /* diagnostic: parent and neighbour table to the log */
 void zb_report_wake(void);                  /* 0xFC8A wake_count: HA's push trigger */

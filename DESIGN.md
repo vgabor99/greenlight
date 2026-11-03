@@ -76,6 +76,8 @@ start pairing (unpaired) and to reset the network (paired).
 | `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
 | `REJOIN_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
 | `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend (7). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
+| `OCC_HOLD_MS` | 5 s | reported occupancy: the PIR was active within this long (6.4). A PIR wake counts as PIR activity at boot, so the wake's short pulse, long over when the wake's reports go out (about 4.5 s after boot after a fast rejoin), is still reported. After a slow rejoin it may be lost. |
+| `GOODBYE_MS` | 5 s | SHUTDOWN waits up to this long for Z2M to confirm `occupancy` = 0 and `awake` = false (6.4). |
 | `SCREEN_VALID_MS` | 8 s | a received view is fresh this long (5.3): HA's 5 s push period while awake plus 3 s for the push to arrive (normally 0.1-1.3 s, ZIGBEE_PAYLOAD.md 7.2). |
 
 ### 3.3 State machine
@@ -126,7 +128,7 @@ States and transitions:
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `RUN_MS` as in 3.2 | `RUN_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | polite leave, erase the Zigbee storage, clear the stored dataset and view, set the `pair_now` flag, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view), report `awake = false` (best effort), `epd_poweroff()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before `awake = false`, latch `bat_low`, draw the battery screen, -> LOW_BATTERY |
+| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view), if joined, report `occupancy` = 0 and `awake = false` and wait for Z2M to confirm them (6.4, up to `GOODBYE_MS`; a failed rejoin or an unpaired device sends nothing), `epd_poweroff()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before `awake = false`, latch `bat_low`, draw the battery screen, -> LOW_BATTERY |
 | **LOW_BATTERY** | the battery screen is on the panel, the radio is off; the PIR and the pair button are ignored (6.6) | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
@@ -448,7 +450,7 @@ them while asleep, so the cached values are current. `REPORT_DELAY_MS` (3 s) aft
 the view push has normally been handled, the rest follows: `dataset_hash`, `shown_view_id`, `awake` = true, Power Configuration, Occupancy. In INTERVIEW (after a pairing, when Z2M has no cached
 values) all of them are reported at once, the wake counter last.
 
-**Why a counter and not `awake`.** `awake = false` is sent best effort just before the radio goes off. If it
+**Why a counter and not `awake`.** `awake = false` is sent just before the radio goes off, and can be lost (the goodbye gives up after `GOODBYE_MS`). If it
 is lost, Z2M keeps `awake = true` cached and the next wake's `true` is no change in HA, so a trigger on `awake`
 misses that wake. Any message from the device is no good trigger either: Z2M already publishes the cached
 state when the device announces itself after the reboot, about 0.5 s before the device is ready. The counter
@@ -456,8 +458,10 @@ changes on every wake, so its change means "awake and ready". Nor can `dataset_h
 serve: they are usually the same as at the last wake, and a report of an unchanged value is no state change
 in HA. `awake` stays as the gate for pushes while the device stays awake (heartbeat). While awake: `awake` +
 `shown_view_id` every 30 s (heartbeat); `shown_view_id` after each accepted view; `dataset_hash` after each
-accepted dataset and after an out-of-sync view; `occupancy` when the PIR changes. At SHUTDOWN: `awake` =
-false, best effort.
+accepted dataset and after an out-of-sync view; `occupancy` when it changes: on when the PIR is active, off
+`OCC_HOLD_MS` after it was last active; a PIR wake counts as PIR activity at boot. At SHUTDOWN, if joined (also
+after a low battery, after its battery report): `occupancy` = 0 and `awake` = false, the only reports that ask for
+a default response; the unconfirmed one is resent every second, for up to `GOODBYE_MS`.
 
 ### 6.5 Input: HA to device (writes to the custom cluster 0xFC8A)
 
