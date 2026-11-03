@@ -15,8 +15,9 @@ automation (DESIGN.md 7), not the serial log.
 
 --ds-lines=N: entries in the test dataset, 1 to 32 (default 8).
 --hu: Hungarian texts (UTF-8, every accented letter), cut to 64 bytes at a character boundary.
---hu-long: like --hu, but every other line is 32 accented letters (64 bytes, 3 ds_entry parts).
+--hu-long: like --hu, but every other line's name is accented letters up to 64 bytes (3 ds_entry parts).
 --drop-part: leave out the last part of the first multi-part line; expect the commit to be REJECTED.
+Lines are in the line format II|name|state (DESIGN.md 5.1), one icon per line.
 Every line is sent in parts of at most 26 bytes (DESIGN.md 6.5), split at character boundaries.
 --resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
 --oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
@@ -128,7 +129,7 @@ U32, STR = 35, 66
 
 HU_TEXTS = ["ÁÉÍÓÖŐÚÜŰ", "áéíóöőúüű", "Garázsajtó nyitva", "Hűtőajtó nyitva", "Mosógép kész",
             "Árvíztűrő tükörfúrógép"]   # 30 bytes: two parts
-HU_LONG = "ÁÉÍÓÖŐÚÜŰáéíóöőúüűÁÉÍÓÖŐÚÜŰáéíóö"   # 32 accented letters, 64 bytes: three parts
+HU_LONG = "ÁÉÍÓÖŐÚÜŰáéíóöőúüűÁÉÍÓÖŐÚÜŰáéíóö"   # 32 accented letters: as a name, cut to a 64-byte line, three parts
 LINE_MAX, PART_MAX, PARTS = 64, 26, 3          # ZB_DS_CHARS, ZB_PART_CHARS, ZB_PARTS
 
 
@@ -148,15 +149,22 @@ def split_parts(text):
     return parts
 
 
+def line(i, name, state):
+    """Dataset line i in the line format II|name|state (DESIGN.md 5.1): icon ids from 0x02 (the first real
+    icon, 0x21 for line 31), the name cut so the whole line fits LINE_MAX bytes."""
+    head, tail = f"{i + 2:02X}|", f"|{state}"
+    return head + fit(name, LINE_MAX - len(head.encode()) - len(tail.encode())) + tail
+
+
 def make_dataset(gen):
     if hu_long:
-        texts = [fit(f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}") if i % 2 == 0 else HU_LONG
-                 for i in range(ds_lines)]
-        texts[0] = f"Generáció {gen:03d}"   # the hash changes with every generation
+        texts = [line(i, f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}", "nyitva") if i % 2 == 0
+                 else line(i, HU_LONG, "nyitva") for i in range(ds_lines)]
+        texts[0] = line(0, f"Generáció {gen:03d}", "új")   # the hash changes with every generation
     elif hu:
-        texts = [fit(f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}") for i in range(ds_lines)]
+        texts = [line(i, f"{gen:03d} {i:02d} {HU_TEXTS[i % len(HU_TEXTS)]}", "nyitva") for i in range(ds_lines)]
     else:
-        texts = [f"Test {gen:03d} line {i:02d}" for i in range(ds_lines)]
+        texts = [line(i, f"Test {gen:03d} line {i:02d}", "open") for i in range(ds_lines)]
     h = int(hashlib.sha1("\n".join(texts).encode()).hexdigest()[:6], 16) or 1
     return h, texts
 
