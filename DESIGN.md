@@ -88,28 +88,36 @@ Only a paired device runs the PIR-driven part. An unpaired device only waits for
 
 ```mermaid
 stateDiagram-v2
+    %% The declaration order sets the layout: paired path left, unpaired path in the middle, SHUTDOWN right.
+    state BOOT
+    state REJOIN
+    state ACTIVE
+    state ERASE_NETWORK
+    state UNPAIRED_WAIT
+    state PAIRING
+    state INTERVIEW
+    state SHUTDOWN
+    state LOW_BATTERY
     [*] --> SLEEP
     SLEEP --> BOOT: PIR or pair button
     BOOT --> REJOIN: paired
-    BOOT --> PAIRING: unpaired and pair_now
     BOOT --> UNPAIRED_WAIT: unpaired
-    UNPAIRED_WAIT --> PAIRING: pair button held 3 s
-    UNPAIRED_WAIT --> SHUTDOWN: RUN_MS expired
-    PAIRING --> INTERVIEW: joined
-    PAIRING --> UNPAIRED_WAIT: PAIR_MS over
-    INTERVIEW --> ACTIVE: INTERVIEW_MS over
+    BOOT --> PAIRING: unpaired and pair_now
     REJOIN --> ACTIVE: joined
     REJOIN --> SHUTDOWN: REJOIN_MS over
-    ACTIVE --> SHUTDOWN: RUN_MS expired
     ACTIVE --> ERASE_NETWORK: pair button held 3 s
     ERASE_NETWORK --> BOOT: restart
-    SHUTDOWN --> SLEEP: panel off
-    BOOT --> LOW_BATTERY: battery still low (latched)
-    BOOT --> SHUTDOWN: battery low
-    ACTIVE --> SHUTDOWN: battery low
-    UNPAIRED_WAIT --> SHUTDOWN: battery low
+    ACTIVE --> SHUTDOWN: RUN_MS expired or battery low
+    UNPAIRED_WAIT --> PAIRING: pair button held 3 s
+    PAIRING --> UNPAIRED_WAIT: PAIR_MS over
+    PAIRING --> INTERVIEW: joined
+    INTERVIEW --> ACTIVE: INTERVIEW_MS over
     PAIRING --> SHUTDOWN: battery low
+    UNPAIRED_WAIT --> SHUTDOWN: RUN_MS expired or battery low
+    BOOT --> SHUTDOWN: battery low
+    BOOT --> LOW_BATTERY: battery still low (latched)
     SHUTDOWN --> LOW_BATTERY: battery low, panel off
+    SHUTDOWN --> SLEEP: panel off
     LOW_BATTERY --> BOOT: USB power only
 ```
 
