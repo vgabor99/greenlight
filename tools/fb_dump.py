@@ -52,12 +52,13 @@ def parse_row(line):
     other output)."""
     try:
         _, y, *items = line.split()
+        row = int(y)
         runs = [(int(start), data) for start, data in (item.split(":") for item in items)]
     except ValueError:
         return None
     if not all(len(data) % 2 == 0 and start + len(data) // 2 <= WIDTH // 8 for start, data in runs):
         return None
-    return int(y), runs
+    return row, runs
 
 
 def frame_image(rows):

@@ -5,6 +5,7 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "esp_zigbee.h"
+#include "elapsed_time.h"
 #include "zigbee.h"
 #include "zigbee_internal.h"
 
@@ -18,7 +19,7 @@ static const char *TAG = "zb";
 
 /* ask_for_response asks the coordinator for a default response: only the goodbye reports do, so nothing else adds
  * a downlink. */
-void send_report(uint16_t cluster, uint16_t attribute, bool ask_for_response)
+void zigbee_send_report(uint16_t cluster, uint16_t attribute, bool ask_for_response)
 {
     ezb_zcl_report_attr_cmd_t command = {
         .cmd_ctrl = {
@@ -37,7 +38,7 @@ void send_report(uint16_t cluster, uint16_t attribute, bool ask_for_response)
     }
 }
 
-void set_attribute(uint16_t cluster, uint16_t attribute, void *value)
+void zigbee_set_attribute(uint16_t cluster, uint16_t attribute, void *value)
 {
     ezb_zcl_status_t status = ezb_zcl_set_attr_value(DEVICE_ENDPOINT, cluster, EZB_ZCL_CLUSTER_SERVER, attribute,
                                                      EZB_ZCL_STD_MANUF_CODE, value, false);
@@ -48,23 +49,23 @@ void set_attribute(uint16_t cluster, uint16_t attribute, void *value)
 
 static void set_and_report(uint16_t cluster, uint16_t attribute, void *value)
 {
-    set_attribute(cluster, attribute, value);
-    send_report(cluster, attribute, false);
+    zigbee_set_attribute(cluster, attribute, value);
+    zigbee_send_report(cluster, attribute, false);
 }
 
-void report_shown_view_id_lock_held(void)
+void zigbee_report_shown_view_id_lock_held(void)
 {
     set_and_report(CUSTOM_CLUSTER_ID, ATTR_SHOWN_VIEW_ID, &zigbee_context.shown_view_id);
 }
 
-void report_dataset_hash_lock_held(void)
+void zigbee_report_dataset_hash_lock_held(void)
 {
     set_and_report(CUSTOM_CLUSTER_ID, ATTR_DATASET_HASH, &zigbee_context.dataset_hash);
 }
 
 /* LiPo charge in half percents (ZCL batteryPercentageRemaining, 200 = 100 %), interpolated in a rough open-circuit
  * voltage curve. */
-uint8_t battery_half_percent(uint16_t mv)
+uint8_t zigbee_battery_half_percent(uint16_t mv)
 {
     static const struct {
         uint16_t mv;
@@ -98,14 +99,14 @@ void zigbee_report_wake_count(void)
 void zigbee_report_shown_view_id(void)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    report_shown_view_id_lock_held();
+    zigbee_report_shown_view_id_lock_held();
     esp_zigbee_lock_release();
 }
 
 void zigbee_report_dataset_hash(void)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    report_dataset_hash_lock_held();
+    zigbee_report_dataset_hash_lock_held();
     esp_zigbee_lock_release();
 }
 
@@ -127,11 +128,11 @@ void zigbee_report_occupancy(bool occupied)
 
 void zigbee_report_battery(uint16_t mv, bool low)
 {
-    uint8_t  voltage_100mv = mv / 100, half_percent = battery_half_percent(mv);
+    uint8_t  voltage_100mv = mv / 100, half_percent = zigbee_battery_half_percent(mv);
     uint32_t alarm_state = low ? BATTERY_ALARM_LOW : 0;
     esp_zigbee_lock_acquire(portMAX_DELAY);
     /* BatteryVoltage (0x0020) is set but not reported: the stack answers "not found" for it. A read gets it. */
-    set_attribute(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, &voltage_100mv);
+    zigbee_set_attribute(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, &voltage_100mv);
     set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
                    &half_percent);
     set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID, &alarm_state);
@@ -144,10 +145,10 @@ static void send_unconfirmed_goodbye_reports(EventBits_t confirmed)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
     if (!(confirmed & EVENT_GOODBYE_OCCUPANCY)) {
-        send_report(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, ATTR_OCCUPANCY, true);
+        zigbee_send_report(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, ATTR_OCCUPANCY, true);
     }
     if (!(confirmed & EVENT_GOODBYE_AWAKE)) {
-        send_report(CUSTOM_CLUSTER_ID, ATTR_AWAKE, true);
+        zigbee_send_report(CUSTOM_CLUSTER_ID, ATTR_AWAKE, true);
     }
     esp_zigbee_lock_release();
 }
@@ -160,19 +161,19 @@ bool zigbee_report_goodbye(uint32_t timeout_ms)
     TickType_t        start = xTaskGetTickCount();
     xEventGroupClearBits(zigbee_context.events, both);
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    set_attribute(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, ATTR_OCCUPANCY, &occupancy);
-    set_attribute(CUSTOM_CLUSTER_ID, ATTR_AWAKE, &awake);
+    zigbee_set_attribute(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, ATTR_OCCUPANCY, &occupancy);
+    zigbee_set_attribute(CUSTOM_CLUSTER_ID, ATTR_AWAKE, &awake);
     esp_zigbee_lock_release();
     EventBits_t confirmed = 0;
     int         sends = 0;
-    while ((confirmed & both) != both && pdTICKS_TO_MS(xTaskGetTickCount() - start) < timeout_ms) {
+    while ((confirmed & both) != both && elapsed_ms(start) < timeout_ms) {
         send_unconfirmed_goodbye_reports(confirmed);
         sends++;
         confirmed = xEventGroupWaitBits(zigbee_context.events, both, pdFALSE, pdTRUE, pdMS_TO_TICKS(GOODBYE_RETRY_MS));
     }
     bool all_confirmed = (confirmed & both) == both;
     ESP_LOGI(TAG, "goodbye %s: %d send(s), %lu ms (occupancy %s, awake %s)", all_confirmed ? "confirmed" : "timed out",
-             sends, (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start),
+             sends, (unsigned long)elapsed_ms(start),
              confirmed & EVENT_GOODBYE_OCCUPANCY ? "ok" : "lost", confirmed & EVENT_GOODBYE_AWAKE ? "ok" : "lost");
     return all_confirmed;
 }

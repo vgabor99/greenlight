@@ -59,7 +59,7 @@ Principles:
 | Input | Pin | Meaning |
 |---|---|---|
 | PIR | D0 (GPIO0) | "somebody is around". Panasonic EKMB1205111 (2 uA, 36°x150°), active high with an external 100k pull-down. `PIR_ACTIVE_LEVEL` 0 switches back to a test button to GND (internal pull-up). A deep-sleep wake pin (GPIO0-7). |
-| Pair button | D1 (GPIO1), see 10 | also a deep-sleep wake source. Active-low, internal pull-up. A 3 s hold (`RESET_HOLD_MS`) does the one thing it is for, with no feedback while holding: unpaired, it starts pairing; paired, it clears the network and starts pairing. Short presses only wake the device. |
+| Pair button | D1 (GPIO1), see 10 | also a deep-sleep wake source. Active-low, internal pull-up. A 3 s hold (`PAIR_BUTTON_HOLD_MS`) does the one thing it is for, with no feedback while holding: unpaired, it starts pairing; paired, it clears the network and starts pairing. Short presses only wake the device. |
 
 "Activity" below means: PIR active **or** pair button pressed. Either one wakes the device from sleep, and
 either one holds the `IDLE_TIMEOUT_MS` timeout. The 3 s hold is measured from when the button went down; a button
@@ -71,10 +71,10 @@ start pairing (unpaired) and to reset the network (paired).
 | Name | Value | Meaning |
 |---|---|---|
 | `IDLE_TIMEOUT_MS` | 20 s | activity timeout (was 5 s: too short to see a push arrive after a wake, which can take about 20 s). Held at full while the PIR is active or the pair button is pressed, counts down after it is released, re-armed by any new activation. At 0 the device shuts down. |
-| `PAIR_MS` | 180 s | length of the pairing window. |
+| `PAIRING_WINDOW_MS` | 180 s | length of the pairing window. |
 | `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
-| `RESET_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
-| `REJOIN_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
+| `PAIR_BUTTON_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
+| `REJOIN_TIMEOUT_MS` | 15 s | give up a rejoin after this long (MVP budget assumption is 3 s, see 3.6). |
 | `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend (7). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
 | `OCCUPANCY_HOLD_MS` | 5 s | reported occupancy: the PIR was active within this long (6.4). A PIR wake counts as PIR activity at boot, so the wake's short pulse, long over when the wake's reports go out (about 3.5 s after boot after a fast rejoin), is still reported. After a slow rejoin it may be lost. |
 | `GOODBYE_TIMEOUT_MS` | 5 s | SHUTDOWN waits up to this long for Z2M to confirm `occupancy` = 0 and `awake` = false (6.4). |
@@ -104,12 +104,12 @@ stateDiagram-v2
     BOOT --> UNPAIRED: unpaired
     BOOT --> PAIRING: unpaired and pair_now
     REJOIN --> ACTIVE: joined
-    REJOIN --> SHUTDOWN: REJOIN_MS over
+    REJOIN --> SHUTDOWN: REJOIN_TIMEOUT_MS over
     ACTIVE --> ERASE_NETWORK: pair button held 3 s
     ERASE_NETWORK --> BOOT: restart
     ACTIVE --> SHUTDOWN: IDLE_TIMEOUT_MS expired or battery low
     UNPAIRED --> PAIRING: pair button held 3 s
-    PAIRING --> UNPAIRED: PAIR_MS over
+    PAIRING --> UNPAIRED: PAIRING_WINDOW_MS over
     PAIRING --> INTERVIEW: joined
     INTERVIEW --> ACTIVE: INTERVIEW_MS over
     PAIRING --> SHUTDOWN: battery low
@@ -130,11 +130,11 @@ States and transitions:
 |---|---|---|
 | **SLEEP** | nothing runs | PIR active or pair button pressed -> BOOT |
 | **BOOT** | first the battery check (6.6), before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
-| **UNPAIRED** | shows "Párosítás" with how to pair; `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `RESET_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
-| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIR_MS` over -> back to UNPAIRED ("Párosítás"); battery low -> SHUTDOWN |
+| **UNPAIRED** | shows "Párosítás" with how to pair; `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
+| **PAIRING** | network steering; ignores the PIR; shows "Hálózatkeresés" | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> back to UNPAIRED ("Párosítás"); battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state (6.4) so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
-| **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_MS` expired -> SHUTDOWN |
-| **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `IDLE_TIMEOUT_MS` as in 3.2 | `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; pair button held `RESET_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
+| **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
+| **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every 30 s; `IDLE_TIMEOUT_MS` as in 3.2 | `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | polite leave, erase the Zigbee storage, clear the stored dataset and view, set the `pair_now` flag, restart | restart -> BOOT (-> PAIRING) |
 | **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view), if joined, report `occupancy` = 0 and `awake = false` and wait for Z2M to confirm them (6.4, up to `GOODBYE_TIMEOUT_MS`; a failed rejoin or an unpaired device sends nothing), `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before `awake = false`, latch `bat_low`, draw the battery screen, -> LOW_BATTERY |
 | **LOW_BATTERY** | the battery screen is on the panel, the radio is off; the PIR and the pair button are ignored (6.6) | USB power -> BOOT (restart) |
@@ -166,7 +166,7 @@ Zigbee side (6):
 
 - inputs (D0, D1) are polled and debounced by a task, level based; `IDLE_TIMEOUT_MS` = 20 s;
 - all states exist; Zigbee is real: a sleepy end device (rx-on-when-idle off, polls its parent every 50 ms
-  while awake), BDB network steering with retries in PAIRING, rejoin with `REJOIN_MS`, and ERASE_NETWORK
+  while awake), BDB network steering with retries in PAIRING, rejoin with `REJOIN_TIMEOUT_MS`, and ERASE_NETWORK
   leaves the network and erases the Zigbee storage (4);
 - whether the device is paired comes from the Zigbee stack at BOOT (4); `pair_now` is in NVS; SLEEP is real
   deep sleep (3.6);
@@ -208,12 +208,12 @@ SLEEP is `esp_deep_sleep_start()` (`sleep_until_input()`), on USB power as well 
 - LOW_BATTERY is still simulated (a wait, then `esp_restart()`, 6.6): its wake source, VBUS sense on D2, is not
   wired, and the simulated `usb 1` cannot reach a sleeping chip.
 - On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
-- The parent ages the device out after `ED_TIMEOUT` (64 min) without a poll. A wake after a longer sleep
+- The parent ages the device out after `END_DEVICE_TIMEOUT` (64 min) without a poll. A wake after a longer sleep
   depends on the rejoin finding the network again: to verify (Q1).
 
 **Rejoin time.** A web search found no measured wake-to-rejoin number for the ESP32-C6 with the
 esp-zigbee-sdk, and some reports of lengthy commissioning after leaving deep sleep. MVP budget: assume 3 s
-(range 1-3 s) in the latency table and treat `REJOIN_MS` = 15 s as the hard limit. The real number is the
+(range 1-3 s) in the latency table and treat `REJOIN_TIMEOUT_MS` = 15 s as the hard limit. The real number is the
 first thing to measure when Zigbee runs: log the time from boot to the "joined" signal over many wakes.
 
 ## 4. Pairing details
@@ -221,7 +221,7 @@ first thing to measure when Zigbee runs: log the time from boot to the "joined" 
 - **Detecting "no network"**: the esp-zigbee-sdk signal `ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START` means
   factory new, `..._DEVICE_REBOOT` means a network was restored from NVS. (BOOT uses it; this is why
   BOOT cannot finish before the stack has reported.)
-- **PAIRING** runs BDB network steering with retries for `PAIR_MS`. The user enables "Permit join" in
+- **PAIRING** runs BDB network steering with retries for `PAIRING_WINDOW_MS`. The user enables "Permit join" in
   Zigbee2MQTT meanwhile. Panel: static "Pairing..." screen.
 - **INTERVIEW**: Z2M reads Basic cluster attributes and so on (several seconds, sometimes tens). The Basic
   cluster must report the fixed manufacturer name `Greenlight` and model id (6.1); they are what Z2M
@@ -247,9 +247,9 @@ often and is sent on every wake, in one Zigbee frame.
   "lines": [ "02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "27|Mosogató|nedves" ] }
 ```
 
-- `lines`: **at most 32** entries (`ZB_DS_MAX`); the position is the line's **index** (0-31), which is its
+- `lines`: **at most 32** entries (`ZIGBEE_DATASET_MAX_LINES`); the position is the line's **index** (0-31), which is its
   bit in the view. The order is the display order, so HA puts the most important lines first. Text is
-  **UTF-8**, **at most 64 bytes** (`ZB_DS_CHARS`): HA cuts it at a character boundary. A Hungarian accented
+  **UTF-8**, **at most 64 bytes** (`ZIGBEE_LINE_MAX_BYTES`): HA cuts it at a character boundary. A Hungarian accented
   letter takes 2 bytes, so a line holds 32 to 64 characters. On the wire a line longer than 26 bytes comes in
   up to 3 parts (6.5). The device replaces invalid UTF-8 and control characters with `?`.
 - Line format (rev 8): `II|name|state`. `II` is the line icon's id, 2 hex digits (table below); `name` is
@@ -571,12 +571,12 @@ there is no `battery_ok`. HA's battery binary sensor also reads on = low. The `v
 resolution via the standard attribute (too coarse for a LiPo: 3.0-4.2 V is 12 steps), which is why `voltage`
 comes from `battery_mv` instead (`battery()` with `voltage: false`, plus a numeric expose in the converter).
 
-**Low battery.** Below `BAT_ENTER_MV` (3.5 V) the wake ends: BOOT checks first, before the radio, the panel
-and any NVS write, and ACTIVE, UNPAIRED and PAIRING check every `BAT_CHECK_MS` (1 s) and go to SHUTDOWN
+**Low battery.** Below `BATTERY_LOW_ENTER_MV` (3.5 V) the wake ends: BOOT checks first, before the radio, the panel
+and any NVS write, and ACTIVE, UNPAIRED and PAIRING check every `BATTERY_CHECK_MS` (1 s) and go to SHUTDOWN
 with the battery screen ("Akkumulátor lemerült", one final refresh, the farewell `battery_low` report when
 joined). INTERVIEW and REJOIN (bounded) and ERASE_NETWORK are not interrupted. SHUTDOWN sets the NVS latch
 `bat_low` and goes to LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power
-does**. While latched, the exit threshold `BAT_EXIT_MV` (3.7 V) applies. 100 mV were too little, because the
+does**. While latched, the exit threshold `BATTERY_LOW_EXIT_MV` (3.7 V) applies. 100 mV were too little, because the
 voltage that triggers entry may be read under load while the exit check runs at rest, and a nearly empty
 LiPo recovers tens of mV just by resting; a charger raises it at once anyway. **USB power overrides a low
 battery** (the device then runs from USB, and a device that slept while already on USB would never see a wake
@@ -802,7 +802,7 @@ differences being glyph hinting and a slightly heavier time font.
 | Device sleeps mid-sync | Staged dataset entries dropped; `dataset_hash` unchanged, so HA syncs again at the next wake. A view is one frame and cannot be half applied. |
 | View for another dataset | Out of sync (6.5): screen unchanged (it goes stale), `dataset_hash` reported, device stays awake for the sync. |
 | HA down / Zigbee down | Screen keeps the stored view; the stale badge appears at most 8 s after the last view received (5.3). |
-| Rejoin fails (parent gone) | After `REJOIN_MS` the device shuts down with the stored view on screen; network kept. |
+| Rejoin fails (parent gone) | After `REJOIN_TIMEOUT_MS` the device shuts down with the stored view on screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. Set the end-device timeout as long as the stack allows. |
 | Device dies silently | `awake` expires in HA after about 90 s. |
 | Pairing fails | Back to UNPAIRED with the "Párosítás" screen (how to pair); still factory new. |
@@ -833,7 +833,7 @@ D1 as well (earlier drafts said D4).
 
 ## 11. Decisions so far and open questions
 
-Decided: `IDLE_TIMEOUT_MS` 20 s; `PAIR_MS` 180 s; `INTERVIEW_MS` 60 s; 3 s hold, no feedback; MVP full clear; no
+Decided: `IDLE_TIMEOUT_MS` 20 s; `PAIRING_WINDOW_MS` 180 s; `INTERVIEW_MS` 60 s; 3 s hold, no feedback; MVP full clear; no
 accents and no icons; 6 lines; PIR's own hold time is ignored; real deep sleep, wake on the input levels (3.6);
 PIR and pair button both wake the device; the pair button is on D1 (panel DC/RST moved to D4/D5, done);
 retained RAM assumed not to survive a software restart (NVS in the MVP).
@@ -905,7 +905,7 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
 4. **Done: deep sleep (2026-11-03).** `sleep_until_input()` is `esp_deep_sleep_start()` with D0 and D1 as level wake
    sources (3.6); the state stays in NVS. Tested on USB power: 31 wakes in 35 min by
    the PIR and the pair button, each one rejoined (1.4-1.5 s after boot) and reported `awake` to HA. Open: a wake
-   after more than `ED_TIMEOUT` (64 min) asleep; the optimizations O1-O3.
+   after more than `END_DEVICE_TIMEOUT` (64 min) asleep; the optimizations O1-O3.
 5. **Done: renderer (rev 8).** The proper screen of 8 (house screens and device screens, icons, Hungarian
    text), the line format of 5.1 in HA's templates, the debug screen behind `DEBUG_SCREEN`. Checked against
    the mockups with `SCREEN_DUMP` (8.2). Later: the battery screen once the battery is measured, and the

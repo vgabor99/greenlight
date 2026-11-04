@@ -75,7 +75,7 @@ static void apply_view(void *unused)
         notify_view(view, write.view.result);
         notify_received_write(&write);
         notify_activity();
-        report_dataset_hash_lock_held();  /* tells HA which dataset the device has */
+        zigbee_report_dataset_hash_lock_held();  /* tells HA which dataset the device has */
         return;
     }
     write.view.result = view->id == zigbee_context.shown_view_id ? ZIGBEE_VIEW_TIME_ONLY : ZIGBEE_VIEW_NEW;
@@ -85,7 +85,7 @@ static void apply_view(void *unused)
     notify_view(view, write.view.result);
     zigbee_context.shown_view_id = view->id;
     notify_received_write(&write);
-    report_shown_view_id_lock_held();
+    zigbee_report_shown_view_id_lock_held();
 }
 
 static void handle_view_write(uint16_t attribute, uint32_t value)
@@ -105,13 +105,18 @@ static void handle_view_write(uint16_t attribute, uint32_t value)
 
 /* ---- Dataset ---- */
 
-void zigbee_display_input_init(void)
+static void clear_staged_parts(void)
 {
     for (int line = 0; line < ZIGBEE_DATASET_MAX_LINES; line++) {
         for (int part = 0; part < ZIGBEE_LINE_MAX_PARTS; part++) {
             staged_parts[line][part].dataset_hash = -1;
         }
     }
+}
+
+void zigbee_display_input_init(void)
+{
+    clear_staged_parts();
 }
 
 /* Line `line` of the dataset with this hash, its parts joined into out (ZIGBEE_LINE_MAX_BYTES + 1 bytes). False
@@ -239,7 +244,7 @@ static void handle_dataset_commit_write(uint32_t value)
     } else if (hash == zigbee_context.dataset_hash) {
         ESP_LOGI(TAG, "ds_commit %06lx: already stored", (unsigned long)hash);
         write.commit.result = ZIGBEE_COMMIT_ALREADY_STORED;
-        report_dataset_hash_lock_held();  /* re-acknowledge */
+        zigbee_report_dataset_hash_lock_held();  /* re-acknowledge */
     } else {
         static zigbee_dataset_t dataset;
         int                     first_missing = assemble_dataset(hash, count, &dataset);
@@ -250,13 +255,13 @@ static void handle_dataset_commit_write(uint32_t value)
             write.commit.first_missing = first_missing;
         } else {
             write.commit.result = ZIGBEE_COMMIT_STORED;
-            zigbee_display_input_init();  /* the staged parts are used up */
+            clear_staged_parts();  /* used up */
             if (zigbee_context.callbacks.on_dataset) {
                 zigbee_context.callbacks.on_dataset(&dataset);
             }
             zigbee_context.dataset_hash = hash;
             ESP_LOGI(TAG, "ds_commit %06lx accepted: %u entries", (unsigned long)hash, count);
-            report_dataset_hash_lock_held();
+            zigbee_report_dataset_hash_lock_held();
         }
     }
     notify_received_write(&write);

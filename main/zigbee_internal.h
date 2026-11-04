@@ -58,11 +58,11 @@ void zigbee_display_input_init(void);
 void zigbee_display_input_register_handlers(uint8_t endpoint);
 
 /* zigbee_reports.c */
-void    set_attribute(uint16_t cluster, uint16_t attribute, void *value);  /* lock held */
-void    send_report(uint16_t cluster, uint16_t attribute, bool ask_for_response);  /* lock held */
-void    report_shown_view_id_lock_held(void);
-void    report_dataset_hash_lock_held(void);
-uint8_t battery_half_percent(uint16_t mv);  /* ZCL batteryPercentageRemaining */
+void    zigbee_set_attribute(uint16_t cluster, uint16_t attribute, void *value);  /* lock held */
+void    zigbee_send_report(uint16_t cluster, uint16_t attribute, bool ask_for_response);  /* lock held */
+void    zigbee_report_shown_view_id_lock_held(void);
+void    zigbee_report_dataset_hash_lock_held(void);
+uint8_t zigbee_battery_half_percent(uint16_t mv);  /* ZCL batteryPercentageRemaining */
 
 /* zigbee.c: the stack's ZCL core actions (attribute writes, default responses) */
 void zigbee_handle_core_action(ezb_zcl_core_action_callback_id_t callback_id, void *message);

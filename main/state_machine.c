@@ -361,6 +361,18 @@ static device_state_t run_shutdown(void)
     return next;
 }
 
+static device_state_t run_low_battery(void)
+{
+    sleep_until_usb_power(); /* This does not return: the device will sleep and reboot. */
+    return STATE_BOOT; /* NOTREACHED */
+}
+
+static device_state_t run_sleep(void)
+{
+    sleep_until_input(); /* This does not return: the device will sleep and reboot. */
+    return STATE_BOOT; /* NOTREACHED */
+}
+
 void state_machine_run(void)
 {
     device_state_t state = STATE_BOOT;
@@ -375,8 +387,9 @@ void state_machine_run(void)
         case STATE_ACTIVE:        next = run_active(); break;
         case STATE_ERASE_NETWORK: next = run_erase_network(); break;
         case STATE_SHUTDOWN:      next = run_shutdown(); break;
-        case STATE_LOW_BATTERY:   sleep_until_usb_power(); next = STATE_BOOT; break;
-        default:                  sleep_until_input(); next = STATE_BOOT; break;
+        case STATE_LOW_BATTERY:   next = run_low_battery(); break;
+        case STATE_SLEEP:
+        default:                  next = run_sleep(); break;
         }
         ESP_LOGI(TAG, "%s -> %s", state_names[state], state_names[next]);
         state = next;

@@ -67,7 +67,7 @@ static ezb_zcl_cluster_desc_t create_power_config_cluster(void)
     };
     ezb_zcl_cluster_desc_t power = ezb_zcl_power_config_create_cluster_desc(&config, EZB_ZCL_CLUSTER_SERVER);
     uint16_t mv = zigbee_context.battery_mv;
-    uint8_t  voltage_100mv = mv / 100, half_percent = battery_half_percent(mv);
+    uint8_t  voltage_100mv = mv / 100, half_percent = zigbee_battery_half_percent(mv);
     uint8_t  size = EZB_ZCL_POWER_CONFIG_BATTERY_SIZE_OTHER, quantity = 1, rated_voltage_100mv = 37;
     uint16_t capacity_10mah = 100;  /* 1000 mAh */
     uint32_t alarm_state = 0;
@@ -107,10 +107,14 @@ static void remove_custom_cluster(uint8_t endpoint)
 {
 }
 
+/* Add an attribute to the custom cluster and say so if the stack refuses it. */
 static void add_custom_attribute(ezb_zcl_cluster_desc_t cluster, uint16_t attribute, uint8_t type, uint8_t access,
                                  void *storage)
 {
-    ezb_zcl_custom_cluster_desc_add_attr(cluster, attribute, type, access, storage);
+    ezb_err_t err = ezb_zcl_custom_cluster_desc_add_attr(cluster, attribute, type, access, storage);
+    if (err != EZB_ERR_NONE) {
+        ESP_LOGW(TAG, "adding attribute 0x%04x to custom failed: 0x%04x", attribute, err);
+    }
 }
 
 /* The view and the dataset input, and the reported state. */

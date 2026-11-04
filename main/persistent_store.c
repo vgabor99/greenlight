@@ -55,8 +55,9 @@ void persistent_store_save_blob(const char *key, const void *data, size_t size)
 
 void persistent_store_erase(const char *key)
 {
-    nvs_erase_key(store, key);
-    nvs_commit(store);
+    if (nvs_erase_key(store, key) == ESP_OK) {  /* a missing key needs no commit */
+        nvs_commit(store);
+    }
 }
 
 /* Every boot is a wake (a deep-sleep wake is a reset), so count boots. 24 bits, like the ids and hashes
