@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "battery.h"
+#include "debug_screen.h"
 #include "display.h"
 #include "display_model.h"
 #include "panel.h"
