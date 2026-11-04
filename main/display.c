@@ -19,7 +19,7 @@ static uint32_t        wake_number;
 
 /* What the last redraw showed of the staleness: the flag, and on the debug screen the age as drawn. */
 static bool drawn_stale;
-static char drawn_age[RENDER_AGE_LEN];
+static char drawn_age[DEBUG_SCREEN_AGE_LEN];
 
 void display_show_state(device_state_t state)
 {
@@ -44,7 +44,7 @@ void display_set_wake_number(uint32_t number)
 
 /* What the proper screen shows (DESIGN.md 8): the house status, unless the device is pairing, joining or
  * syncing, or this wake failed. */
-static render_screen_t choose_screen(device_state_t state, const render_view_t *content, bool syncing)
+static render_screen_t choose_screen(device_state_t state, const render_content_t *content, bool syncing)
 {
     if (failure_screen != RENDER_BLANK) {
         return failure_screen;
@@ -57,7 +57,7 @@ static render_screen_t choose_screen(device_state_t state, const render_view_t *
     case STATE_INTERVIEW:      return RENDER_JOINING;
     case STATE_BOOT:           return view_shown ? RENDER_HOUSE : RENDER_BLANK;
     case STATE_SLEEP:          return view_shown ? RENDER_HOUSE : RENDER_SYNCING;  /* a stale view beats none */
-    default:                   return view_shown && !syncing && !content->oos ? RENDER_HOUSE : RENDER_SYNCING;
+    default:                   return view_shown && !syncing && !content->out_of_sync ? RENDER_HOUSE : RENDER_SYNCING;
     }
 }
 
@@ -68,8 +68,8 @@ static bool drawn_staleness_outdated(void)
         return true;
     }
     if (RENDER_DEBUG_SCREEN) {
-        char age[RENDER_AGE_LEN];
-        render_age(age, view_freshness_age_ms());
+        char age[DEBUG_SCREEN_AGE_LEN];
+        debug_screen_format_age(age, view_freshness_age_ms());
         return strcmp(age, drawn_age) != 0;
     }
     return false;
@@ -77,22 +77,22 @@ static bool drawn_staleness_outdated(void)
 
 void display_redraw(void)
 {
-    static render_view_t content;
+    static render_content_t content;
     bool                 syncing;
     display_model_snapshot(&content, &syncing);
     if (content.stale != drawn_stale) {
         ESP_LOGI(TAG, "screen %s (age %lld ms)", content.stale ? "stale" : "fresh", (long long)content.age_ms);
     }
     drawn_stale = content.stale;
-    render_age(drawn_age, content.age_ms);
-    content.screen     = choose_screen(shown_state, &content, syncing);
-    content.state      = device_state_name(shown_state);
-    content.wake       = wake_number;
-    content.uptime_ms  = pdTICKS_TO_MS(xTaskGetTickCount());
-    content.battery_mv = battery_voltage_mv();
-    content.usb        = battery_on_usb_power();
-    content.bat_low    = battery_low_latched() || battery_is_low();
-    if (panel_refresh(render_status(&content), content.state) != ESP_OK) {
+    debug_screen_format_age(drawn_age, content.age_ms);
+    content.screen       = choose_screen(shown_state, &content, syncing);
+    content.state_name   = device_state_name(shown_state);
+    content.wake_number  = wake_number;
+    content.uptime_ms    = pdTICKS_TO_MS(xTaskGetTickCount());
+    content.battery_mv   = battery_voltage_mv();
+    content.on_usb_power = battery_on_usb_power();
+    content.battery_low  = battery_low_latched() || battery_is_low();
+    if (panel_refresh(render_frame(&content), content.state_name) != ESP_OK) {
         ESP_LOGE(TAG, "e-paper update failed");
     }
 }

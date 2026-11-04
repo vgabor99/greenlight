@@ -13,11 +13,11 @@ static const char *TAG = "greenlight";
 static SemaphoreHandle_t lock;
 static volatile bool     changed;
 static zigbee_dataset_t      dataset;
-static render_shown_t    shown;
+static shown_view_t    shown;
 static bool              out_of_sync;    /* the last view received was for another dataset (not stored) */
 static bool              syncing;        /* dataset entries arrived and their commit has not */
 static volatile bool     view_received;  /* a view was applied in this wake (VIEW_WAIT_MS) */
-static render_rx_t       received_writes[RENDER_RX_N];  /* ring; next_write_slot is the next slot */
+static render_received_write_t       received_writes[RENDER_RECEIVED_WRITES];  /* ring; next_write_slot is the next slot */
 static int               next_write_slot, received_write_count;
 
 void display_model_init(void)
@@ -64,20 +64,21 @@ bool display_model_has_changed(void)
     return changed;
 }
 
-void display_model_snapshot(render_view_t *content, bool *is_syncing)
+void display_model_snapshot(render_content_t *content, bool *is_syncing)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
-    changed           = false;
-    content->stale    = view_freshness_is_stale();
-    content->age_ms   = view_freshness_age_ms();
-    content->valid_ms = VIEW_VALID_MS;
-    content->ds_hash  = dataset.hash;
-    content->ds_count = dataset.count;
-    content->shown    = shown;
-    content->oos      = out_of_sync;
-    content->rx_count = received_write_count;
+    changed                       = false;
+    content->stale                = view_freshness_is_stale();
+    content->age_ms               = view_freshness_age_ms();
+    content->valid_ms             = VIEW_VALID_MS;
+    content->dataset_hash         = dataset.hash;
+    content->dataset_lines        = dataset.count;
+    content->shown                = shown;
+    content->out_of_sync          = out_of_sync;
+    content->received_write_count = received_write_count;
     for (int i = 0; i < received_write_count; i++) {  /* newest first */
-        content->rx[i] = received_writes[(next_write_slot - 1 - i + RENDER_RX_N) % RENDER_RX_N];
+        int slot = (next_write_slot - 1 - i + RENDER_RECEIVED_WRITES) % RENDER_RECEIVED_WRITES;
+        content->received_writes[i] = received_writes[slot];
     }
     *is_syncing = syncing;
     xSemaphoreGive(lock);
@@ -85,10 +86,10 @@ void display_model_snapshot(render_view_t *content, bool *is_syncing)
 
 static void log_shown_view(void)
 {
-    ESP_LOGI(TAG, "view %06lx: %u active lines%s", (unsigned long)shown.view.id, shown.active,
-             shown.active ? "" : " (All OK)");
-    for (int i = 0; i < shown.nrows; i++) {
-        ESP_LOGI(TAG, "  %d: %s", i + 1, shown.row[i]);
+    ESP_LOGI(TAG, "view %06lx: %u active lines%s", (unsigned long)shown.view.id, shown.active_lines,
+             shown.active_lines ? "" : " (All OK)");
+    for (int i = 0; i < shown.row_count; i++) {
+        ESP_LOGI(TAG, "  %d: %s", i + 1, shown.rows[i]);
     }
 }
 
@@ -102,7 +103,7 @@ void display_model_on_view(const zigbee_view_t *view, zigbee_view_result_t resul
         view_freshness_renew();
     }
     if (result == ZIGBEE_VIEW_NEW) {
-        render_build_rows(&shown, &dataset, view);
+        view_layout_build(&shown, &dataset, view);
     } else if (result == ZIGBEE_VIEW_TIME_ONLY) {
         shown.view.time = view->time;
     }
@@ -134,9 +135,9 @@ void display_model_on_received_write(const zigbee_received_write_t *write)
     } else if (write->kind == ZIGBEE_WRITE_DATASET_COMMIT) {
         syncing = false;
     }
-    received_writes[next_write_slot] = (render_rx_t){.ms = pdTICKS_TO_MS(xTaskGetTickCount()), .ev = *write};
-    next_write_slot = (next_write_slot + 1) % RENDER_RX_N;
-    if (received_write_count < RENDER_RX_N) {
+    received_writes[next_write_slot] = (render_received_write_t){.uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount()), .write = *write};
+    next_write_slot = (next_write_slot + 1) % RENDER_RECEIVED_WRITES;
+    if (received_write_count < RENDER_RECEIVED_WRITES) {
         received_write_count++;
     }
     changed = true;

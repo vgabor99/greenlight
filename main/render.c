@@ -3,13 +3,13 @@
 #include "render.h"
 #include "status_screen.h"
 
-const uint8_t *render_status(const render_view_t *v)
+const uint8_t *render_frame(const render_content_t *content)
 {
     framebuffer_clear();
     if (RENDER_DEBUG_SCREEN) {
-        render_debug(v);
+        debug_screen_draw(content);
     } else {
-        screen_draw(v);
+        status_screen_draw(content);
     }
     return framebuffer_data();
 }

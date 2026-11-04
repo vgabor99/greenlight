@@ -1,23 +1,29 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include "view_layout.h"
 
-void render_build_rows(render_shown_t *out, const zigbee_dataset_t *ds, const zigbee_view_t *view)
+static bool line_active(const zigbee_view_t *view, int line)
+{
+    return view->bits & (1UL << line);
+}
+
+void view_layout_build(shown_view_t *out, const zigbee_dataset_t *dataset, const zigbee_view_t *view)
 {
     memset(out, 0, sizeof(*out));
     out->view = *view;
-    for (int i = 0; i < ds->count; i++) {
-        if (view->bits & (1UL << i)) {
-            out->active++;
+    for (int line = 0; line < dataset->count; line++) {
+        if (line_active(view, line)) {
+            out->active_lines++;
         }
     }
-    int shown = out->active > RENDER_ROWS ? RENDER_ROWS - 1 : out->active;
-    for (int i = 0; i < ds->count && out->nrows < shown; i++) {
-        if (view->bits & (1UL << i)) {
-            memcpy(out->row[out->nrows++], ds->text[i], sizeof(out->row[0]));
+    int lines_shown = out->active_lines > VIEW_LAYOUT_ROWS ? VIEW_LAYOUT_ROWS - 1 : out->active_lines;
+    for (int line = 0; line < dataset->count && out->row_count < lines_shown; line++) {
+        if (line_active(view, line)) {
+            memcpy(out->rows[out->row_count++], dataset->text[line], sizeof(out->rows[0]));
         }
     }
-    if (out->active > shown) {
-        snprintf(out->row[out->nrows++], sizeof(out->row[0]), "01|további %u|", out->active - shown);
+    if (out->active_lines > lines_shown) {
+        snprintf(out->rows[out->row_count++], sizeof(out->rows[0]), "01|további %u|", out->active_lines - lines_shown);
     }
 }

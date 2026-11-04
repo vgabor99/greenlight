@@ -23,7 +23,7 @@ bool display_model_has_changed(void);
 
 /* Fill the model's part of the render content (dataset, shown view, staleness, received writes) and clear the
  * changed flag. *syncing: dataset entries arrived and their commit has not. */
-void display_model_snapshot(render_view_t *content, bool *syncing);
+void display_model_snapshot(render_content_t *content, bool *syncing);
 
 /* Zigbee callbacks (zigbee_callbacks_t), called in the Zigbee task */
 void display_model_on_view(const zigbee_view_t *view, zigbee_view_result_t result);

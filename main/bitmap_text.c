@@ -4,87 +4,86 @@
 #include "framebuffer.h"
 #include "utf8.h"
 
-void draw_icon(const bm_icon_t *icon, int cx, int cy)
+#define ELLIPSIS "…"
+
+void bitmap_draw_icon(const bm_icon_t *icon, int center_x, int center_y)
 {
-    framebuffer_blit(cx - icon->w / 2, cy - icon->h / 2, icon->w, icon->h, icon->bits, true);
+    framebuffer_blit(center_x - icon->w / 2, center_y - icon->h / 2, icon->w, icon->h, icon->bits, true);
 }
 
-/* The glyph of cp; '?' for a character the font does not have. */
-const bm_glyph_t *glyph(const bm_font_t *f, uint32_t cp)
+/* The glyph of code_point; '?' for a character the font does not have. Binary search: glyphs are sorted. */
+static const bm_glyph_t *find_glyph(const bm_font_t *font, uint32_t code_point)
 {
-    int lo = 0, hi = f->count - 1;
-    while (lo <= hi) {
-        int mid = (lo + hi) / 2;
-        if (f->glyph[mid].cp == cp) {
-            return &f->glyph[mid];
+    int low = 0, high = font->count - 1;
+    while (low <= high) {
+        int middle = (low + high) / 2;
+        if (font->glyph[middle].cp == code_point) {
+            return &font->glyph[middle];
         }
-        if (f->glyph[mid].cp < cp) {
-            lo = mid + 1;
+        if (font->glyph[middle].cp < code_point) {
+            low = middle + 1;
         } else {
-            hi = mid - 1;
+            high = middle - 1;
         }
     }
-    return glyph(f, '?');
+    return find_glyph(font, '?');
 }
 
-/* Width in pixels of the first len bytes of the UTF-8 text s. */
-int text_width(const bm_font_t *f, const char *s, int len)
+/* Advances are in 1/16 px; widths and positions round to whole pixels. */
+int bitmap_text_width(const bm_font_t *font, const char *text, int length)
 {
-    int         w16 = 0;
-    const char *end = s + len;
-    while (s < end) {
-        w16 += glyph(f, utf8_next_code_point(&s))->adv;
+    int         width_16ths = 0;
+    const char *end = text + length;
+    while (text < end) {
+        width_16ths += find_glyph(font, utf8_next_code_point(&text))->adv;
     }
-    return (w16 + 8) / 16;
+    return (width_16ths + 8) / 16;
 }
 
-/* Draw the first len bytes of s with the pen starting at x on the baseline; returns the width. */
-int draw_text(const bm_font_t *f, int x, int base, const char *s, int len)
+int bitmap_text_draw(const bm_font_t *font, int x, int baseline, const char *text, int length)
 {
-    int         pen16 = x * 16;
-    const char *end = s + len;
-    while (s < end) {
-        const bm_glyph_t *g = glyph(f, utf8_next_code_point(&s));
-        framebuffer_blit((pen16 + 8) / 16 + g->x, base + g->y, g->w, g->h, f->bits + g->off, true);
-        pen16 += g->adv;
+    int         pen_16ths = x * 16;
+    const char *end = text + length;
+    while (text < end) {
+        const bm_glyph_t *glyph = find_glyph(font, utf8_next_code_point(&text));
+        framebuffer_blit((pen_16ths + 8) / 16 + glyph->x, baseline + glyph->y, glyph->w, glyph->h,
+                         font->bits + glyph->off, true);
+        pen_16ths += glyph->adv;
     }
-    return (pen16 + 8) / 16 - x;
+    return (pen_16ths + 8) / 16 - x;
 }
 
-void draw_centered(const bm_font_t *f, int base, const char *s)
+void bitmap_text_draw_centered(const bm_font_t *font, int baseline, const char *text)
 {
-    int len = strlen(s);
-    draw_text(f, (EPD_WIDTH - text_width(f, s, len)) / 2, base, s, len);
+    int length = strlen(text);
+    bitmap_text_draw(font, (EPD_WIDTH - bitmap_text_width(font, text, length)) / 2, baseline, text, length);
 }
 
-/* How many bytes of s (len bytes) to draw in at most max_w pixels: all of them, or as many whole characters as
- * fit with "…" after them. *w is the width drawn, the ellipsis included. */
-int text_cut(const bm_font_t *f, const char *s, int len, int max_w, int *w)
+int bitmap_text_fit(const bm_font_t *font, const char *text, int length, int max_width, int *width)
 {
-    *w = text_width(f, s, len);
-    if (*w <= max_w) {
-        return len;
+    *width = bitmap_text_width(font, text, length);
+    if (*width <= max_width) {
+        return length;
     }
-    int         ell = text_width(f, "…", strlen("…"));
-    const char *p = s;
-    while (p < s + len) {
-        const char *q = p;
-        utf8_next_code_point(&q);
-        if (text_width(f, s, q - s) + ell > max_w) {
+    int         ellipsis_width = bitmap_text_width(font, ELLIPSIS, strlen(ELLIPSIS));
+    const char *fit_end = text;
+    while (fit_end < text + length) {
+        const char *next = fit_end;
+        utf8_next_code_point(&next);
+        if (bitmap_text_width(font, text, next - text) + ellipsis_width > max_width) {
             break;
         }
-        p = q;
+        fit_end = next;
     }
-    *w = text_width(f, s, p - s) + ell;
-    return p - s;
+    *width = bitmap_text_width(font, text, fit_end - text) + ellipsis_width;
+    return fit_end - text;
 }
 
-/* Draw s cut to max_w pixels (text_cut) at x. */
-void draw_cut(const bm_font_t *f, int x, int base, const char *s, int len, int max_w)
+void bitmap_text_draw_fitted(const bm_font_t *font, int x, int baseline, const char *text, int length, int max_width)
 {
-    int w, n = text_cut(f, s, len, max_w, &w);
-    x += draw_text(f, x, base, s, n);
-    if (n < len) {
-        draw_text(f, x, base, "…", strlen("…"));
+    int width, fitting = bitmap_text_fit(font, text, length, max_width, &width);
+    x += bitmap_text_draw(font, x, baseline, text, fitting);
+    if (fitting < length) {
+        bitmap_text_draw(font, x, baseline, ELLIPSIS, strlen(ELLIPSIS));
     }
 }
