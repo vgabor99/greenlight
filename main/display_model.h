@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "render.h"
-#include "zb.h"
+#include "zigbee.h"
 
 /* What the panel is about: the stored dataset, the view on the panel and the writes HA sent in this wake. The
  * Zigbee task changes it through the callbacks below, the state machine draws a snapshot of it; a mutex guards it.

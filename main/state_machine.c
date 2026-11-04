@@ -15,7 +15,7 @@
 #include "sleep.h"
 #include "state_machine.h"
 #include "wake_reason.h"
-#include "zb.h"
+#include "zigbee.h"
 
 static const char *TAG = "greenlight";
 

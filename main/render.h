@@ -2,7 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "zb.h"
+#include "zigbee.h"
 
 /* The panel image. Two renderers, chosen at build time:
  * - the proper screen (screen.c, DESIGN.md 8): the house status (problem lines or "Minden OK") and the device
