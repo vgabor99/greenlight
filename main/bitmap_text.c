@@ -1,6 +1,6 @@
 #include <string.h>
 #include "bitmap_text.h"
-#include "epd.h"
+#include "epaper.h"
 #include "framebuffer.h"
 #include "utf8.h"
 

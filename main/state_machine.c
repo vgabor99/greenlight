@@ -7,7 +7,7 @@
 #include "display.h"
 #include "display_model.h"
 #include "elapsed_time.h"
-#include "epd.h"
+#include "epaper.h"
 #include "frame_dump.h"
 #include "inputs.h"
 #include "panel.h"

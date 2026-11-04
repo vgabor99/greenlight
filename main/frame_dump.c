@@ -5,7 +5,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "epd.h"
+#include "epaper.h"
 #include "frame_dump.h"
 #include "render.h"
 

@@ -2,7 +2,7 @@
 #include <string.h>
 #include "bitmap_text.h"
 #include "bitmaps.h"
-#include "epd.h"
+#include "epaper.h"
 #include "framebuffer.h"
 #include "hex.h"
 #include "status_screen.h"

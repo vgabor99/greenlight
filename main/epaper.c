@@ -4,7 +4,7 @@
 
 #include <string.h>
 #include "board.h"
-#include "epd.h"
+#include "epaper.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"

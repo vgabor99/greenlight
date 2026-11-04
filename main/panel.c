@@ -6,7 +6,7 @@
 #include "esp_log.h"
 #include "board.h"
 #include "elapsed_time.h"
-#include "epd.h"
+#include "epaper.h"
 #include "frame_dump.h"
 #include "framebuffer.h"
 #include "panel.h"

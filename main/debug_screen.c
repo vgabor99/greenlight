@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "debug_screen.h"
-#include "epd.h"
+#include "epaper.h"
 #include "framebuffer.h"
 #include "u8g2.h"
 #include "utf8.h"
