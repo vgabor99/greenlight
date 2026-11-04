@@ -5,149 +5,167 @@
    is listed by hand: entities are found by domain / device class, and the label
    `exclude_from_alerts` keeps one out. Order: rule priority, then entity_id.
 
-   Use with `as_function`, e.g. `{% set items = (gl_items | as_function)() %}`. #}
+   Use with `as_function`, e.g. `{% set items = (greenlight_dataset_items | as_function)() %}`.
 
-{# The watched entities as dataset items: [{'t': text, 'm': [[entity_id, kind], ...]}, ...].
+   A UTF-8 byte count appears twice below: `char | urlencode` turns each byte of a non-ASCII character into
+   `%XX`, so the bytes of `text` are `(text | urlencode | length) - 2 * (number of '%')`. #}
+
+{# The watched entities as dataset items: [{'text': text, 'members': [[entity_id, kind], ...]}, ...].
    The text is `II|name|state` (DESIGN.md 5.1): II is the line icon's id in hex (the append-only
    table in tools/gen_bitmaps.py: 00 alert-circle, 01 dots-horizontal, 02 door-open, 04 window-open,
    08 lock-open-variant, 09 shield-off, 0D lightbulb-on, 13 remote-tv, 27 water), then the name and a
    one- or two-word state. More than max_lines items: the first max_lines - 1 stay and the last line is
    a fixed catch-all whose members are all the others. The name is cut so the text fits 64 UTF-8 bytes. #}
-{% macro gl_items(max_lines=32, returns=none) %}
-  {%- set excl = label_entities('exclude_from_alerts') -%}
-  {%- set ns = namespace(items=[]) -%}
-  {%- for s in states.alarm_control_panel | rejectattr('entity_id', 'in', excl) | sort(attribute='entity_id') -%}
-    {%- set ns.items = ns.items + [{'i': '09', 'n': s.name, 's': 'kikapcsolva', 'm': [[s.entity_id, 'disarmed']]},
-                                   {'i': '09', 'n': s.name, 's': 'ismeretlen', 'm': [[s.entity_id, 'alarm_unknown']]}] -%}
+{% macro greenlight_dataset_items(max_lines=32, returns=none) %}
+  {%- set excluded = label_entities('exclude_from_alerts') -%}
+  {%- set found = namespace(items=[]) -%}
+  {%- for alarm in states.alarm_control_panel | rejectattr('entity_id', 'in', excluded) | sort(attribute='entity_id') -%}
+    {%- set found.items = found.items + [
+          {'icon': '09', 'name': alarm.name, 'state': 'kikapcsolva', 'members': [[alarm.entity_id, 'disarmed']]},
+          {'icon': '09', 'name': alarm.name, 'state': 'ismeretlen', 'members': [[alarm.entity_id, 'alarm_unknown']]}] -%}
   {%- endfor -%}
-  {%- set bs = states.binary_sensor | rejectattr('entity_id', 'in', excl)
-               | selectattr('attributes.device_class', 'defined') | sort(attribute='entity_id') | list -%}
-  {%- for dc, icon, state in [('moisture', '27', 'nedves'), ('problem', '00', 'hiba'), ('lock', '08', 'nyitva'),
-                              ('door', '02', 'nyitva'), ('window', '04', 'nyitva')] -%}
-    {%- for s in bs | selectattr('attributes.device_class', 'eq', dc) -%}
-      {%- set ns.items = ns.items + [{'i': icon, 'n': s.name, 's': state, 'm': [[s.entity_id, 'on']]}] -%}
+  {%- set binary_sensors = states.binary_sensor | rejectattr('entity_id', 'in', excluded)
+                           | selectattr('attributes.device_class', 'defined') | sort(attribute='entity_id') | list -%}
+  {%- for device_class, icon, problem_state in [('moisture', '27', 'nedves'), ('problem', '00', 'hiba'),
+                                                ('lock', '08', 'nyitva'), ('door', '02', 'nyitva'),
+                                                ('window', '04', 'nyitva')] -%}
+    {%- for sensor in binary_sensors | selectattr('attributes.device_class', 'eq', device_class) -%}
+      {%- set found.items = found.items + [{'icon': icon, 'name': sensor.name, 'state': problem_state,
+                                            'members': [[sensor.entity_id, 'on']]}] -%}
     {%- endfor -%}
   {%- endfor -%}
   {#- light groups carry an entity_id attribute; their members are listed anyway -#}
-  {%- for s in states.light | rejectattr('entity_id', 'in', excl) | rejectattr('attributes.entity_id', 'defined') | sort(attribute='entity_id') -%}
-    {%- set ns.items = ns.items + [{'i': '0D', 'n': s.name, 's': 'be', 'm': [[s.entity_id, 'on']]}] -%}
+  {%- for light in states.light | rejectattr('entity_id', 'in', excluded) | rejectattr('attributes.entity_id', 'defined')
+                   | sort(attribute='entity_id') -%}
+    {%- set found.items = found.items + [{'icon': '0D', 'name': light.name, 'state': 'be',
+                                          'members': [[light.entity_id, 'on']]}] -%}
   {%- endfor -%}
-  {%- for s in states.remote | rejectattr('entity_id', 'in', excl) | sort(attribute='entity_id') -%}
-    {%- set ns.items = ns.items + [{'i': '13', 'n': s.name, 's': 'be', 'm': [[s.entity_id, 'not_off']]}] -%}
+  {%- for remote in states.remote | rejectattr('entity_id', 'in', excluded) | sort(attribute='entity_id') -%}
+    {%- set found.items = found.items + [{'icon': '13', 'name': remote.name, 'state': 'be',
+                                          'members': [[remote.entity_id, 'not_off']]}] -%}
   {%- endfor -%}
 
-  {%- if ns.items | length > max_lines -%}
-    {%- set rest = namespace(m=[]) -%}
-    {%- for i in ns.items[max_lines - 1:] -%}
-      {%- set rest.m = rest.m + i.m -%}
+  {%- if found.items | length > max_lines -%}
+    {%- set rest = namespace(members=[]) -%}
+    {%- for item in found.items[max_lines - 1:] -%}
+      {%- set rest.members = rest.members + item.members -%}
     {%- endfor -%}
-    {%- set ns.items = ns.items[:max_lines - 1] + [{'i': '01', 'n': '…és még több', 's': '', 'm': rest.m}] -%}
+    {%- set found.items = found.items[:max_lines - 1]
+                          + [{'icon': '01', 'name': '…és még több', 'state': '', 'members': rest.members}] -%}
   {%- endif -%}
 
-  {%- set out = namespace(items=[]) -%}
-  {%- for i in ns.items -%}
-    {%- set tail = '|' ~ i.s -%}
-    {%- set e = tail | urlencode -%}
-    {%- set c = namespace(t='', n=3 + (e | length) - 2 * e.count('%'), full=false) -%}
-    {%- for ch in i.n -%}
-      {%- set e = ch | urlencode -%}
-      {%- set b = (e | length) - 2 * e.count('%') -%}
-      {%- if c.full or c.n + b > 64 -%}
-        {%- set c.full = true -%}
+  {%- set result = namespace(items=[]) -%}
+  {%- for item in found.items -%}
+    {%- set tail = '|' ~ item.state -%}
+    {%- set encoded = tail | urlencode -%}
+    {#- the name is cut to what fits 64 bytes with "II|" before it and the tail after it -#}
+    {%- set cut = namespace(name='', bytes=3 + (encoded | length) - 2 * encoded.count('%'), full=false) -%}
+    {%- for char in item.name -%}
+      {%- set encoded = char | urlencode -%}
+      {%- set char_bytes = (encoded | length) - 2 * encoded.count('%') -%}
+      {%- if cut.full or cut.bytes + char_bytes > 64 -%}
+        {%- set cut.full = true -%}
       {%- else -%}
-        {%- set c.t = c.t ~ ch -%}
-        {%- set c.n = c.n + b -%}
+        {%- set cut.name = cut.name ~ char -%}
+        {%- set cut.bytes = cut.bytes + char_bytes -%}
       {%- endif -%}
     {%- endfor -%}
-    {%- set out.items = out.items + [{'t': i.i ~ '|' ~ c.t ~ tail, 'm': i.m}] -%}
+    {%- set result.items = result.items + [{'text': item.icon ~ '|' ~ cut.name ~ tail, 'members': item.members}] -%}
   {%- endfor -%}
-  {% do returns(out.items) %}
+  {% do returns(result.items) %}
 {% endmacro %}
 
 {# Whether one member is in its problem state. Like the dashboard, an unavailable or unknown entity is not
    active, except for the alarm, where "neither disarmed nor armed" is the problem itself. #}
-{% macro gl_active(entity_id, kind, returns=none) %}
-  {%- set s = states(entity_id) -%}
+{% macro greenlight_member_active(entity_id, kind, returns=none) %}
+  {%- set state = states(entity_id) -%}
   {%- if kind == 'disarmed' -%}
-    {% do returns(s == 'disarmed') %}
+    {% do returns(state == 'disarmed') %}
   {%- elif kind == 'alarm_unknown' -%}
-    {% do returns(s != 'disarmed' and not s.startswith('armed_')) %}
+    {% do returns(state != 'disarmed' and not state.startswith('armed_')) %}
   {%- elif kind == 'not_off' -%}
-    {% do returns(s not in ['off', 'unavailable', 'unknown']) %}
+    {% do returns(state not in ['off', 'unavailable', 'unknown']) %}
   {%- else -%}
-    {% do returns(s == 'on') %}
+    {% do returns(state == 'on') %}
   {%- endif -%}
 {% endmacro %}
 
 {# The view bitfield over the dataset items' members (the `items` attribute of
    sensor.greenlight_dataset): bit i set = some member of line i is active. #}
-{% macro gl_bits(items, returns=none) %}
-  {%- set active = gl_active | as_function -%}
-  {%- set ns = namespace(bits=0) -%}
+{% macro greenlight_active_bits(items, returns=none) %}
+  {%- set member_active = greenlight_member_active | as_function -%}
+  {%- set result = namespace(bits=0) -%}
   {%- for members in items -%}
-    {%- set i = loop.index0 -%}
-    {%- for m in members if active(m[0], m[1]) -%}
+    {%- set line = loop.index0 -%}
+    {%- for member in members if member_active(member[0], member[1]) -%}
       {%- if loop.first -%}
-        {%- set ns.bits = ns.bits + 2 ** i -%}
+        {%- set result.bits = result.bits + 2 ** line -%}
       {%- endif -%}
     {%- endfor -%}
   {%- endfor -%}
-  {% do returns(ns.bits) %}
+  {% do returns(result.bits) %}
 {% endmacro %}
 
 {# The members that are expected where the display hangs: in the lobby, next to the alarm's arm panel,
    whoever reads it is about to arm and leave, so the lobby door is open, unlocked and the alarm is
    disarmed. The small living-room lamp is the night light (living_room_lighting.yaml): moving around the
-   ground floor at dusk turns it on and arming turns it off. Their lines stay in the dataset; gl_hidden
-   masks their bits out of the view. #}
-{% macro gl_expected(returns=none) %}
+   ground floor at dusk turns it on and arming turns it off. Their lines stay in the dataset;
+   greenlight_hidden_bits masks their bits out of the view. #}
+{% macro greenlight_expected_members(returns=none) %}
   {% do returns([['alarm_control_panel.house_alarm', 'disarmed'],
                  ['binary_sensor.gf_lobby_door_lock_contact', 'on'],
                  ['binary_sensor.gf_lobby_door_contact', 'on'],
                  ['light.gf_living_light_sw', 'on']]) %}
 {% endmacro %}
 
-{# The view bits never shown (same items as gl_bits): bit i set = every member of line i is expected. #}
-{% macro gl_hidden(items, returns=none) %}
-  {%- set expected = (gl_expected | as_function)() -%}
-  {%- set ns = namespace(bits=0) -%}
+{# The view bits never shown (same items as greenlight_active_bits): bit i set = every member of line i is
+   expected. #}
+{% macro greenlight_hidden_bits(items, returns=none) %}
+  {%- set expected = (greenlight_expected_members | as_function)() -%}
+  {%- set result = namespace(bits=0) -%}
   {%- for members in items -%}
     {%- if members and members | reject('in', expected) | list | count == 0 -%}
-      {%- set ns.bits = ns.bits + 2 ** loop.index0 -%}
+      {%- set result.bits = result.bits + 2 ** loop.index0 -%}
     {%- endif -%}
   {%- endfor -%}
-  {% do returns(ns.bits) %}
+  {% do returns(result.bits) %}
+{% endmacro %}
+
+{# What the display gets: the active bits without the hidden ones. #}
+{% macro greenlight_view_bits(items, returns=none) %}
+  {%- set active = (greenlight_active_bits | as_function)(items) -%}
+  {% do returns(active - (active | bitwise_and((greenlight_hidden_bits | as_function)(items)))) %}
 {% endmacro %}
 
 {# 24-bit hash of a text, never 0 (DESIGN.md 5.1, 5.2). #}
-{% macro gl_hash24(text, returns=none) %}
-  {%- set h = (text | sha1)[:6] | int(base=16) -%}
-  {% do returns(h if h else 1) %}
+{% macro greenlight_hash24(text, returns=none) %}
+  {%- set hash = (text | sha1)[:6] | int(base=16) -%}
+  {% do returns(hash if hash else 1) %}
 {% endmacro %}
 
 {# The ds_entry strings of a dataset (DESIGN.md 6.5): `HHHHHH|II|text`, a line split into parts of
    at most 26 UTF-8 bytes at character boundaries, II = index | part << 5 | more << 7. #}
-{% macro gl_entries(hash, lines, returns=none) %}
-  {%- set tag = '%06X' | format(hash) -%}
-  {%- set out = namespace(l=[]) -%}
+{% macro greenlight_dataset_entries(hash, lines, returns=none) %}
+  {%- set hash_hex = '%06X' | format(hash) -%}
+  {%- set result = namespace(entries=[]) -%}
   {%- for line in lines -%}
-    {%- set i = loop.index0 -%}
-    {%- set p = namespace(parts=[''], n=0) -%}
-    {%- for ch in line -%}
-      {%- set e = ch | urlencode -%}
-      {%- set b = (e | length) - 2 * e.count('%') -%}
-      {%- if p.n + b > 26 -%}
-        {%- set p.parts = p.parts + [ch] -%}
-        {%- set p.n = b -%}
+    {%- set line_index = loop.index0 -%}
+    {%- set split = namespace(parts=[''], bytes=0) -%}
+    {%- for char in line -%}
+      {%- set encoded = char | urlencode -%}
+      {%- set char_bytes = (encoded | length) - 2 * encoded.count('%') -%}
+      {%- if split.bytes + char_bytes > 26 -%}
+        {%- set split.parts = split.parts + [char] -%}
+        {%- set split.bytes = char_bytes -%}
       {%- else -%}
-        {%- set p.parts = p.parts[:-1] + [p.parts[-1] ~ ch] -%}
-        {%- set p.n = p.n + b -%}
+        {%- set split.parts = split.parts[:-1] + [split.parts[-1] ~ char] -%}
+        {%- set split.bytes = split.bytes + char_bytes -%}
       {%- endif -%}
     {%- endfor -%}
-    {%- for part in p.parts -%}
-      {%- set ii = i + 32 * loop.index0 + (0 if loop.last else 128) -%}
-      {%- set out.l = out.l + [tag ~ '|' ~ '%02X' | format(ii) ~ '|' ~ part] -%}
+    {%- for part in split.parts -%}
+      {%- set line_and_part = line_index + 32 * loop.index0 + (0 if loop.last else 128) -%}
+      {%- set result.entries = result.entries + [hash_hex ~ '|' ~ '%02X' | format(line_and_part) ~ '|' ~ part] -%}
     {%- endfor -%}
   {%- endfor -%}
-  {% do returns(out.l) %}
+  {% do returns(result.entries) %}
 {% endmacro %}

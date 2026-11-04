@@ -8,40 +8,37 @@ template:
       - name: Greenlight dataset
         unique_id: greenlight_dataset
         state: >
-          {% from 'greenlight.jinja' import gl_items, gl_hash24 %}
-          {{ (gl_hash24 | as_function)((gl_items | as_function)() | map(attribute='t') | join('\n')) }}
+          {% from 'greenlight.jinja' import greenlight_dataset_items, greenlight_hash24 %}
+          {% set lines = (greenlight_dataset_items | as_function)() | map(attribute='text') %}
+          {{ (greenlight_hash24 | as_function)(lines | join('\n')) }}
         attributes:
           lines: >
-            {% from 'greenlight.jinja' import gl_items %}
-            {{ (gl_items | as_function)() | map(attribute='t') | list }}
+            {% from 'greenlight.jinja' import greenlight_dataset_items %}
+            {{ (greenlight_dataset_items | as_function)() | map(attribute='text') | list }}
           items: >
-            {% from 'greenlight.jinja' import gl_items %}
-            {{ (gl_items | as_function)() | map(attribute='m') | list }}
+            {% from 'greenlight.jinja' import greenlight_dataset_items %}
+            {{ (greenlight_dataset_items | as_function)() | map(attribute='members') | list }}
 
       # state: the 24-bit view id (hash of ds and bits; the time is not part of it)
-      # raw_bits: the active lines; hidden: the lines expected at the install spot (gl_expected);
-      # bits: raw_bits without hidden, what the display gets
+      # raw_bits: the active lines; hidden: the lines expected at the install spot
+      # (greenlight_expected_members); bits: raw_bits without hidden, what the display gets
       - name: Greenlight view
         unique_id: greenlight_view
         availability: "{{ states('sensor.greenlight_dataset') | int(0) > 0 }}"
         state: >
-          {% from 'greenlight.jinja' import gl_bits, gl_hidden, gl_hash24 %}
-          {% set items = state_attr('sensor.greenlight_dataset', 'items') or [] %}
-          {% set raw = (gl_bits | as_function)(items) %}
-          {% set bits = raw - (raw | bitwise_and((gl_hidden | as_function)(items))) %}
-          {{ (gl_hash24 | as_function)(states('sensor.greenlight_dataset') ~ ':' ~ bits) }}
+          {% from 'greenlight.jinja' import greenlight_view_bits, greenlight_hash24 %}
+          {% set bits = (greenlight_view_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) %}
+          {{ (greenlight_hash24 | as_function)(states('sensor.greenlight_dataset') ~ ':' ~ bits) }}
         attributes:
           raw_bits: >
-            {% from 'greenlight.jinja' import gl_bits %}
-            {{ (gl_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
+            {% from 'greenlight.jinja' import greenlight_active_bits %}
+            {{ (greenlight_active_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
           hidden: >
-            {% from 'greenlight.jinja' import gl_hidden %}
-            {{ (gl_hidden | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
+            {% from 'greenlight.jinja' import greenlight_hidden_bits %}
+            {{ (greenlight_hidden_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
           bits: >
-            {% from 'greenlight.jinja' import gl_bits, gl_hidden %}
-            {% set items = state_attr('sensor.greenlight_dataset', 'items') or [] %}
-            {% set raw = (gl_bits | as_function)(items) %}
-            {{ raw - (raw | bitwise_and((gl_hidden | as_function)(items))) }}
+            {% from 'greenlight.jinja' import greenlight_view_bits %}
+            {{ (greenlight_view_bits | as_function)(state_attr('sensor.greenlight_dataset', 'items') or []) }}
           ds: "{{ states('sensor.greenlight_dataset') | int(0) }}"
 
 automation:
@@ -110,8 +107,8 @@ automation:
                     ds: "{{ states('sensor.greenlight_dataset') | int(0) }}"
                     lines: "{{ state_attr('sensor.greenlight_dataset', 'lines') }}"
                     entries: >
-                      {% from 'greenlight.jinja' import gl_entries %}
-                      {{ (gl_entries | as_function)(ds, lines) }}
+                      {% from 'greenlight.jinja' import greenlight_dataset_entries %}
+                      {{ (greenlight_dataset_entries | as_function)(ds, lines) }}
                 - repeat:
                     for_each: "{{ entries }}"
                     sequence:
