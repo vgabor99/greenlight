@@ -40,7 +40,7 @@
 
 /* A dataset line, "II|name|state" (DESIGN.md 5.1): icon id in hex, name, state (may be empty). */
 typedef struct {
-    const bm_icon_t *icon;
+    const bitmap_icon_t *icon;
     const char      *name;
     int              name_length;
     const char      *state;
@@ -50,15 +50,15 @@ typedef struct {
  * the fallback icon. */
 static dataset_line_t parse_dataset_line(const char *text)
 {
-    dataset_line_t line = {&bm_line_icon[BM_ICON_ALERT_CIRCLE], "???", 3, "???"};
+    dataset_line_t line = {&bitmap_line_icons[BITMAP_LINE_ICON_ALERT_CIRCLE], "???", 3, "???"};
     int            high = hex_digit_value(text[0]), low = high < 0 ? -1 : hex_digit_value(text[1]);
     const char    *name_end = low < 0 || text[2] != '|' ? NULL : strchr(text + 3, '|');
     if (!name_end || name_end == text + 3) {
         return line;
     }
     int icon_id = high * 16 + low;
-    if (icon_id < BM_LINE_ICONS) {
-        line.icon = &bm_line_icon[icon_id];
+    if (icon_id < BITMAP_LINE_ICON_COUNT) {
+        line.icon = &bitmap_line_icons[icon_id];
     }
     line.name        = text + 3;
     line.name_length = name_end - line.name;
@@ -82,10 +82,10 @@ static void draw_problem_row(int top, const char *text)
     int            baseline = top + ROW_BASELINE_DY;
     bitmap_draw_icon(line.icon, ROW_ICON_X, top + ROW_ICON_CENTER_DY);
     int state_width, state_length = strlen(line.state);
-    bitmap_text_fit(&bm_font_state, line.state, state_length, STATE_MAX_WIDTH, &state_width);
-    bitmap_text_draw_fitted(&bm_font_state, ROW_RIGHT_X - state_width, baseline, line.state, state_length,
+    bitmap_text_fit(&bitmap_font_state, line.state, state_length, STATE_MAX_WIDTH, &state_width);
+    bitmap_text_draw_fitted(&bitmap_font_state, ROW_RIGHT_X - state_width, baseline, line.state, state_length,
                             STATE_MAX_WIDTH);
-    bitmap_text_draw_fitted(&bm_font_name, ROW_NAME_X, baseline, line.name, line.name_length,
+    bitmap_text_draw_fitted(&bitmap_font_name, ROW_NAME_X, baseline, line.name, line.name_length,
                             ROW_RIGHT_X - state_width - ROW_GAP - ROW_NAME_X);
 }
 
@@ -103,10 +103,10 @@ static void draw_problem_rows(const shown_view_t *shown)
 
 static void draw_all_ok(void)
 {
-    bitmap_draw_icon(&bm_icon_check_circle, EPAPER_WIDTH / 2, OK_ICON_Y);
-    bitmap_text_draw_centered(&bm_font_ok, OK_TITLE_BASELINE, "Minden OK");
-    bitmap_text_draw_centered(&bm_font_detail, OK_LINE1_BASELINE, "Ajtók, ablakok zárva");
-    bitmap_text_draw_centered(&bm_font_detail, OK_LINE2_BASELINE, "Készülékek kikapcsolva");
+    bitmap_draw_icon(&bitmap_icon_check_circle, EPAPER_WIDTH / 2, OK_ICON_Y);
+    bitmap_text_draw_centered(&bitmap_font_ok, OK_TITLE_BASELINE, "Minden OK");
+    bitmap_text_draw_centered(&bitmap_font_detail, OK_LINE1_BASELINE, "Ajtók, ablakok zárva");
+    bitmap_text_draw_centered(&bitmap_font_detail, OK_LINE2_BASELINE, "Készülékek kikapcsolva");
 }
 
 /* The stale flag (DESIGN.md 5.3), drawn over whatever is under it: white sync arrows on a black disc in a
@@ -124,9 +124,9 @@ static void draw_stale_badge(void)
             }
         }
     }
-    const bm_icon_t *icon = &bm_icon_sync_badge;
-    framebuffer_blit(left + (2 * BADGE_RADIUS - icon->w + 1) / 2, top + (2 * BADGE_RADIUS - icon->h + 1) / 2, icon->w,
-                     icon->h, icon->bits, false);
+    const bitmap_icon_t *icon = &bitmap_icon_sync_badge;
+    framebuffer_blit(left + (2 * BADGE_RADIUS - icon->width + 1) / 2, top + (2 * BADGE_RADIUS - icon->height + 1) / 2, icon->width,
+                     icon->height, icon->bits, false);
 }
 
 static void draw_house(const render_content_t *content)
@@ -143,18 +143,18 @@ static void draw_house(const render_content_t *content)
 
 /* ---- Device screens: a large icon and one line, no header ("Párosítás" adds two instruction lines) ---- */
 
-static void draw_device_screen(const bm_icon_t *icon, const char *text)
+static void draw_device_screen(const bitmap_icon_t *icon, const char *text)
 {
     bitmap_draw_icon(icon, EPAPER_WIDTH / 2, DEVICE_ICON_Y);
-    bitmap_text_draw_centered(&bm_font_big, DEVICE_TEXT_BASELINE, text);
+    bitmap_text_draw_centered(&bitmap_font_big, DEVICE_TEXT_BASELINE, text);
 }
 
 static void draw_unpaired(void)
 {
-    bitmap_draw_icon(&bm_icon_gesture_tap_hold, EPAPER_WIDTH / 2, PAIR_ICON_Y);
-    bitmap_text_draw_centered(&bm_font_big, PAIR_TITLE_BASELINE, "Párosítás");
-    bitmap_text_draw_centered(&bm_font_hint, PAIR_LINE1_BASELINE, "Engedélyezd a csatlakozást");
-    bitmap_text_draw_centered(&bm_font_hint, PAIR_LINE2_BASELINE, "Nyomd a gombot 3 mp-ig");
+    bitmap_draw_icon(&bitmap_icon_gesture_tap_hold, EPAPER_WIDTH / 2, PAIR_ICON_Y);
+    bitmap_text_draw_centered(&bitmap_font_big, PAIR_TITLE_BASELINE, "Párosítás");
+    bitmap_text_draw_centered(&bitmap_font_hint, PAIR_LINE1_BASELINE, "Engedélyezd a csatlakozást");
+    bitmap_text_draw_centered(&bitmap_font_hint, PAIR_LINE2_BASELINE, "Nyomd a gombot 3 mp-ig");
 }
 
 void status_screen_draw(const render_content_t *content)
@@ -163,11 +163,11 @@ void status_screen_draw(const render_content_t *content)
     case RENDER_BLANK:       break;
     case RENDER_HOUSE:       draw_house(content); break;
     case RENDER_UNPAIRED:    draw_unpaired(); break;
-    case RENDER_SEARCHING:   draw_device_screen(&bm_icon_access_point, "Hálózatkeresés"); break;
-    case RENDER_JOINING:     draw_device_screen(&bm_icon_access_point, "Csatlakozás"); break;
-    case RENDER_SYNCING:     draw_device_screen(&bm_icon_sync, "Szinkronizálás"); break;
-    case RENDER_JOIN_FAILED: draw_device_screen(&bm_icon_alert_outline, "Csatlakozási hiba"); break;
-    case RENDER_BATTERY:     draw_device_screen(&bm_icon_battery_outline, "Akkumulátor lemerült"); break;
-    case RENDER_ERROR:       draw_device_screen(&bm_icon_alert_outline, "Ismeretlen hiba"); break;
+    case RENDER_SEARCHING:   draw_device_screen(&bitmap_icon_access_point, "Hálózatkeresés"); break;
+    case RENDER_JOINING:     draw_device_screen(&bitmap_icon_access_point, "Csatlakozás"); break;
+    case RENDER_SYNCING:     draw_device_screen(&bitmap_icon_sync, "Szinkronizálás"); break;
+    case RENDER_JOIN_FAILED: draw_device_screen(&bitmap_icon_alert_outline, "Csatlakozási hiba"); break;
+    case RENDER_BATTERY:     draw_device_screen(&bitmap_icon_battery_outline, "Akkumulátor lemerült"); break;
+    case RENDER_ERROR:       draw_device_screen(&bitmap_icon_alert_outline, "Ismeretlen hiba"); break;
     }
 }

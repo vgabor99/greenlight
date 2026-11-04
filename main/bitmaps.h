@@ -3,47 +3,47 @@
 
 #include <stdint.h>
 
-/* A glyph: its bitmap is h rows of (w + 7) / 8 bytes, MSB first, 1 = black, at bits + off. x, y: offset of
- * its top left corner from the pen position on the baseline. adv: advance in 1/16 px. */
+/* A glyph: its bitmap is height rows of (width + 7) / 8 bytes, MSB first, 1 = black, at the font's
+ * bits + bits_offset. x_offset, y_offset: of its top left corner from the pen position on the baseline. */
 typedef struct {
-    uint16_t cp;
-    uint8_t  w, h;
-    int8_t   x, y;
-    uint16_t adv;
-    uint32_t off;
-} bm_glyph_t;
+    uint16_t code_point;
+    uint8_t  width, height;
+    int8_t   x_offset, y_offset;
+    uint16_t advance_16ths;  /* pen advance in 1/16 px */
+    uint32_t bits_offset;
+} bitmap_glyph_t;
 
-/* A font: glyphs sorted by code point. cap: height of a capital letter (H), for vertical centring. */
+/* A font: glyphs sorted by code point. cap_height: height of a capital letter (H), for vertical centring. */
 typedef struct {
-    const bm_glyph_t *glyph;
-    uint16_t          count;
-    uint8_t           cap;
-    const uint8_t    *bits;
-} bm_font_t;
+    const bitmap_glyph_t *glyphs;
+    uint16_t              glyph_count;
+    uint8_t               cap_height;
+    const uint8_t        *bits;
+} bitmap_font_t;
 
-/* An icon, cropped to its ink: h rows of (w + 7) / 8 bytes, MSB first, 1 = black. */
+/* An icon, cropped to its ink: height rows of (width + 7) / 8 bytes, MSB first, 1 = black. */
 typedef struct {
-    uint8_t        w, h;
+    uint8_t        width, height;
     const uint8_t *bits;
-} bm_icon_t;
+} bitmap_icon_t;
 
-extern const bm_font_t bm_font_name;  /* Inter 700, 24 px */
-extern const bm_font_t bm_font_state;  /* Inter 600, 22 px */
-extern const bm_font_t bm_font_ok;  /* Inter 700, 32 px */
-extern const bm_font_t bm_font_big;  /* Inter 700, 30 px */
-extern const bm_font_t bm_font_detail;  /* Inter 500, 18 px */
-extern const bm_font_t bm_font_hint;  /* Inter 500, 22 px */
+extern const bitmap_font_t bitmap_font_name;  /* Inter 700, 24 px */
+extern const bitmap_font_t bitmap_font_state;  /* Inter 600, 22 px */
+extern const bitmap_font_t bitmap_font_ok;  /* Inter 700, 32 px */
+extern const bitmap_font_t bitmap_font_big;  /* Inter 700, 30 px */
+extern const bitmap_font_t bitmap_font_detail;  /* Inter 500, 18 px */
+extern const bitmap_font_t bitmap_font_hint;  /* Inter 500, 22 px */
 
 /* Line icons by icon id (DESIGN.md 5.1), 30 px. */
-#define BM_LINE_ICONS 61
-#define BM_ICON_ALERT_CIRCLE 0x00
-#define BM_ICON_DOTS_HORIZONTAL 0x01
-extern const bm_icon_t bm_line_icon[BM_LINE_ICONS];
+#define BITMAP_LINE_ICON_COUNT 61
+#define BITMAP_LINE_ICON_ALERT_CIRCLE 0x00
+#define BITMAP_LINE_ICON_DOTS_HORIZONTAL 0x01
+extern const bitmap_icon_t bitmap_line_icons[BITMAP_LINE_ICON_COUNT];
 
-extern const bm_icon_t bm_icon_sync_badge;  /* 24 px */
-extern const bm_icon_t bm_icon_check_circle;  /* 152 px */
-extern const bm_icon_t bm_icon_gesture_tap_hold;  /* 120 px */
-extern const bm_icon_t bm_icon_access_point;  /* 150 px */
-extern const bm_icon_t bm_icon_sync;  /* 150 px */
-extern const bm_icon_t bm_icon_alert_outline;  /* 150 px */
-extern const bm_icon_t bm_icon_battery_outline;  /* 150 px */
+extern const bitmap_icon_t bitmap_icon_sync_badge;  /* 24 px */
+extern const bitmap_icon_t bitmap_icon_check_circle;  /* 152 px */
+extern const bitmap_icon_t bitmap_icon_gesture_tap_hold;  /* 120 px */
+extern const bitmap_icon_t bitmap_icon_access_point;  /* 150 px */
+extern const bitmap_icon_t bitmap_icon_sync;  /* 150 px */
+extern const bitmap_icon_t bitmap_icon_alert_outline;  /* 150 px */
+extern const bitmap_icon_t bitmap_icon_battery_outline;  /* 150 px */
