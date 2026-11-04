@@ -25,8 +25,9 @@ Status: works end to end on the bench. Deep sleep and the battery are still simu
 ## Layout
 
 ```
-main/        firmware: state machine (hello_world_main.c), Zigbee (zb.c), panel driver (epd.c),
-             screens (screen.c), framebuffer and debug screen (render.c), generated bitmaps (bitmaps.c)
+main/        firmware, one file per part: state machine (state_machine.c), inputs, battery, sleep,
+             display (display*.c, panel.c, status_screen.c, debug_screen.c), Zigbee (zigbee*.c),
+             panel driver (epaper.c), generated bitmaps (bitmaps.c); CLAUDE.md has the file map
 tools/       bitmap generator, serial console, framebuffer dump, Zigbee bench test
 z2m/         Zigbee2MQTT external converter
 ha/          Home Assistant templates and package

@@ -139,7 +139,7 @@ Airtime is not the problem. 802.15.4 runs at 250 kbit/s, so a full 127-byte fram
 whole snapshot is about 3 frames' worth of data, about 12 ms of airtime per hop.
 
 Per write, the path is: Z2M/herdsman queue, then `AF_DATA_REQUEST`, then the coordinator (or parent router)
-queues the frame as an indirect message. It **waits for the next poll** (up to `POLL_MS` = 250 ms, average
+queues the frame as an indirect message. It **waits for the next poll** (up to `PARENT_POLL_MS` = 250 ms, average
 125 ms), then the device processes it. Then comes the ZCL Write Attributes Response back, and herdsman resolves
 the request. Herdsman runs up to 16 requests concurrently on Z-Stack 3.x, but the device fetches one queued frame
 per poll. 8 writes at about 440 ms each matches "one poll interval plus one response round trip per write".
@@ -172,8 +172,8 @@ scheme turns a failure into a 5 s retry instead of a wrong screen. It costs time
 
 | # | Change | Latency (estimate, to verify) | Reliability | Mesh | Cost |
 |---|---|---|---|---|---|
-| 1 | **Poll faster while awake**: `POLL_MS` 250 to about 50 ms (only in the awake states; sleep is unaffected) | about 3.5 s to about 1.5 s | better: frames spend less time in the parent's queue, so fewer expire | negligible (5) | one constant; a few mA for a few seconds |
-| 2 | **Pace the writes**: HA publishes one write, then waits about 2 x `POLL_MS` (100 ms at 50 ms polling) before the next, instead of all at once. Today all 8 go out together and herdsman sends up to 16 in parallel, so they pile up in the parent router's queue for sleepy children, whose size is unknown for cheap routers (7.1). | +0.1 s per write, mostly hidden by option 1 | better: at most 1 to 2 frames queued at the parent; no overflow that also drops the parent's other children's traffic | smoother, no burst | HA automation only |
+| 1 | **Poll faster while awake**: `PARENT_POLL_MS` 250 to about 50 ms (only in the awake states; sleep is unaffected) | about 3.5 s to about 1.5 s | better: frames spend less time in the parent's queue, so fewer expire | negligible (5) | one constant; a few mA for a few seconds |
+| 2 | **Pace the writes**: HA publishes one write, then waits about 2 x `PARENT_POLL_MS` (100 ms at 50 ms polling) before the next, instead of all at once. Today all 8 go out together and herdsman sends up to 16 in parallel, so they pile up in the parent router's queue for sleepy children, whose size is unknown for cheap routers (7.1). | +0.1 s per write, mostly hidden by option 1 | better: at most 1 to 2 frames queued at the parent; no overflow that also drops the parent's other children's traffic | smoother, no burst | HA automation only |
 | 3 | Fold the commit into the last line write (2 attributes, about 38 bytes, see 2.1) | one write less | same guarantees; fits the 40-byte limit only with the line length cap | one message less | small firmware + HA change; optional |
 | 4 | **Cap the line length in HA** so a tagged line never exceeds the 40-byte rule (29 characters at most, the panel shows about 21 anyway) | none | removes the only way to exceed the limit | | HA template only |
 | - | ~~Two lines per write~~ | | fails beyond about 2 relays (2.1) | | rejected |
@@ -191,9 +191,9 @@ rule. The tag-and-commit scheme stays the safety net: a lost write costs a resen
    Once with the device next to the coordinator, once forced behind a router (power it from a router-only spot
    or block the coordinator). Expect the edge at ZCL payload 79 and 73 to 75. Note the error Z2M logs at the edge
    (`MEM_ERROR`, `INVALID_PARAMETER`, `MAC_*`).
-2. **Poll interval vs. push time**: full snapshot with `POLL_MS` = 250, 100, 50, 20; log the time from first
+2. **Poll interval vs. push time**: full snapshot with `PARENT_POLL_MS` = 250, 100, 50, 20; log the time from first
    MQTT publish to `shown_hash` report.
-3. **Paced vs. burst** (option 2): 20 full pushes each way at the chosen `POLL_MS`, count failed writes (Z2M
+3. **Paced vs. burst** (option 2): 20 full pushes each way at the chosen `PARENT_POLL_MS`, count failed writes (Z2M
    logs them on `bridge/logging`) and resends. Run it with the device at a poor spot (behind the weakest router
    it can join), since that is the case the design must survive.
 4. (Optional, curiosity) a 200-byte string write through Z2M, to see whether this Z-Stack build fragments at
@@ -287,7 +287,7 @@ Paced snapshot test (6 lines + commit, 100 ms apart, 50 ms polling), device in t
     unchanged, `dataset_hash` reported.
   - `--same`, the same view id 3 times: first `accepted`, then `time only` twice (bits ignored, as the id
     defines the content).
-- **`REPORT_DELAY_MS` 3 s -> 2 s (2026-11-03, `--reset-each`, 39 wakes, 0 Z2M errors)**: does reporting the rest
+- **`WAKE_REPORTS_DELAY_MS` 3 s -> 2 s (2026-11-03, `--reset-each`, 39 wakes, 0 Z2M errors)**: does reporting the rest
   of the wake 1 s sooner hold up the view? 35 fast (0.05-0.56 s), 4 stalled and delivered by Z2M's retry
   (13.2 s, 3 of them with parent 0x28b5), none lost. The rest went out 1.24-1.39 s after the view write in
   every wake, after every fast push had landed; in the 4 stalls the write was already overdue by then, so the
