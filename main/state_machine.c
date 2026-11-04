@@ -22,7 +22,7 @@ static const char *TAG = "greenlight";
 /* ---- Timing (DESIGN.md 3.2) ---- */
 #define IDLE_TIMEOUT_MS        20000   /* no activity for this long ends the wake */
 #define PAIRING_WINDOW_MS      180000
-#define INTERVIEW_MS           10000   /* TEMPORARY for development; design value 60000 */
+#define INTERVIEW_MS           60000   /* time to stay awake after joining, for the Z2M interview */
 #define PAIR_BUTTON_HOLD_MS    3000    /* pair button hold that starts pairing, or clears the network */
 #define REJOIN_TIMEOUT_MS      15000   /* give up rejoining after this long */
 #define STACK_START_TIMEOUT_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */

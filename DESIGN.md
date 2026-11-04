@@ -171,8 +171,7 @@ Zigbee side (6):
 - whether the device is paired comes from the Zigbee stack at BOOT (4); `pair_now` is in NVS; SLEEP is real
   deep sleep (3.6);
 - the battery voltage and USB power are simulated from the serial console (6.6);
-- every state shows the proper screen of 8 (or, built with `DEBUG_SCREEN`, the debug screen of 8.1);
-- `INTERVIEW_MS` is **10 s for development** (design value 60 s): set it back before real use.
+- every state shows the proper screen of 8 (or, built with `DEBUG_SCREEN`, the debug screen of 8.1).
 
 Tested on the board: unpaired start (no press: shutdown, still unpaired; press: pairing), 3 s hold erase and
 re-pair, wake by PIR and by pair button, hold keeps awake, re-arm during the countdown, 2 s hold does not
@@ -891,7 +890,7 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
    occupancy, `shown_hash`, `awake`, in that order), the slot attributes and commit of 6.5 (tagged lines,
    store the snapshot and footer in NVS, "render" = log + report `shown_hash`), pairing, interview, rejoin,
    rx-on-when-idle while awake, heartbeat, real leave and erase in ERASE_NETWORK. Make the failure paths
-   testable (pairing window over, rejoin failed). Set `INTERVIEW_MS` back to 60 s. Measure the rejoin time.
+   testable (pairing window over, rejoin failed). Measure the rejoin time.
 2b. **Done: dataset + view (rev 6).** Replace the snapshot slots with the view and dataset attributes of
    6.5, endpoint 3 for `dataset_hash`, the wake report order of 6.4 (wake counter first, the rest after
    `WAKE_REPORTS_DELAY_MS`), dataset and shown view in NVS, the debug screen of 8.1. Re-pair. Bench test with the
@@ -901,7 +900,6 @@ the serial port, shown on the debug screen (8.1) and acknowledged exactly as if 
 3. **Mostly done: HA side and first pairing checks.** Done: pair with Z2M and settle Q3 (settled in rev 7);
    the HA dataset and view templates (5.1, 5.2), the automation of 7 with retries, `awake` expiry. Open:
    measure end-to-end latency (and the rejoin time, Q1); disable Z2M availability for the device.
-   Also still open from step 2: set `INTERVIEW_MS` back to 60 s.
 4. **Done: deep sleep (2026-11-03).** `sleep_until_input()` is `esp_deep_sleep_start()` with D0 and D1 as level wake
    sources (3.6); the state stays in NVS. Tested on USB power: 31 wakes in 35 min by
    the PIR and the pair button, each one rejoined (1.4-1.5 s after boot) and reported `awake` to HA. Open: a wake
