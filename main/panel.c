@@ -20,9 +20,9 @@ static int     partials_since_clear;
 
 esp_err_t panel_clear(const char *reason)
 {
-    int        busy_before = gpio_get_level(EPD_PIN_BUSY);
+    int        busy_before = gpio_get_level(EPAPER_PIN_BUSY);
     TickType_t start = xTaskGetTickCount();
-    esp_err_t  err = epd_clear();
+    esp_err_t  err = epaper_clear();
     memset(frame_on_panel, 0xFF, sizeof(frame_on_panel));
     partials_since_clear = 0;
     ESP_LOGI(TAG, "panel: clear (%s) %lu ms, busy before %d%s", reason, (unsigned long)elapsed_ms(start), busy_before,
@@ -55,9 +55,9 @@ esp_err_t panel_refresh(const uint8_t *frame, const char *label)
     int black, changed;
     count_pixels(frame, &black, &changed);
     memcpy(frame_on_panel, frame, sizeof(frame_on_panel));
-    int        busy_before = gpio_get_level(EPD_PIN_BUSY);
+    int        busy_before = gpio_get_level(EPAPER_PIN_BUSY);
     TickType_t start = xTaskGetTickCount();
-    esp_err_t  err = epd_display_partial(frame);
+    esp_err_t  err = epaper_refresh_partial(frame);
     ESP_LOGI(TAG, "panel: refresh #%d (%s) %lu ms, busy before %d, black %d, changed %d%s", partials_since_clear,
              label, (unsigned long)elapsed_ms(start), busy_before, black, changed, err == ESP_OK ? "" : ", FAILED");
     return err;

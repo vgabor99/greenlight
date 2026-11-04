@@ -2,13 +2,13 @@
 
 /* Pin assignment: GPIO numbers on a Seeed XIAO ESP32-C6 (D-label in comment) */
 
-/* The e-paper panel (epd.c) */
-#define EPD_PIN_SCK  19  /* D8 */
-#define EPD_PIN_MOSI 18  /* D10 */
-#define EPD_PIN_CS   20  /* D9 */
-#define EPD_PIN_DC   22  /* D4 */
-#define EPD_PIN_RST  23  /* D5 */
-#define EPD_PIN_BUSY 21  /* D3 */
+/* The e-paper panel (epaper.c) */
+#define EPAPER_PIN_SCK  19  /* D8 */
+#define EPAPER_PIN_MOSI 18  /* D10 */
+#define EPAPER_PIN_CS   20  /* D9 */
+#define EPAPER_PIN_DC   22  /* D4 */
+#define EPAPER_PIN_RST  23  /* D5 */
+#define EPAPER_PIN_BUSY 21  /* D3 */
 
 /* "Somebody is around" input: Panasonic EKMB PIR output (active high, floats when idle; external 100k
  * pull-down to GND, which keeps the output current under the sensor's 100 uA). Set PIR_ACTIVE_LEVEL to 0

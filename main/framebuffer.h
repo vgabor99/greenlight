@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include "epaper.h"
 
-/* The 1-bit frame both screens draw into: EPD_STRIDE * EPD_HEIGHT bytes, rows MSB first, 1 = white, 0 = black.
+/* The 1-bit frame both screens draw into: EPAPER_ROW_BYTES * EPAPER_HEIGHT bytes, rows MSB first, 1 = white, 0 = black.
  * Drawing outside the panel is clipped. */
-#define FRAMEBUFFER_SIZE (EPD_STRIDE * EPD_HEIGHT)
+#define FRAMEBUFFER_SIZE (EPAPER_ROW_BYTES * EPAPER_HEIGHT)
 
 void framebuffer_clear(void);  /* all white */
 void framebuffer_set_pixel(int x, int y, bool black);

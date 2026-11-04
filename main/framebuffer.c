@@ -10,10 +10,10 @@ void framebuffer_clear(void)
 
 void framebuffer_set_pixel(int x, int y, bool black)
 {
-    if (x < 0 || x >= EPD_WIDTH || y < 0 || y >= EPD_HEIGHT) {
+    if (x < 0 || x >= EPAPER_WIDTH || y < 0 || y >= EPAPER_HEIGHT) {
         return;
     }
-    uint8_t *byte = &framebuffer[y * EPD_STRIDE + x / 8];
+    uint8_t *byte = &framebuffer[y * EPAPER_ROW_BYTES + x / 8];
     uint8_t  mask = 0x80 >> (x & 7);
     *byte = black ? *byte & ~mask : *byte | mask;
 }

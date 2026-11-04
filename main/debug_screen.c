@@ -13,7 +13,7 @@
 #define CHAR_ADVANCE  8   /* of TEXT_FONT (monospace) */
 #define ROW_PITCH     16
 #define LEFT_MARGIN   2
-#define TEXT_COLUMNS  ((EPD_WIDTH - 2 * LEFT_MARGIN) / CHAR_ADVANCE)  /* 49 */
+#define TEXT_COLUMNS  ((EPAPER_WIDTH - 2 * LEFT_MARGIN) / CHAR_ADVANCE)  /* 49 */
 
 /* Layout (y of each block) */
 #define Y_HEADER          2
@@ -27,10 +27,10 @@
 static u8g2_t u8g2;
 
 static const u8x8_display_info_t text_display = {
-    .tile_width   = (EPD_WIDTH + 7) / 8,
-    .tile_height  = (EPD_HEIGHT + 7) / 8,
-    .pixel_width  = EPD_WIDTH,
-    .pixel_height = EPD_HEIGHT,
+    .tile_width   = (EPAPER_WIDTH + 7) / 8,
+    .tile_height  = (EPAPER_HEIGHT + 7) / 8,
+    .pixel_width  = EPAPER_WIDTH,
+    .pixel_height = EPAPER_HEIGHT,
 };
 
 static uint8_t handle_display_message(u8x8_t *u8x8, uint8_t message, uint8_t arg_int, void *arg_ptr)
@@ -147,7 +147,7 @@ static void draw_header(const render_content_t *content)
              (unsigned long)content->wake_number, (unsigned long)(content->uptime_ms / 1000),
              (unsigned long)(content->uptime_ms % 1000 / 100));
     draw_row(Y_HEADER, "%s", content->state_name);
-    draw_text(EPD_WIDTH - LEFT_MARGIN - u8g2_GetUTF8Width(&u8g2, right), Y_HEADER, right);
+    draw_text(EPAPER_WIDTH - LEFT_MARGIN - u8g2_GetUTF8Width(&u8g2, right), Y_HEADER, right);
 }
 
 /* The dataset and the view on the panel */
@@ -176,9 +176,9 @@ void debug_screen_draw(const render_content_t *content)
 {
     init_text_drawing();
     draw_header(content);
-    framebuffer_fill_rect(0, Y_RULE1, EPD_WIDTH, 2, true);
+    framebuffer_fill_rect(0, Y_RULE1, EPAPER_WIDTH, 2, true);
     draw_shown_view(content);
-    framebuffer_fill_rect(0, Y_RULE2, EPD_WIDTH, 2, true);
+    framebuffer_fill_rect(0, Y_RULE2, EPAPER_WIDTH, 2, true);
     for (int i = 0; i < content->received_write_count && i < RENDER_RECEIVED_WRITES; i++) {  /* newest first */
         draw_received_write(Y_RECEIVED_WRITES + i * ROW_PITCH, &content->received_writes[i]);
     }

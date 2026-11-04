@@ -56,7 +56,7 @@ int bitmap_text_draw(const bm_font_t *font, int x, int baseline, const char *tex
 void bitmap_text_draw_centered(const bm_font_t *font, int baseline, const char *text)
 {
     int length = strlen(text);
-    bitmap_text_draw(font, (EPD_WIDTH - bitmap_text_width(font, text, length)) / 2, baseline, text, length);
+    bitmap_text_draw(font, (EPAPER_WIDTH - bitmap_text_width(font, text, length)) / 2, baseline, text, length);
 }
 
 int bitmap_text_fit(const bm_font_t *font, const char *text, int length, int max_width, int *width)

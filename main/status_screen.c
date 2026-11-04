@@ -9,7 +9,7 @@
 
 /* Layout, measured from the accepted mockups ("Bezárva? e-paper kijelző – design specifikáció").
  * Text is placed by its baseline, icons by their centre. */
-#define ROW_HEIGHT         (EPD_HEIGHT / VIEW_LAYOUT_ROWS)  /* VIEW_LAYOUT_ROWS rows of 50 px fill the screen, no header */
+#define ROW_HEIGHT         (EPAPER_HEIGHT / VIEW_LAYOUT_ROWS)  /* VIEW_LAYOUT_ROWS rows of 50 px fill the screen, no header */
 #define ROW_ICON_X         27                               /* line icon centre */
 #define ROW_ICON_CENTER_DY 25                               /* line icon centre below the row top */
 #define ROW_BASELINE_DY    33                               /* baseline below the row top */
@@ -103,7 +103,7 @@ static void draw_problem_rows(const shown_view_t *shown)
 
 static void draw_all_ok(void)
 {
-    bitmap_draw_icon(&bm_icon_check_circle, EPD_WIDTH / 2, OK_ICON_Y);
+    bitmap_draw_icon(&bm_icon_check_circle, EPAPER_WIDTH / 2, OK_ICON_Y);
     bitmap_text_draw_centered(&bm_font_ok, OK_TITLE_BASELINE, "Minden OK");
     bitmap_text_draw_centered(&bm_font_detail, OK_LINE1_BASELINE, "Ajtók, ablakok zárva");
     bitmap_text_draw_centered(&bm_font_detail, OK_LINE2_BASELINE, "Készülékek kikapcsolva");
@@ -145,13 +145,13 @@ static void draw_house(const render_content_t *content)
 
 static void draw_device_screen(const bm_icon_t *icon, const char *text)
 {
-    bitmap_draw_icon(icon, EPD_WIDTH / 2, DEVICE_ICON_Y);
+    bitmap_draw_icon(icon, EPAPER_WIDTH / 2, DEVICE_ICON_Y);
     bitmap_text_draw_centered(&bm_font_big, DEVICE_TEXT_BASELINE, text);
 }
 
 static void draw_unpaired(void)
 {
-    bitmap_draw_icon(&bm_icon_gesture_tap_hold, EPD_WIDTH / 2, PAIR_ICON_Y);
+    bitmap_draw_icon(&bm_icon_gesture_tap_hold, EPAPER_WIDTH / 2, PAIR_ICON_Y);
     bitmap_text_draw_centered(&bm_font_big, PAIR_TITLE_BASELINE, "Párosítás");
     bitmap_text_draw_centered(&bm_font_hint, PAIR_LINE1_BASELINE, "Engedélyezd a csatlakozást");
     bitmap_text_draw_centered(&bm_font_hint, PAIR_LINE2_BASELINE, "Nyomd a gombot 3 mp-ig");

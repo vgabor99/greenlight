@@ -102,7 +102,7 @@ static device_state_t check_battery_at_boot(void)
         battery_set_low_latched(false);
     } else if (battery_is_low()) {
         ESP_LOGW(TAG, "boot: battery low (%u mV)", battery_voltage_mv());
-        if (epd_init() != ESP_OK) {
+        if (epaper_init() != ESP_OK) {
             ESP_LOGE(TAG, "e-paper init failed");
         }
         display_set_failure(RENDER_BATTERY);
@@ -124,9 +124,9 @@ static void start_stack_and_panel(void)
     zigbee_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
              battery_voltage_mv());
 
-    /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
-     * releases the pin hold and recreates the SPI bus left by epd_poweroff(). */
-    if (epd_init() != ESP_OK || panel_clear("boot") != ESP_OK) {
+    /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epaper_init() also
+     * releases the pin hold and recreates the SPI bus left by epaper_power_off(). */
+    if (epaper_init() != ESP_OK || panel_clear("boot") != ESP_OK) {
         ESP_LOGE(TAG, "e-paper init failed");
         vTaskDelay(portMAX_DELAY);
     }
@@ -355,7 +355,7 @@ static device_state_t run_shutdown(void)
     display_redraw();
     ESP_LOGI(TAG, "final refresh done");
     TickType_t start = xTaskGetTickCount();
-    epd_poweroff();
+    epaper_power_off();
     ESP_LOGI(TAG, "panel: poweroff %lu ms", (unsigned long)elapsed_ms(start));
     ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
     return next;
