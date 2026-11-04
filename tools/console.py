@@ -26,85 +26,115 @@ def port_present(name):
     return any(p.device == name for p in list_ports.comports())
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("port", nargs="?", default="COM5")
-    ap.add_argument("--send", action="append", default=[])
-    ap.add_argument("--for", dest="duration", type=float)
-    ap.add_argument("--log")
-    ap.add_argument("--reset", action="store_true")
-    args = ap.parse_args()
+def parse_schedule(sends):
+    """--send values as (seconds after the start, command), in order."""
+    schedule = []
+    for send in sends:
+        match = re.match(r"^(\d+(?:\.\d+)?):(.*)$", send)
+        schedule.append((float(match.group(1)), match.group(2)) if match else (0.0, send))
+    schedule.sort(key=lambda item: item[0])
+    return schedule
 
-    pending = []  # (time to send, command), in order
-    for s in args.send:
-        m = re.match(r"^(\d+(?:\.\d+)?):(.*)$", s)
-        pending.append((float(m.group(1)), m.group(2)) if m else (0.0, s))
-    pending.sort(key=lambda p: p[0])
-    typed = []
-    lock = threading.Lock()
 
-    def read_stdin():
+def open_port(name):
+    port = serial.Serial()
+    port.port, port.baudrate, port.timeout = name, 115200, 0.1
+    port.dtr = port.rts = False  # no reset when the port opens
+    port.open()
+    return port
+
+
+def reset_board(port):
+    """Pulse RTS, like esptool: the board resets."""
+    port.rts = True
+    port.dtr = False  # on Windows the RTS change only applies with a DTR write
+    time.sleep(0.1)
+    port.rts = False
+    port.dtr = False
+
+
+class Console:
+    def __init__(self, args):
+        self.args = args
+        self.schedule = parse_schedule(args.send)
+        self.typed = []  # lines typed on stdin, not sent yet
+        self.typed_lock = threading.Lock()
+        self.log = open(args.log, "a", encoding="utf-8") if args.log else None
+        self.start = time.time()
+
+    def running(self):
+        return self.args.duration is None or time.time() - self.start < self.args.duration
+
+    def read_stdin(self):
         for line in sys.stdin:
-            with lock:
-                typed.append(line.strip())
+            with self.typed_lock:
+                self.typed.append(line.strip())
 
-    if sys.stdin.isatty():
-        threading.Thread(target=read_stdin, daemon=True).start()
+    def output(self, text):
+        print(text, flush=True)
+        if self.log:
+            self.log.write(text + "\n")
+            self.log.flush()
 
-    log = open(args.log, "a", encoding="utf-8") if args.log else None
-    start = time.time()
-    last_err = None
-    while args.duration is None or time.time() - start < args.duration:
-        try:
-            port = serial.Serial()
-            port.port, port.baudrate, port.timeout = args.port, 115200, 0.1
-            port.dtr = port.rts = False  # no reset when the port opens
-            port.open()
-            with port:
-                if args.reset:
-                    args.reset = False
-                    port.rts = True
-                    port.dtr = False  # on Windows the RTS change only applies with a DTR write
-                    time.sleep(0.1)
-                    port.rts = False
-                    port.dtr = False
-                buf = b""
-                last_rx = time.time()
-                while args.duration is None or time.time() - start < args.duration:
-                    now = time.time() - start
-                    with lock:
-                        out = typed[:]
-                        typed.clear()
-                    while pending and pending[0][0] <= now:
-                        out.append(pending.pop(0)[1])
-                    for cmd in out:
-                        port.write((cmd + "\n").encode())
-                        print(f">>> {cmd}", flush=True)
-                        if log:
-                            log.write(f">>> {cmd}\n")
-                    data = port.read(4096)
-                    if data:
-                        last_rx = time.time()
-                    elif time.time() - last_rx > 1:  # silent for a second: check the port list
-                        if not port_present(args.port):
-                            # deep sleep: the port is gone, but on Windows the open handle just stays silent
-                            raise serial.SerialException("port gone")
-                        last_rx = time.time()
-                    buf += data
-                    *done, buf = buf.split(b"\n")
-                    for line in done:
-                        text = line.decode("utf-8", errors="replace").rstrip("\r")
-                        print(text, flush=True)
-                        if log:
-                            log.write(text + "\n")
-                            log.flush()
-        except serial.SerialException as e:  # the port goes away while the board restarts or sleeps
-            if str(e) != last_err:
-                last_err = str(e)
-                print(f"[{time.time() - start:.1f}] {e}", file=sys.stderr, flush=True)
-            time.sleep(0.5)
-    if log:
-        log.close()
+    def due_commands(self):
+        """The typed lines, then the scheduled commands whose time has come."""
+        with self.typed_lock:
+            commands = self.typed[:]
+            self.typed.clear()
+        elapsed = time.time() - self.start
+        while self.schedule and self.schedule[0][0] <= elapsed:
+            commands.append(self.schedule.pop(0)[1])
+        return commands
+
+    def serve(self, port):
+        """Send commands and print the log until the time is up or the port goes away."""
+        buffer = b""
+        last_received = time.time()
+        while self.running():
+            for command in self.due_commands():
+                port.write((command + "\n").encode())
+                self.output(f">>> {command}")
+            data = port.read(4096)
+            if data:
+                last_received = time.time()
+            elif time.time() - last_received > 1:  # silent for a second: check the port list
+                if not port_present(self.args.port):
+                    # deep sleep: the port is gone, but on Windows the open handle just stays silent
+                    raise serial.SerialException("port gone")
+                last_received = time.time()
+            buffer += data
+            *lines, buffer = buffer.split(b"\n")
+            for line in lines:
+                self.output(line.decode("utf-8", errors="replace").rstrip("\r"))
+
+    def run(self):
+        if sys.stdin.isatty():
+            threading.Thread(target=self.read_stdin, daemon=True).start()
+        last_error = None
+        while self.running():
+            try:
+                with open_port(self.args.port) as port:
+                    if self.args.reset:
+                        self.args.reset = False
+                        reset_board(port)
+                    self.serve(port)
+            except serial.SerialException as e:  # the port goes away while the board restarts or sleeps
+                if str(e) != last_error:
+                    last_error = str(e)
+                    print(f"[{time.time() - self.start:.1f}] {e}", file=sys.stderr, flush=True)
+                time.sleep(0.5)
+        if self.log:
+            self.log.close()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("port", nargs="?", default="COM5")
+    parser.add_argument("--send", action="append", default=[])
+    parser.add_argument("--for", dest="duration", type=float)
+    parser.add_argument("--log")
+    parser.add_argument("--reset", action="store_true")
+    Console(parser.parse_args()).run()
 
 
 if __name__ == "__main__":
