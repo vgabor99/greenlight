@@ -54,7 +54,7 @@ CUSTOM_CLUSTER = 0xFC8A
 VIEW_BITS, VIEW_DS, VIEW_TIME, VIEW_ID, DS_ENTRY, DS_COMMIT = 0x20, 0x21, 0x22, 0x23, 0x30, 0x31
 UINT32, STRING = 35, 66
 
-# Dataset limits (ZIGBEE_LINE_MAX_BYTES, ZIGBEE_PART_MAX_BYTES, ZIGBEE_LINE_MAX_PARTS in main/zigbee.h)
+# Dataset limits (ZIGBEE_LINE_MAX_BYTES, ZIGBEE_PART_MAX_BYTES, ZIGBEE_LINE_MAX_PARTS in main/zigbee/zigbee.h)
 LINE_MAX_BYTES, PART_MAX_BYTES, LINE_MAX_PARTS = 64, 26, 3
 
 HU_TEXTS = ["ÁÉÍÓÖŐÚÜŰ", "áéíóöőúüű", "Garázsajtó nyitva", "Hűtőajtó nyitva", "Mosógép kész",

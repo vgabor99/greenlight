@@ -7,7 +7,7 @@ fb_<n>_<state>.png into OUT_DIR (default %TEMP%/gl_test/frames). Other lines are
 a log monitor. Needs pyserial and Pillow.
 
 At boot a SCREEN_DUMP build also dumps every screen once with sample content (frame_dump_samples() in
-main/frame_dump.c); --reset resets the board first (RTS, like esptool) to get them.
+main/display/frame_dump.c); --reset resets the board first (RTS, like esptool) to get them.
 
 Usage: python fb_dump.py [--reset] [PORT_OR_LOGFILE] [OUT_DIR]     (default port COM5; Ctrl+C to stop)
 """
