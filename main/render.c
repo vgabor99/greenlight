@@ -2,9 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 #include "epd.h"
+#include "framebuffer.h"
 #include "render.h"
 #include "screen.h"
 #include "u8g2.h"
+#include "utf8.h"
 
 #define ADV   8   /* character advance of FONT (monospace) */
 #define PITCH 16  /* row pitch */
@@ -22,31 +24,7 @@
 #define Y_RULE2  151
 #define Y_RX     156 /* RENDER_RX_N rows */
 
-static uint8_t fb[EPD_STRIDE * EPD_HEIGHT];
-
-static void set_pixel(int x, int y, int black)
-{
-    if (x < 0 || x >= EPD_WIDTH || y < 0 || y >= EPD_HEIGHT) {
-        return;
-    }
-    uint8_t mask = 0x80 >> (x & 7);
-    if (black) {
-        fb[y * EPD_STRIDE + x / 8] &= ~mask;
-    } else {
-        fb[y * EPD_STRIDE + x / 8] |= mask;
-    }
-}
-
-static void fill_rect(int x, int y, int w, int h, int black)
-{
-    for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            set_pixel(x + i, y + j, black);
-        }
-    }
-}
-
-/* u8g2 is used only for its fonts and text drawing: it draws through text_hvline() into fb and never talks
+/* u8g2 is used only for its fonts and text drawing: it draws through text_hvline() into the framebuffer and never talks
  * to the panel, so it has no buffer of its own (never call u8g2_ClearBuffer / u8g2_SendBuffer). */
 static u8g2_t u8g2;
 
@@ -68,9 +46,9 @@ static uint8_t text_display_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void 
 static void text_hvline(u8g2_t *u, u8g2_uint_t x, u8g2_uint_t y, u8g2_uint_t len, uint8_t dir)
 {
     if (dir == 0) {
-        fill_rect(x, y, len, 1, u->draw_color);
+        framebuffer_fill_rect(x, y, len, 1, u->draw_color);
     } else {
-        fill_rect(x, y, 1, len, u->draw_color);
+        framebuffer_fill_rect(x, y, 1, len, u->draw_color);
     }
 }
 
@@ -95,19 +73,6 @@ static int draw_text(int x, int y, const char *s)
     return u8g2_DrawUTF8(&u8g2, x, y, s);
 }
 
-/* Byte length of the first n characters (code points) of the UTF-8 text s. */
-static size_t utf8_prefix(const char *s, int n)
-{
-    const char *p = s;
-    for (; *p && n > 0; n--) {
-        p++;
-        while ((*p & 0xC0) == 0x80) {
-            p++;
-        }
-    }
-    return p - s;
-}
-
 /* One text row at the left margin; anything past COLS characters is cut off. */
 static void row(int y, const char *fmt, ...)
 {
@@ -116,7 +81,7 @@ static void row(int y, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    buf[utf8_prefix(buf, COLS)] = 0;
+    buf[utf8_prefix_length(buf, COLS)] = 0;
     draw_text(X0, y, buf);
 }
 
@@ -200,7 +165,7 @@ static void render_debug(const render_view_t *v)
              (unsigned long)(v->uptime_ms / 1000), (unsigned long)(v->uptime_ms % 1000 / 100));
     row(Y_HEADER, "%s", v->state);
     draw_text(EPD_WIDTH - X0 - u8g2_GetUTF8Width(&u8g2, right), Y_HEADER, right);
-    fill_rect(0, Y_RULE1, EPD_WIDTH, 2, 1);
+    framebuffer_fill_rect(0, Y_RULE1, EPD_WIDTH, 2, true);
 
     /* Dataset and the view on the panel */
     const render_shown_t *s = &v->shown;
@@ -219,7 +184,7 @@ static void render_debug(const render_view_t *v)
             row(y, "%d", i + 1);
         }
     }
-    fill_rect(0, Y_RULE2, EPD_WIDTH, 2, 1);
+    framebuffer_fill_rect(0, Y_RULE2, EPD_WIDTH, 2, true);
 
     /* Received writes, newest first */
     for (int i = 0; i < v->rx_count && i < RENDER_RX_N; i++) {
@@ -229,11 +194,11 @@ static void render_debug(const render_view_t *v)
 
 const uint8_t *render_status(const render_view_t *v)
 {
-    memset(fb, 0xFF, sizeof(fb));
+    framebuffer_clear();
     if (RENDER_DEBUG_SCREEN) {
         render_debug(v);
     } else {
-        screen_draw(fb, v);
+        screen_draw(v);
     }
-    return fb;
+    return framebuffer_data();
 }

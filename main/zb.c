@@ -14,6 +14,8 @@
 #include "freertos/task.h"
 #include "esp_zigbee.h"
 #include "ezbee/zha.h"
+#include "hex.h"
+#include "utf8.h"
 #include "zb.h"
 
 static const char *TAG = "zb";
@@ -189,49 +191,18 @@ static void activity(void)
     }
 }
 
-static int hex_digit(char c)
-{
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 /* n hex digits as a number, or -1 */
 static int32_t hex_value(const uint8_t *p, int n)
 {
     int32_t v = 0;
     for (int i = 0; i < n; i++) {
-        int d = hex_digit((char)p[i]);
+        int d = hex_digit_value((char)p[i]);
         if (d < 0) {
             return -1;
         }
         v = (v << 4) | d;
     }
     return v;
-}
-
-/* Dataset text is UTF-8 (DESIGN.md 5.1): replace each byte that is not part of a valid sequence (a stray
- * continuation byte, a truncated or overlong sequence) and each control character with '?'. */
-static void utf8_sanitize(char *s)
-{
-    uint8_t *p = (uint8_t *)s;
-    while (*p) {
-        int n = *p < 0x80                    ? 0
-              : *p >= 0xC2 && *p < 0xE0      ? 1
-              : (*p & 0xF0) == 0xE0          ? 2
-              : *p >= 0xF0 && *p < 0xF5      ? 3
-                                             : -1;
-        bool ok = n >= 0;
-        for (int i = 1; ok && i <= n; i++) {
-            ok = (p[i] & 0xC0) == 0x80;  /* also stops at the terminating 0 */
-        }
-        if (!ok || *p < 0x20 || *p == 0x7F) {
-            *p++ = '?';
-        } else {
-            p += n + 1;
-        }
-    }
 }
 
 /* Runs in the Zigbee task after the frame that carried the view_* writes has been processed, so all four

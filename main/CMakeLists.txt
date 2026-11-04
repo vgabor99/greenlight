@@ -1,4 +1,4 @@
-idf_component_register(SRCS "hello_world_main.c" "epd.c" "zb.c" "render.c" "screen.c" "bitmaps.c"
+idf_component_register(SRCS "utf8.c" "framebuffer.c" "hello_world_main.c" "epd.c" "zb.c" "render.c" "screen.c" "bitmaps.c"
                        PRIV_REQUIRES esp_driver_spi esp_driver_gpio esp_driver_usb_serial_jtag nvs_flash esp_timer esp_app_format u8g2
                        INCLUDE_DIRS ".")
 

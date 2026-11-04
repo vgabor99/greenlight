@@ -2,7 +2,10 @@
 #include <string.h>
 #include "bitmaps.h"
 #include "epd.h"
+#include "framebuffer.h"
+#include "hex.h"
 #include "screen.h"
+#include "utf8.h"
 
 /* Layout, measured from the accepted mockups ("Bezárva? e-paper kijelző – design specifikáció").
  * Text is placed by its baseline, icons by their centre. */
@@ -33,49 +36,9 @@
 #define PAIR_LINE1_BASE 217
 #define PAIR_LINE2_BASE 249
 
-static uint8_t *fb;
-
-static void set_pixel(int x, int y, bool black)
-{
-    if (x >= 0 && x < EPD_WIDTH && y >= 0 && y < EPD_HEIGHT) {
-        uint8_t *b = &fb[y * EPD_STRIDE + x / 8];
-        *b = black ? *b & ~(0x80 >> (x & 7)) : *b | 0x80 >> (x & 7);
-    }
-}
-
-/* A 1-bit bitmap (rows of (w + 7) / 8 bytes, MSB first, 1 = ink) with its top left corner at x, y; the ink is
- * painted black, or white over a black background. */
-static void blit(int x, int y, int w, int h, const uint8_t *bits, bool black)
-{
-    int stride = (w + 7) / 8;
-    for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            if (bits[j * stride + i / 8] & (0x80 >> (i & 7))) {
-                set_pixel(x + i, y + j, black);
-            }
-        }
-    }
-}
-
 static void draw_icon(const bm_icon_t *icon, int cx, int cy)
 {
-    blit(cx - icon->w / 2, cy - icon->h / 2, icon->w, icon->h, icon->bits, true);
-}
-
-/* The code point at *s, and *s moved past it; '?' for a broken sequence. */
-static uint32_t utf8_next(const char **s)
-{
-    const uint8_t *p = (const uint8_t *)*s;
-    uint32_t       c = *p++;
-    int            n = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
-    if (n) {
-        c &= 0x3F >> n;
-    }
-    for (; n > 0 && (*p & 0xC0) == 0x80; n--) {
-        c = c << 6 | (*p++ & 0x3F);
-    }
-    *s = (const char *)p;
-    return n ? '?' : c;
+    framebuffer_blit(cx - icon->w / 2, cy - icon->h / 2, icon->w, icon->h, icon->bits, true);
 }
 
 /* The glyph of cp; '?' for a character the font does not have. */
@@ -102,7 +65,7 @@ static int text_width(const bm_font_t *f, const char *s, int len)
     int         w16 = 0;
     const char *end = s + len;
     while (s < end) {
-        w16 += glyph(f, utf8_next(&s))->adv;
+        w16 += glyph(f, utf8_next_code_point(&s))->adv;
     }
     return (w16 + 8) / 16;
 }
@@ -113,8 +76,8 @@ static int draw_text(const bm_font_t *f, int x, int base, const char *s, int len
     int         pen16 = x * 16;
     const char *end = s + len;
     while (s < end) {
-        const bm_glyph_t *g = glyph(f, utf8_next(&s));
-        blit((pen16 + 8) / 16 + g->x, base + g->y, g->w, g->h, f->bits + g->off, true);
+        const bm_glyph_t *g = glyph(f, utf8_next_code_point(&s));
+        framebuffer_blit((pen16 + 8) / 16 + g->x, base + g->y, g->w, g->h, f->bits + g->off, true);
         pen16 += g->adv;
     }
     return (pen16 + 8) / 16 - x;
@@ -138,7 +101,7 @@ static int text_cut(const bm_font_t *f, const char *s, int len, int max_w, int *
     const char *p = s;
     while (p < s + len) {
         const char *q = p;
-        utf8_next(&q);
+        utf8_next_code_point(&q);
         if (text_width(f, s, q - s) + ell > max_w) {
             break;
         }
@@ -168,17 +131,12 @@ typedef struct {
     const char      *state;
 } line_t;
 
-static int hex_digit(char c)
-{
-    return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
-}
-
 /* Anything not in the line format is drawn as "??? ???" with the fallback icon; an unknown icon id only gets
  * the fallback icon. */
 static line_t parse_line(const char *s)
 {
     line_t      l = {&bm_line_icon[BM_ICON_ALERT_CIRCLE], "???", 3, "???"};
-    int         hi = hex_digit(s[0]), lo = hi < 0 ? -1 : hex_digit(s[1]);
+    int         hi = hex_digit_value(s[0]), lo = hi < 0 ? -1 : hex_digit_value(s[1]);
     const char *bar = lo < 0 || s[2] != '|' ? NULL : strchr(s + 3, '|');
     if (!bar || bar == s + 3) {
         return l;
@@ -200,7 +158,7 @@ static void draw_rows(const render_shown_t *s)
         if (i > 0) {
             for (int x = SEP_X0; x <= SEP_X1; x++) {
                 if ((x - SEP_X0) % 5 < 2) {
-                    set_pixel(x, top - 1, true);
+                    framebuffer_set_pixel(x, top - 1, true);
                 }
             }
         }
@@ -233,13 +191,13 @@ static void draw_badge(void)
         for (int x = x0 - BADGE_RING - 1; x <= x0 + 2 * BADGE_R + BADGE_RING; x++) {
             int dx = 2 * x + 1 - cx2, dy = 2 * y + 1 - cy2, d = dx * dx + dy * dy;
             if (d <= r2 * r2) {
-                set_pixel(x, y, d <= 4 * BADGE_R * BADGE_R);
+                framebuffer_set_pixel(x, y, d <= 4 * BADGE_R * BADGE_R);
             }
         }
     }
     const bm_icon_t *icon = &bm_icon_sync_badge;
-    blit(x0 + (2 * BADGE_R - icon->w + 1) / 2, y0 + (2 * BADGE_R - icon->h + 1) / 2, icon->w, icon->h, icon->bits,
-         false);
+    framebuffer_blit(x0 + (2 * BADGE_R - icon->w + 1) / 2, y0 + (2 * BADGE_R - icon->h + 1) / 2, icon->w, icon->h,
+                     icon->bits, false);
 }
 
 /* ---- Device screens: a large icon and one line, no header ("Párosítás" adds two instruction lines) ---- */
@@ -258,9 +216,8 @@ static void draw_unpaired(void)
     draw_centered(&bm_font_hint, PAIR_LINE2_BASE, "Nyomd a gombot 3 mp-ig");
 }
 
-void screen_draw(uint8_t *frame, const render_view_t *v)
+void screen_draw(const render_view_t *v)
 {
-    fb = frame;
     switch (v->screen) {
     case RENDER_BLANK:
         break;
