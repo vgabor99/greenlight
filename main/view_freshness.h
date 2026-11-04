@@ -3,10 +3,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SCREEN_VALID_MS 8000   /* a received view is fresh this long: HA pushes every 5 s while awake, + 3 s latency (5.3) */
+/* Staleness (DESIGN.md 5.3): every received view is fresh for VIEW_VALID_MS. HA pushes the view every 5 s while the
+ * device is awake, + 3 s latency. */
+#define VIEW_VALID_MS 8000
 
-extern uint64_t screen_valid_until;
+/* Forget the deadline after a power-on (RTC memory and the RTC clock start over). Call once at boot. */
+void view_freshness_init(void);
 
-void    staleness_init(void);
-bool    screen_stale(void);
-int64_t screen_age_ms(void);
+/* A view was received now. */
+void view_freshness_renew(void);
+
+bool view_freshness_is_stale(void);
+
+/* Age of the last received view in ms, -1 if none is known. */
+int64_t view_freshness_age_ms(void);

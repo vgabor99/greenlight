@@ -1,5 +1,6 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+/* greenlight: a battery-powered e-paper display that shows whether the house is closed up ("Bezárva?"), fed by
+ * Home Assistant over Zigbee. See DESIGN.md. app_main() sets up the parts in order, then runs the state machine. */
+
 #include "battery.h"
 #include "board.h"
 #include "console.h"
@@ -12,13 +13,13 @@
 
 void app_main(void)
 {
-    rf_switch_init();
-    view_lock = xSemaphoreCreateMutex();
-    nvs_open_state();
-    battery_load();
+    board_init_rf_switch();
+    display_model_init();
+    persistent_store_open();
+    battery_init();
     console_init();
-    wake_cause_init();
-    staleness_init();
+    wake_reason_init();
+    view_freshness_init();
     inputs_init();
     state_machine_run();
 }

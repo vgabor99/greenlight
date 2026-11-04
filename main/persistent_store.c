@@ -1,25 +1,10 @@
-#include <stdint.h>
 #include <string.h>
 #include "nvs_flash.h"
 #include "persistent_store.h"
 
-/* ---- State that survives the (simulated) deep sleep: NVS ---- */
-nvs_handle_t nvs;
+static nvs_handle_t store;
 
-uint8_t nv_get(const char *key)
-{
-    uint8_t v = 0;
-    nvs_get_u8(nvs, key, &v);
-    return v;
-}
-
-void nv_set(const char *key, uint8_t v)
-{
-    ESP_ERROR_CHECK(nvs_set_u8(nvs, key, v));
-    ESP_ERROR_CHECK(nvs_commit(nvs));
-}
-
-void nvs_open_state(void)
+void persistent_store_open(void)
 {
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -27,36 +12,61 @@ void nvs_open_state(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
-    ESP_ERROR_CHECK(nvs_open("greenlight", NVS_READWRITE, &nvs));
+    ESP_ERROR_CHECK(nvs_open("greenlight", NVS_READWRITE, &store));
 }
 
-/* NVS (namespace "greenlight"): "pair_now" (start pairing right after the next boot, set by ERASE_NETWORK),
- * "ds" (blob: the dataset, DESIGN.md 5.1), "view" (blob: the view on the panel with its rows; its id is the
- * shown_view_id) and "wake_n" (the wake counter, DESIGN.md 6.4). The Zigbee stack keeps the network in the same
- * partition. */
-
-/* Every boot is a wake (a deep-sleep wake is a reset), so count boots. 24 bits, like the ids and hashes
- * (DESIGN.md 6.4); one u32 write per wake is negligible flash wear for NVS. */
-uint32_t wake_count_next(void)
+uint8_t persistent_store_get_u8(const char *key)
 {
-    uint32_t n = 0;
-    nvs_get_u32(nvs, "wake_n", &n);
-    n = (n + 1) & 0xFFFFFF;
-    nvs_set_u32(nvs, "wake_n", n);
-    nvs_commit(nvs);
-    return n;
+    uint8_t value = 0;
+    nvs_get_u8(store, key, &value);
+    return value;
 }
 
-void blob_load(const char *key, void *p, size_t size)
+void persistent_store_set_u8(const char *key, uint8_t value)
 {
-    size_t n = size;
-    if (nvs_get_blob(nvs, key, p, &n) != ESP_OK || n != size) {
-        memset(p, 0, size);
+    ESP_ERROR_CHECK(nvs_set_u8(store, key, value));
+    ESP_ERROR_CHECK(nvs_commit(store));
+}
+
+bool persistent_store_get_u16(const char *key, uint16_t *value)
+{
+    return nvs_get_u16(store, key, value) == ESP_OK;
+}
+
+void persistent_store_set_u16(const char *key, uint16_t value)
+{
+    nvs_set_u16(store, key, value);
+    nvs_commit(store);
+}
+
+void persistent_store_load_blob(const char *key, void *data, size_t size)
+{
+    size_t stored_size = size;
+    if (nvs_get_blob(store, key, data, &stored_size) != ESP_OK || stored_size != size) {
+        memset(data, 0, size);
     }
 }
 
-void blob_save(const char *key, const void *p, size_t size)
+void persistent_store_save_blob(const char *key, const void *data, size_t size)
 {
-    nvs_set_blob(nvs, key, p, size);
-    nvs_commit(nvs);
+    nvs_set_blob(store, key, data, size);
+    nvs_commit(store);
+}
+
+void persistent_store_erase(const char *key)
+{
+    nvs_erase_key(store, key);
+    nvs_commit(store);
+}
+
+/* Every boot is a wake (a deep-sleep wake is a reset), so count boots. 24 bits, like the ids and hashes
+ * (DESIGN.md 6.4); one u32 write per wake is negligible flash wear for NVS. */
+uint32_t persistent_store_next_wake_count(void)
+{
+    uint32_t count = 0;
+    nvs_get_u32(store, STORE_KEY_WAKE_COUNT, &count);
+    count = (count + 1) & 0xFFFFFF;
+    nvs_set_u32(store, STORE_KEY_WAKE_COUNT, count);
+    nvs_commit(store);
+    return count;
 }

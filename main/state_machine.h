@@ -1,14 +1,13 @@
 #pragma once
 
-#include <stdint.h>
-
-/* ---- State machine (DESIGN.md 3.3) ---- */
+/* The device state machine (DESIGN.md 3.3) */
 typedef enum {
-    ST_BOOT, ST_UNPAIRED, ST_PAIRING, ST_INTERVIEW, ST_REJOIN, ST_ACTIVE, ST_ERASE_NETWORK,
-    ST_SHUTDOWN, ST_SLEEP, ST_LOW_BATTERY,
-} state_t;
+    STATE_BOOT, STATE_UNPAIRED, STATE_PAIRING, STATE_INTERVIEW, STATE_REJOIN, STATE_ACTIVE, STATE_ERASE_NETWORK,
+    STATE_SHUTDOWN, STATE_SLEEP, STATE_LOW_BATTERY,
+} device_state_t;
 
-extern const char *const state_names[];
-extern uint32_t          wake_n;
+/* "BOOT", "UNPAIRED", ... as in the log and on the debug screen */
+const char *device_state_name(device_state_t state);
 
+/* Run the states from BOOT on. Does not return: every wake ends in a sleep, which restarts the chip. */
 void state_machine_run(void);

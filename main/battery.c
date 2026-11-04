@@ -6,43 +6,80 @@
 
 static const char *TAG = "greenlight";
 
-/* Battery: simulated until the hardware is there. The voltage and USB power are set over the console and kept
- * in NVS ("sim_mv", "sim_usb"), so they survive the sleep, a power cycle and a reflash like a real battery's
- * charge. "bat_low" latches LOW_BATTERY: while it is set, the exit threshold applies (hysteresis). USB power
- * overrides a low battery: the device then runs from USB. */
-volatile uint16_t sim_mv = SIM_MV_DEFAULT;
-volatile bool     sim_usb;
-volatile bool     bat_latched;
-volatile bool     bat_changed;  /* the console changed the simulation: report it */
+#define SIMULATED_MV_DEFAULT 4100  /* simulated voltage until the console sets one */
 
-void battery_load(void)
+/* The voltage and USB power are set over the console and kept in NVS. The latch makes the exit threshold apply
+ * (hysteresis). USB power overrides a low battery: the device then runs from USB. */
+static volatile uint16_t simulated_mv = SIMULATED_MV_DEFAULT;
+static volatile bool     simulated_usb_power;
+static volatile bool     low_latched;
+static volatile bool     simulation_changed;  /* the console changed the simulation: report it */
+
+static void log_status(void)
+{
+    ESP_LOGI(TAG, "battery: %u mV (simulated), usb %d, latched %d", simulated_mv, simulated_usb_power, low_latched);
+}
+
+void battery_init(void)
 {
     uint16_t mv;
-    if (nvs_get_u16(nvs, "sim_mv", &mv) == ESP_OK) {
-        sim_mv = mv;
+    if (persistent_store_get_u16(STORE_KEY_SIMULATED_MV, &mv)) {
+        simulated_mv = mv;
     }
-    sim_usb     = nv_get("sim_usb");
-    bat_latched = nv_get("bat_low");
-    ESP_LOGI(TAG, "battery: %u mV (simulated), usb %d, latched %d", sim_mv, sim_usb, bat_latched);
+    simulated_usb_power = persistent_store_get_u8(STORE_KEY_SIMULATED_USB);
+    low_latched         = persistent_store_get_u8(STORE_KEY_LOW_BATTERY);
+    log_status();
 }
 
-uint16_t battery_mv(void)
+uint16_t battery_voltage_mv(void)
 {
-    return sim_mv;  /* later the ADC, sampled at rest and averaged */
+    return simulated_mv;  /* later the ADC, sampled at rest and averaged */
 }
 
-bool usb_powered(void)
+bool battery_on_usb_power(void)
 {
-    return sim_usb;  /* later the VBUS sense pin */
+    return simulated_usb_power;  /* later the VBUS sense pin */
 }
 
-bool battery_low(void)
+bool battery_is_low(void)
 {
-    return !usb_powered() && battery_mv() < (bat_latched ? BAT_EXIT_MV : BAT_ENTER_MV);
+    return !battery_on_usb_power() && battery_voltage_mv() < (low_latched ? BATTERY_LOW_EXIT_MV : BATTERY_LOW_ENTER_MV);
 }
 
-void bat_latch(bool on)
+bool battery_low_latched(void)
 {
-    bat_latched = on;
-    nv_set("bat_low", on);
+    return low_latched;
+}
+
+void battery_set_low_latched(bool latched)
+{
+    low_latched = latched;
+    persistent_store_set_u8(STORE_KEY_LOW_BATTERY, latched);
+}
+
+void battery_simulate_voltage(uint16_t mv)
+{
+    simulated_mv = mv;
+    persistent_store_set_u16(STORE_KEY_SIMULATED_MV, mv);
+}
+
+void battery_simulate_usb_power(bool on)
+{
+    simulated_usb_power = on;
+    persistent_store_set_u8(STORE_KEY_SIMULATED_USB, on);
+}
+
+void battery_announce_simulation(void)
+{
+    log_status();
+    simulation_changed = true;
+}
+
+bool battery_take_simulation_change(void)
+{
+    if (!simulation_changed) {
+        return false;
+    }
+    simulation_changed = false;
+    return true;
 }

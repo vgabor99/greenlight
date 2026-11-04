@@ -6,6 +6,7 @@
 #include "battery.h"
 #include "display.h"
 #include "display_model.h"
+#include "elapsed_time.h"
 #include "epd.h"
 #include "frame_dump.h"
 #include "inputs.h"
@@ -19,87 +20,109 @@
 static const char *TAG = "greenlight";
 
 /* ---- Timing (DESIGN.md 3.2) ---- */
-#define RUN_MS        20000   /* activity timeout */
-#define PAIR_MS       180000  /* pairing window */
-#define INTERVIEW_MS  10000   /* TEMPORARY for development; design value 60000 */
-#define RESET_HOLD_MS 3000    /* pair button hold that clears the network */
-#define REJOIN_MS     15000   /* give up rejoining after this long */
+#define IDLE_TIMEOUT_MS        20000   /* no activity for this long ends the wake */
+#define PAIRING_WINDOW_MS      180000
+#define INTERVIEW_MS           10000   /* TEMPORARY for development; design value 60000 */
+#define PAIR_BUTTON_HOLD_MS    3000    /* pair button hold that starts pairing, or clears the network */
+#define REJOIN_TIMEOUT_MS      15000   /* give up rejoining after this long */
+#define STACK_START_TIMEOUT_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
+#define HEARTBEAT_MS           30000   /* ACTIVE: repeat awake + shown_view_id this often */
+#define WAKE_REPORTS_DELAY_MS  2000    /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
+#define VIEW_WAIT_MS           45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
+#define GOODBYE_TIMEOUT_MS     5000    /* SHUTDOWN: wait this long for Z2M to confirm occupancy 0 and awake false */
+#define BATTERY_CHECK_MS       1000    /* mid-wake battery check period */
 
-#define STACK_START_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
-#define HEARTBEAT_MS   30000   /* ACTIVE: repeat awake + shown_view_id this often */
-#define REPORT_DELAY_MS 2000   /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
-#define VIEW_WAIT_MS   45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
-#define GOODBYE_MS      5000   /* SHUTDOWN: wait this long for Z2M to confirm occupancy 0 and awake false */
-
-const char *const state_names[] = {
+static const char *const state_names[] = {
     "BOOT", "UNPAIRED", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
     "LOW_BATTERY",
 };
 
 static TickType_t boot_tick;
-uint32_t   wake_n;  /* this wake's number */
+static uint32_t   wake_number;
+static bool       wake_reports_pending;  /* ACTIVE: report_wake_state() still to do */
 
-/* Mid-wake battery check, at most every BAT_CHECK_MS: true when the wake must end in LOW_BATTERY (the caller
- * returns ST_SHUTDOWN, which draws the battery screen). */
-static bool battery_check(void)
+const char *device_state_name(device_state_t state)
 {
-    static TickType_t last;
-    if (ms_since(last) < BAT_CHECK_MS) {
+    return state_names[state];
+}
+
+/* ---- Checks shared by the states ---- */
+
+/* Mid-wake battery check, at most every BATTERY_CHECK_MS: true when the wake must end in LOW_BATTERY (the caller
+ * goes to SHUTDOWN, which draws the battery screen). */
+static bool battery_ran_low(void)
+{
+    static TickType_t last_check;
+    if (elapsed_ms(last_check) < BATTERY_CHECK_MS) {
         return false;
     }
-    last = xTaskGetTickCount();
-    if (!battery_low()) {
+    last_check = xTaskGetTickCount();
+    if (!battery_is_low()) {
         return false;
     }
-    ESP_LOGW(TAG, "battery low (%u mV): shutting down", battery_mv());
-    failed = RENDER_BATTERY;
+    ESP_LOGW(TAG, "battery low (%u mV): shutting down", battery_voltage_mv());
+    display_set_failure(RENDER_BATTERY);
+    return true;
+}
+
+/* The long press that starts pairing (UNPAIRED) or clears the network (REJOIN, ACTIVE). A button still held from
+ * the wake-up counts from boot. */
+static bool pair_button_held_long(void)
+{
+    if (inputs_pair_button_held_ms() < PAIR_BUTTON_HOLD_MS) {
+        return false;
+    }
+    ESP_LOGI(TAG, "pair button held %d ms", PAIR_BUTTON_HOLD_MS);
     return true;
 }
 
 /* The reports of a wake other than the wake counter (DESIGN.md 6.4). After a rejoin they follow the wake counter
- * by REPORT_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
-static void report_wake_rest(void)
+ * by WAKE_REPORTS_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
+static void report_wake_state(void)
 {
     zb_report_dataset_hash();
     zb_report_shown_view_id();
     zb_report_awake(true);
-    zb_report_battery(battery_mv(), battery_low());
-    zb_report_occupancy(occupied());
+    zb_report_battery(battery_voltage_mv(), battery_is_low());
+    zb_report_occupancy(inputs_occupied());
 }
 
-static bool rest_pending;  /* ACTIVE: report_wake_rest() still to do */
+/* ---- BOOT ---- */
 
-static state_t st_boot(void)
+/* The battery first, before the radio, the panel and any NVS write (DESIGN.md 6.6). STATE_BOOT to go on booting,
+ * else the state to go to. */
+static device_state_t check_battery_at_boot(void)
 {
-    /* The battery first, before the radio, the panel and any NVS write (DESIGN.md 6.6). */
-    if (bat_latched) {
-        if (battery_low()) {
-            ESP_LOGW(TAG, "boot: battery still low (%u mV)", battery_mv());
-            return ST_LOW_BATTERY;  /* the panel still shows the battery screen */
+    if (battery_low_latched()) {
+        if (battery_is_low()) {
+            ESP_LOGW(TAG, "boot: battery still low (%u mV)", battery_voltage_mv());
+            return STATE_LOW_BATTERY;  /* the panel still shows the battery screen */
         }
-        ESP_LOGI(TAG, "boot: battery recovered (%u mV%s)", battery_mv(), usb_powered() ? ", USB" : "");
-        bat_latch(false);
-    } else if (battery_low()) {
-        ESP_LOGW(TAG, "boot: battery low (%u mV)", battery_mv());
+        ESP_LOGI(TAG, "boot: battery recovered (%u mV%s)", battery_voltage_mv(), battery_on_usb_power() ? ", USB" : "");
+        battery_set_low_latched(false);
+    } else if (battery_is_low()) {
+        ESP_LOGW(TAG, "boot: battery low (%u mV)", battery_voltage_mv());
         if (epd_init() != ESP_OK) {
             ESP_LOGE(TAG, "e-paper init failed");
         }
-        failed = RENDER_BATTERY;
-        return ST_SHUTDOWN;  /* the stack is not started: no reports */
+        display_set_failure(RENDER_BATTERY);
+        return STATE_SHUTDOWN;  /* the stack is not started: no reports */
     }
+    return STATE_BOOT;
+}
 
-    bool pair_now = nv_get("pair_now");
-    state_load();
-    wake_n = wake_count_next();
-    ESP_LOGI(TAG, "boot: pair_now=%d dataset=%06lx view=%06lx wake=%lu", pair_now, (unsigned long)ds.hash,
-             (unsigned long)shown.view.id, (unsigned long)wake_n);
-
-#ifdef SCREEN_DUMP
-    dump_samples();  /* before the stack starts, so its log does not cut into the dump */
-#endif
+/* Start the Zigbee stack, and the panel with the stored view while the stack starts up. */
+static void start_stack_and_panel(void)
+{
     boot_tick = xTaskGetTickCount();
-    zb_callbacks_t cbs = {.view = on_view, .dataset = on_dataset, .activity = touch_activity, .rx = on_rx};
-    zb_start(&cbs, ds.hash, shown.view.id, wake_n, battery_mv());
+    zb_callbacks_t callbacks = {
+        .view     = display_model_on_view,
+        .dataset  = display_model_on_dataset,
+        .activity = inputs_note_activity,
+        .rx       = display_model_on_received_write,
+    };
+    zb_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
+             battery_voltage_mv());
 
     /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
      * releases the pin hold and recreates the SPI bus left by epd_poweroff(). */
@@ -107,218 +130,255 @@ static state_t st_boot(void)
         ESP_LOGE(TAG, "e-paper init failed");
         vTaskDelay(portMAX_DELAY);
     }
-    partials = 0;
-    show_state(ST_BOOT);
-    redraw();  /* the stored view, while the stack starts */
+    display_show_state(STATE_BOOT);
+    display_redraw();
+}
+
+static device_state_t run_boot(void)
+{
+    device_state_t battery_verdict = check_battery_at_boot();
+    if (battery_verdict != STATE_BOOT) {
+        return battery_verdict;
+    }
+
+    bool pair_on_boot = persistent_store_get_u8(STORE_KEY_PAIR_ON_BOOT);
+    display_model_load();
+    wake_number = persistent_store_next_wake_count();
+    display_set_wake_number(wake_number);
+    ESP_LOGI(TAG, "boot: pair_now=%d dataset=%06lx view=%06lx wake=%lu", pair_on_boot,
+             (unsigned long)display_model_dataset_hash(), (unsigned long)display_model_shown_view_id(),
+             (unsigned long)wake_number);
+
+#ifdef SCREEN_DUMP
+    frame_dump_samples();  /* before the stack starts, so its log does not cut into the dump */
+#endif
+    start_stack_and_panel();
 
     bool factory_new = false;
-    if (!zb_wait_started(STACK_START_MS, &factory_new)) {
+    if (!zb_wait_started(STACK_START_TIMEOUT_MS, &factory_new)) {
         ESP_LOGE(TAG, "Zigbee stack did not start");
-        failed = RENDER_ERROR;
-        return ST_SHUTDOWN;
+        display_set_failure(RENDER_ERROR);
+        return STATE_SHUTDOWN;
     }
-    ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)ms_since(boot_tick),
-             factory_new ? "no network" : "network restored", woke_by);
-    touch_activity();
+    ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)elapsed_ms(boot_tick),
+             factory_new ? "no network" : "network restored", wake_reason_text());
+    inputs_note_activity();
     if (!factory_new) {
-        return ST_REJOIN;
+        return STATE_REJOIN;
     }
-    if (pair_now) {
-        nv_set("pair_now", 0);
-        return ST_PAIRING;
+    if (pair_on_boot) {
+        persistent_store_set_u8(STORE_KEY_PAIR_ON_BOOT, 0);
+        return STATE_PAIRING;
     }
-    return ST_UNPAIRED;
+    return STATE_UNPAIRED;
 }
 
-static state_t st_unpaired(void)
+/* ---- Joining a network ---- */
+
+static device_state_t run_unpaired(void)
 {
-    show_state(ST_UNPAIRED);
-    touch_activity();
+    display_show_state(STATE_UNPAIRED);
+    inputs_note_activity();
     for (;;) {
-        /* Long press, like the network reset in ACTIVE. A button still held from the wake-up counts from boot. */
-        if (pair_held_ms() >= RESET_HOLD_MS) {
-            ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);
-            return ST_PAIRING;
+        if (pair_button_held_long()) {
+            return STATE_PAIRING;
         }
-        if (idle_ms() >= RUN_MS) {
-            ESP_LOGI(TAG, "no activity for %d ms", RUN_MS);
-            failed = RENDER_UNPAIRED;  /* still not paired: sleep with how to pair */
-            return ST_SHUTDOWN;
+        if (inputs_idle_ms() >= IDLE_TIMEOUT_MS) {
+            ESP_LOGI(TAG, "no activity for %d ms", IDLE_TIMEOUT_MS);
+            display_set_failure(RENDER_UNPAIRED);  /* still not paired: sleep with how to pair */
+            return STATE_SHUTDOWN;
         }
-        if (battery_check()) {
-            return ST_SHUTDOWN;
+        if (battery_ran_low()) {
+            return STATE_SHUTDOWN;
         }
-        wait_ms(20);
+        display_wait_ms(20);
     }
 }
 
-static state_t st_pairing(void)
+static device_state_t run_pairing(void)
 {
-    show_state(ST_PAIRING);
+    display_show_state(STATE_PAIRING);
     TickType_t start = xTaskGetTickCount();
     zb_pairing_start();
-    while (ms_since(start) < PAIR_MS) {
+    while (elapsed_ms(start) < PAIRING_WINDOW_MS) {
         if (zb_joined()) {
             zb_pairing_stop();
-            ESP_LOGI(TAG, "joined after %lu ms", (unsigned long)ms_since(start));
-            return ST_INTERVIEW;
+            ESP_LOGI(TAG, "joined after %lu ms", (unsigned long)elapsed_ms(start));
+            return STATE_INTERVIEW;
         }
-        if (battery_check()) {
+        if (battery_ran_low()) {
             zb_pairing_stop();
-            return ST_SHUTDOWN;
+            return STATE_SHUTDOWN;
         }
-        wait_ms(100);
+        display_wait_ms(100);
     }
     zb_pairing_stop();
     ESP_LOGW(TAG, "pairing window over");
-    return ST_UNPAIRED;
+    return STATE_UNPAIRED;
 }
 
-static state_t st_interview(void)
+static device_state_t run_interview(void)
 {
-    show_state(ST_INTERVIEW);
-    report_wake_rest();  /* Z2M has no cached state yet: everything, the wake counter last */
+    display_show_state(STATE_INTERVIEW);
+    report_wake_state();  /* Z2M has no cached state yet: everything, the wake counter last */
     zb_report_wake();
     ESP_LOGI(TAG, "staying awake for %d ms", INTERVIEW_MS);
     TickType_t start = xTaskGetTickCount();
-    while (ms_since(start) < INTERVIEW_MS) {  /* the PIR is ignored here */
-        wait_ms(20);
+    while (elapsed_ms(start) < INTERVIEW_MS) {  /* the PIR is ignored here */
+        display_wait_ms(20);
     }
-    return ST_ACTIVE;
+    return STATE_ACTIVE;
 }
 
-static state_t st_rejoin(void)
+static device_state_t run_rejoin(void)
 {
-    show_state(ST_REJOIN);
+    display_show_state(STATE_REJOIN);
     TickType_t start = xTaskGetTickCount();
-    touch_activity();
-    while (ms_since(start) < REJOIN_MS) {
+    inputs_note_activity();
+    while (elapsed_ms(start) < REJOIN_TIMEOUT_MS) {
         if (zb_joined()) {
-            ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)ms_since(boot_tick));
+            ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)elapsed_ms(boot_tick));
             zb_report_wake();  /* the only report before the push (DESIGN.md 6.4) */
-            rest_pending = true;
-            return ST_ACTIVE;
+            wake_reports_pending = true;
+            return STATE_ACTIVE;
         }
-        if (pair_held_ms() >= RESET_HOLD_MS) {  /* network lost: allow re-pairing */
-            ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);
-            return ST_ERASE_NETWORK;
+        if (pair_button_held_long()) {  /* network lost: allow re-pairing */
+            return STATE_ERASE_NETWORK;
         }
-        wait_ms(20);
+        display_wait_ms(20);
     }
     ESP_LOGW(TAG, "rejoin failed");
-    failed = RENDER_JOIN_FAILED;
-    return ST_SHUTDOWN;
+    display_set_failure(RENDER_JOIN_FAILED);
+    return STATE_SHUTDOWN;
 }
 
-static state_t st_active(void)
+/* ---- ACTIVE ---- */
+
+/* The wake's other reports once WAKE_REPORTS_DELAY_MS is over, then the occupancy whenever it changes. */
+static void report_pending_and_occupancy(TickType_t active_since, bool *reported_occupancy)
 {
-    show_state(ST_ACTIVE);
-    touch_activity();
-    bool       last_occ = occupied();
-    TickType_t last_beat = xTaskGetTickCount();
-    TickType_t start = last_beat;
-    bool       waiting = false;
-    for (;;) {
-        if (rest_pending && ms_since(start) >= REPORT_DELAY_MS) {
-            rest_pending = false;
-            report_wake_rest();
-            last_occ = occupied();
-        }
-        if (!rest_pending && occupied() != last_occ) {
-            last_occ = !last_occ;
-            zb_report_occupancy(last_occ);
-        }
-        if (battery_check()) {
-            return ST_SHUTDOWN;
-        }
-        if (bat_changed && !rest_pending) {  /* the console changed the simulation */
-            bat_changed = false;
-            zb_report_battery(battery_mv(), battery_low());
-        }
-        if (ms_since(last_beat) >= HEARTBEAT_MS) {  /* tell HA we are still awake */
-            last_beat = xTaskGetTickCount();
-            zb_report_shown_view_id();
-            zb_report_awake(true);
-            zb_log_neighbors();
-        }
-        if (pair_held_ms() >= RESET_HOLD_MS) {
-            ESP_LOGI(TAG, "pair button held %d ms", RESET_HOLD_MS);
-            return ST_ERASE_NETWORK;
-        }
-        if (idle_ms() >= RUN_MS) {
-            if (!view_seen && ms_since(start) < VIEW_WAIT_MS) {
-                if (!waiting) {
-                    waiting = true;
-                    ESP_LOGI(TAG, "no view yet: staying awake up to %d ms", VIEW_WAIT_MS);
-                }
-            } else {
-                ESP_LOGI(TAG, "no activity for %d ms%s", RUN_MS, view_seen ? "" : ", and no view");
-                return ST_SHUTDOWN;
-            }
-        }
-        wait_ms(20);
+    if (wake_reports_pending && elapsed_ms(active_since) >= WAKE_REPORTS_DELAY_MS) {
+        wake_reports_pending = false;
+        report_wake_state();
+        *reported_occupancy = inputs_occupied();
+    }
+    if (!wake_reports_pending && inputs_occupied() != *reported_occupancy) {
+        *reported_occupancy = !*reported_occupancy;
+        zb_report_occupancy(*reported_occupancy);
     }
 }
 
-static state_t st_erase_network(void)
+/* Tell HA we are still awake. */
+static void report_heartbeat(void)
 {
-    show_state(ST_ERASE_NETWORK);
-    redraw();
-    nv_set("pair_now", 1);
-    nvs_erase_key(nvs, "ds");    /* nothing is known about the panel any more */
-    nvs_erase_key(nvs, "view");
-    nvs_commit(nvs);
-    ESP_LOGI(TAG, "erasing the network, restarting");
-    zb_erase_network();  /* does not return */
-    return ST_BOOT;
+    zb_report_shown_view_id();
+    zb_report_awake(true);
+    zb_log_neighbors();
 }
 
-static state_t st_shutdown(void)
+/* No activity for IDLE_TIMEOUT_MS: true while the wake goes on anyway, because its view has not arrived yet (up to
+ * VIEW_WAIT_MS after ACTIVE began). *announced: the wait was logged. */
+static bool keep_waiting_for_view(TickType_t active_since, bool *announced)
 {
-    bool low_battery = failed == RENDER_BATTERY;
+    if (!display_model_view_received() && elapsed_ms(active_since) < VIEW_WAIT_MS) {
+        if (!*announced) {
+            *announced = true;
+            ESP_LOGI(TAG, "no view yet: staying awake up to %d ms", VIEW_WAIT_MS);
+        }
+        return true;
+    }
+    ESP_LOGI(TAG, "no activity for %d ms%s", IDLE_TIMEOUT_MS, display_model_view_received() ? "" : ", and no view");
+    return false;
+}
+
+static device_state_t run_active(void)
+{
+    display_show_state(STATE_ACTIVE);
+    inputs_note_activity();
+    bool       reported_occupancy = inputs_occupied();
+    TickType_t last_heartbeat = xTaskGetTickCount();
+    TickType_t start = last_heartbeat;
+    bool       view_wait_announced = false;
+    for (;;) {
+        report_pending_and_occupancy(start, &reported_occupancy);
+        if (battery_ran_low()) {
+            return STATE_SHUTDOWN;
+        }
+        if (!wake_reports_pending && battery_take_simulation_change()) {  /* the console changed the simulation */
+            zb_report_battery(battery_voltage_mv(), battery_is_low());
+        }
+        if (elapsed_ms(last_heartbeat) >= HEARTBEAT_MS) {
+            last_heartbeat = xTaskGetTickCount();
+            report_heartbeat();
+        }
+        if (pair_button_held_long()) {
+            return STATE_ERASE_NETWORK;
+        }
+        if (inputs_idle_ms() >= IDLE_TIMEOUT_MS && !keep_waiting_for_view(start, &view_wait_announced)) {
+            return STATE_SHUTDOWN;
+        }
+        display_wait_ms(20);
+    }
+}
+
+/* ---- Ending a wake ---- */
+
+static device_state_t run_erase_network(void)
+{
+    display_show_state(STATE_ERASE_NETWORK);
+    display_redraw();
+    persistent_store_set_u8(STORE_KEY_PAIR_ON_BOOT, 1);
+    display_model_erase_stored();
+    ESP_LOGI(TAG, "erasing the network, restarting");
+    zb_erase_network();  /* does not return */
+    return STATE_BOOT;
+}
+
+static device_state_t run_shutdown(void)
+{
+    bool low_battery = display_failure() == RENDER_BATTERY;
     if (low_battery) {
-        bat_latch(true);
+        battery_set_low_latched(true);
     }
     if (zb_joined()) {
         if (low_battery) {
-            zb_report_battery(battery_mv(), true);  /* HA learns why the device went quiet */
+            zb_report_battery(battery_voltage_mv(), true);  /* HA learns why the device went quiet */
         }
-        zb_report_goodbye(GOODBYE_MS);  /* not joined (failed rejoin, unpaired, stack down): nothing to send */
+        zb_report_goodbye(GOODBYE_TIMEOUT_MS);  /* not joined (failed rejoin, unpaired, stack down): nothing to send */
     }
     /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
     if (panel_clear("shutdown") != ESP_OK) {
         ESP_LOGE(TAG, "e-paper final clear failed");
     }
-    partials = 0;
-    show_state(low_battery ? ST_LOW_BATTERY : ST_SLEEP);
-    redraw();
+    device_state_t next = low_battery ? STATE_LOW_BATTERY : STATE_SLEEP;
+    display_show_state(next);
+    display_redraw();
     ESP_LOGI(TAG, "final refresh done");
-    TickType_t t0 = xTaskGetTickCount();
+    TickType_t start = xTaskGetTickCount();
     epd_poweroff();
-    ESP_LOGI(TAG, "panel: poweroff %lu ms", (unsigned long)ms_since(t0));
+    ESP_LOGI(TAG, "panel: poweroff %lu ms", (unsigned long)elapsed_ms(start));
     ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
-    return low_battery ? ST_LOW_BATTERY : ST_SLEEP;
+    return next;
 }
-
 
 void state_machine_run(void)
 {
-    state_t st = ST_BOOT;
+    device_state_t state = STATE_BOOT;
     for (;;) {
-        state_t next;
-        switch (st) {
-        case ST_BOOT:          next = st_boot(); break;
-        case ST_UNPAIRED:      next = st_unpaired(); break;
-        case ST_PAIRING:       next = st_pairing(); break;
-        case ST_INTERVIEW:     next = st_interview(); break;
-        case ST_REJOIN:        next = st_rejoin(); break;
-        case ST_ACTIVE:        next = st_active(); break;
-        case ST_ERASE_NETWORK: next = st_erase_network(); break;
-        case ST_SHUTDOWN:      next = st_shutdown(); break;
-        case ST_LOW_BATTERY:   next = st_low_battery(); break;
-        default:               next = st_sleep(); break;
+        device_state_t next;
+        switch (state) {
+        case STATE_BOOT:          next = run_boot(); break;
+        case STATE_UNPAIRED:      next = run_unpaired(); break;
+        case STATE_PAIRING:       next = run_pairing(); break;
+        case STATE_INTERVIEW:     next = run_interview(); break;
+        case STATE_REJOIN:        next = run_rejoin(); break;
+        case STATE_ACTIVE:        next = run_active(); break;
+        case STATE_ERASE_NETWORK: next = run_erase_network(); break;
+        case STATE_SHUTDOWN:      next = run_shutdown(); break;
+        case STATE_LOW_BATTERY:   sleep_until_usb_power(); next = STATE_BOOT; break;
+        default:                  sleep_until_input(); next = STATE_BOOT; break;
         }
-        ESP_LOGI(TAG, "%s -> %s", state_names[st], state_names[next]);
-        st = next;
+        ESP_LOGI(TAG, "%s -> %s", state_names[state], state_names[next]);
+        state = next;
     }
 }

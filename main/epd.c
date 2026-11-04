@@ -3,6 +3,7 @@
  * hangs (BUSY never releases), so epd_clear() emulates it with repeated partial updates. */
 
 #include <string.h>
+#include "board.h"
 #include "epd.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"

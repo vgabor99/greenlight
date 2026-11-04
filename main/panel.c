@@ -4,58 +4,61 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "board.h"
+#include "elapsed_time.h"
 #include "epd.h"
 #include "frame_dump.h"
-#include "inputs.h"
+#include "framebuffer.h"
 #include "panel.h"
 
 static const char *TAG = "greenlight";
 
-#define CLEAR_EVERY 50  /* partial refreshes between full clears, against ghosting */
+#define PARTIALS_BETWEEN_CLEARS 50  /* partial refreshes between full clears, against ghosting */
 
-int               partials;   /* partial refreshes since the last full clear */
+static uint8_t frame_on_panel[FRAMEBUFFER_SIZE];  /* last frame sent; all white after a clear */
+static int     partials_since_clear;
 
-/* Panel diagnostics (BUSY hang hunt): every clear and refresh logs its duration, the BUSY level before it
- * starts and, for a refresh, how many pixels are black and how many change. */
-static uint8_t prev_fb[EPD_STRIDE * EPD_HEIGHT];  /* last frame sent; all white after a clear */
-
-esp_err_t panel_clear(const char *why)
+esp_err_t panel_clear(const char *reason)
 {
-    int        busy = gpio_get_level(EPD_PIN_BUSY);
-    TickType_t t0   = xTaskGetTickCount();
-    esp_err_t  err  = epd_clear();
-    memset(prev_fb, 0xFF, sizeof(prev_fb));
-    ESP_LOGI(TAG, "panel: clear (%s) %lu ms, busy before %d%s", why, (unsigned long)ms_since(t0), busy,
+    int        busy_before = gpio_get_level(EPD_PIN_BUSY);
+    TickType_t start = xTaskGetTickCount();
+    esp_err_t  err = epd_clear();
+    memset(frame_on_panel, 0xFF, sizeof(frame_on_panel));
+    partials_since_clear = 0;
+    ESP_LOGI(TAG, "panel: clear (%s) %lu ms, busy before %d%s", reason, (unsigned long)elapsed_ms(start), busy_before,
              err == ESP_OK ? "" : ", FAILED");
     return err;
 }
 
-/* Partial refresh of fb (~0.5 s), with a full clear every CLEAR_EVERY partials. Nothing when fb is already on
- * the panel: most writes from HA do not change the proper screen. */
-esp_err_t panel_refresh(const uint8_t *fb, const char *label)
+/* How many pixels of frame are black, and how many differ from the frame on the panel. */
+static void count_pixels(const uint8_t *frame, int *black, int *changed)
 {
-    if (memcmp(fb, prev_fb, sizeof(prev_fb)) == 0) {
+    *black = *changed = 0;
+    for (size_t i = 0; i < sizeof(frame_on_panel); i++) {
+        *black += __builtin_popcount((uint8_t)~frame[i]);
+        *changed += __builtin_popcount(frame[i] ^ frame_on_panel[i]);
+    }
+}
+
+/* Most writes from HA do not change the proper screen: those frames are already on the panel. */
+esp_err_t panel_refresh(const uint8_t *frame, const char *label)
+{
+    if (memcmp(frame, frame_on_panel, sizeof(frame_on_panel)) == 0) {
         return ESP_OK;
     }
 #ifdef SCREEN_DUMP
-    dump_frame(fb, label);
+    frame_dump_print(frame, label);
 #endif
-    if (++partials >= CLEAR_EVERY) {
-        partials = 0;
-        if (panel_clear("periodic") != ESP_OK) {
-            ESP_LOGE(TAG, "e-paper clear failed");
-        }
+    if (++partials_since_clear >= PARTIALS_BETWEEN_CLEARS && panel_clear("periodic") != ESP_OK) {
+        ESP_LOGE(TAG, "e-paper clear failed");
     }
-    int black = 0, changed = 0;
-    for (size_t i = 0; i < sizeof(prev_fb); i++) {
-        black += __builtin_popcount((uint8_t)~fb[i]);
-        changed += __builtin_popcount(fb[i] ^ prev_fb[i]);
-    }
-    memcpy(prev_fb, fb, sizeof(prev_fb));
-    int        busy = gpio_get_level(EPD_PIN_BUSY);
-    TickType_t t0   = xTaskGetTickCount();
-    esp_err_t  err  = epd_display_partial(fb);
-    ESP_LOGI(TAG, "panel: refresh #%d (%s) %lu ms, busy before %d, black %d, changed %d%s", partials, label,
-             (unsigned long)ms_since(t0), busy, black, changed, err == ESP_OK ? "" : ", FAILED");
+    int black, changed;
+    count_pixels(frame, &black, &changed);
+    memcpy(frame_on_panel, frame, sizeof(frame_on_panel));
+    int        busy_before = gpio_get_level(EPD_PIN_BUSY);
+    TickType_t start = xTaskGetTickCount();
+    esp_err_t  err = epd_display_partial(frame);
+    ESP_LOGI(TAG, "panel: refresh #%d (%s) %lu ms, busy before %d, black %d, changed %d%s", partials_since_clear,
+             label, (unsigned long)elapsed_ms(start), busy_before, black, changed, err == ESP_OK ? "" : ", FAILED");
     return err;
 }
