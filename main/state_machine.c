@@ -80,11 +80,11 @@ static bool pair_button_held_long(void)
  * by WAKE_REPORTS_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
 static void report_wake_state(void)
 {
-    zb_report_dataset_hash();
-    zb_report_shown_view_id();
-    zb_report_awake(true);
-    zb_report_battery(battery_voltage_mv(), battery_is_low());
-    zb_report_occupancy(inputs_occupied());
+    zigbee_report_dataset_hash();
+    zigbee_report_shown_view_id();
+    zigbee_report_awake(true);
+    zigbee_report_battery(battery_voltage_mv(), battery_is_low());
+    zigbee_report_occupancy(inputs_occupied());
 }
 
 /* ---- BOOT ---- */
@@ -115,13 +115,13 @@ static device_state_t check_battery_at_boot(void)
 static void start_stack_and_panel(void)
 {
     boot_tick = xTaskGetTickCount();
-    zb_callbacks_t callbacks = {
-        .view     = display_model_on_view,
-        .dataset  = display_model_on_dataset,
-        .activity = inputs_note_activity,
-        .rx       = display_model_on_received_write,
+    zigbee_callbacks_t callbacks = {
+        .on_view           = display_model_on_view,
+        .on_dataset        = display_model_on_dataset,
+        .on_activity       = inputs_note_activity,
+        .on_received_write = display_model_on_received_write,
     };
-    zb_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
+    zigbee_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
              battery_voltage_mv());
 
     /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epd_init() also
@@ -155,7 +155,7 @@ static device_state_t run_boot(void)
     start_stack_and_panel();
 
     bool factory_new = false;
-    if (!zb_wait_started(STACK_START_TIMEOUT_MS, &factory_new)) {
+    if (!zigbee_wait_started(STACK_START_TIMEOUT_MS, &factory_new)) {
         ESP_LOGE(TAG, "Zigbee stack did not start");
         display_set_failure(RENDER_ERROR);
         return STATE_SHUTDOWN;
@@ -199,20 +199,20 @@ static device_state_t run_pairing(void)
 {
     display_show_state(STATE_PAIRING);
     TickType_t start = xTaskGetTickCount();
-    zb_pairing_start();
+    zigbee_start_pairing();
     while (elapsed_ms(start) < PAIRING_WINDOW_MS) {
-        if (zb_joined()) {
-            zb_pairing_stop();
+        if (zigbee_is_joined()) {
+            zigbee_stop_pairing();
             ESP_LOGI(TAG, "joined after %lu ms", (unsigned long)elapsed_ms(start));
             return STATE_INTERVIEW;
         }
         if (battery_ran_low()) {
-            zb_pairing_stop();
+            zigbee_stop_pairing();
             return STATE_SHUTDOWN;
         }
         display_wait_ms(100);
     }
-    zb_pairing_stop();
+    zigbee_stop_pairing();
     ESP_LOGW(TAG, "pairing window over");
     return STATE_UNPAIRED;
 }
@@ -221,7 +221,7 @@ static device_state_t run_interview(void)
 {
     display_show_state(STATE_INTERVIEW);
     report_wake_state();  /* Z2M has no cached state yet: everything, the wake counter last */
-    zb_report_wake();
+    zigbee_report_wake_count();
     ESP_LOGI(TAG, "staying awake for %d ms", INTERVIEW_MS);
     TickType_t start = xTaskGetTickCount();
     while (elapsed_ms(start) < INTERVIEW_MS) {  /* the PIR is ignored here */
@@ -236,9 +236,9 @@ static device_state_t run_rejoin(void)
     TickType_t start = xTaskGetTickCount();
     inputs_note_activity();
     while (elapsed_ms(start) < REJOIN_TIMEOUT_MS) {
-        if (zb_joined()) {
+        if (zigbee_is_joined()) {
             ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)elapsed_ms(boot_tick));
-            zb_report_wake();  /* the only report before the push (DESIGN.md 6.4) */
+            zigbee_report_wake_count();  /* the only report before the push (DESIGN.md 6.4) */
             wake_reports_pending = true;
             return STATE_ACTIVE;
         }
@@ -264,16 +264,16 @@ static void report_pending_and_occupancy(TickType_t active_since, bool *reported
     }
     if (!wake_reports_pending && inputs_occupied() != *reported_occupancy) {
         *reported_occupancy = !*reported_occupancy;
-        zb_report_occupancy(*reported_occupancy);
+        zigbee_report_occupancy(*reported_occupancy);
     }
 }
 
 /* Tell HA we are still awake. */
 static void report_heartbeat(void)
 {
-    zb_report_shown_view_id();
-    zb_report_awake(true);
-    zb_log_neighbors();
+    zigbee_report_shown_view_id();
+    zigbee_report_awake(true);
+    zigbee_log_neighbors();
 }
 
 /* No activity for IDLE_TIMEOUT_MS: true while the wake goes on anyway, because its view has not arrived yet (up to
@@ -305,7 +305,7 @@ static device_state_t run_active(void)
             return STATE_SHUTDOWN;
         }
         if (!wake_reports_pending && battery_take_simulation_change()) {  /* the console changed the simulation */
-            zb_report_battery(battery_voltage_mv(), battery_is_low());
+            zigbee_report_battery(battery_voltage_mv(), battery_is_low());
         }
         if (elapsed_ms(last_heartbeat) >= HEARTBEAT_MS) {
             last_heartbeat = xTaskGetTickCount();
@@ -330,7 +330,7 @@ static device_state_t run_erase_network(void)
     persistent_store_set_u8(STORE_KEY_PAIR_ON_BOOT, 1);
     display_model_erase_stored();
     ESP_LOGI(TAG, "erasing the network, restarting");
-    zb_erase_network();  /* does not return */
+    zigbee_erase_network();  /* does not return */
     return STATE_BOOT;
 }
 
@@ -340,11 +340,11 @@ static device_state_t run_shutdown(void)
     if (low_battery) {
         battery_set_low_latched(true);
     }
-    if (zb_joined()) {
+    if (zigbee_is_joined()) {
         if (low_battery) {
-            zb_report_battery(battery_voltage_mv(), true);  /* HA learns why the device went quiet */
+            zigbee_report_battery(battery_voltage_mv(), true);  /* HA learns why the device went quiet */
         }
-        zb_report_goodbye(GOODBYE_TIMEOUT_MS);  /* not joined (failed rejoin, unpaired, stack down): nothing to send */
+        zigbee_report_goodbye(GOODBYE_TIMEOUT_MS);  /* not joined (failed rejoin, unpaired, stack down): nothing to send */
     }
     /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
     if (panel_clear("shutdown") != ESP_OK) {

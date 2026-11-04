@@ -91,28 +91,28 @@ static void rx_row(int y, const render_rx_t *r)
     static const char *const ds_res[]   = {"OK", "SAME", "BAD N", "REJ"};
     char t[12];
     snprintf(t, sizeof(t), "%lu.%lu", (unsigned long)(r->ms / 1000), (unsigned long)(r->ms % 1000 / 100));
-    const zb_rx_t *e = &r->ev;
+    const zigbee_received_write_t *e = &r->ev;
     switch (e->kind) {
-    case ZB_RX_VIEW: {
-        const zb_view_t *v = &e->view.view;
-        if (e->view.result == ZB_VIEW_OOS) {
-            row(y, "%s V %06lX OOS ds=%06lX", t, (unsigned long)v->id, (unsigned long)v->ds);
-        } else if (e->view.result == ZB_VIEW_INCOMPLETE) {
-            row(y, "%s V %06lX PART m=%X", t, (unsigned long)v->id, e->view.mask);
+    case ZIGBEE_WRITE_VIEW: {
+        const zigbee_view_t *v = &e->view.view;
+        if (e->view.result == ZIGBEE_VIEW_OUT_OF_SYNC) {
+            row(y, "%s V %06lX OOS ds=%06lX", t, (unsigned long)v->id, (unsigned long)v->dataset_hash);
+        } else if (e->view.result == ZIGBEE_VIEW_INCOMPLETE) {
+            row(y, "%s V %06lX PART m=%X", t, (unsigned long)v->id, e->view.received_mask);
         } else {
             row(y, "%s V %06lX b=%08lX %s", t, (unsigned long)v->id, (unsigned long)v->bits, view_res[e->view.result]);
         }
     } break;
-    case ZB_RX_ENTRY:
-        if (e->entry.tag < 0) {
+    case ZIGBEE_WRITE_DATASET_ENTRY:
+        if (e->entry.dataset_hash < 0) {
             row(y, "%s E bad %s", t, e->entry.text);
         } else {
             row(y, "%s E %02u.%u%s %s", t, e->entry.index, e->entry.part, e->entry.more ? "+" : "", e->entry.text);
         }
         break;
-    case ZB_RX_DS_COMMIT:
-        if (e->commit.result == ZB_DS_REJECTED) {
-            row(y, "%s D %06lX n=%u REJ idx=%u", t, (unsigned long)e->commit.hash, e->commit.count, e->commit.missing);
+    case ZIGBEE_WRITE_DATASET_COMMIT:
+        if (e->commit.result == ZIGBEE_COMMIT_REJECTED) {
+            row(y, "%s D %06lX n=%u REJ idx=%u", t, (unsigned long)e->commit.hash, e->commit.count, e->commit.first_missing);
         } else {
             row(y, "%s D %06lX n=%u %s", t, (unsigned long)e->commit.hash, e->commit.count, ds_res[e->commit.result]);
         }
@@ -120,7 +120,7 @@ static void rx_row(int y, const render_rx_t *r)
     }
 }
 
-void render_build_rows(render_shown_t *out, const zb_dataset_t *ds, const zb_view_t *view)
+void render_build_rows(render_shown_t *out, const zigbee_dataset_t *ds, const zigbee_view_t *view)
 {
     memset(out, 0, sizeof(*out));
     out->view = *view;

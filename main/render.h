@@ -20,15 +20,15 @@
 
 /* The view on the panel, with its rows already laid out, so a new dataset never changes it (DESIGN.md 6.5). */
 typedef struct {
-    zb_view_t view;    /* view.id 0 = nothing shown */
+    zigbee_view_t view;    /* view.id 0 = nothing shown */
     uint8_t   active;  /* active dataset lines (may be more than the rows) */
     uint8_t   nrows;
-    char      row[RENDER_ROWS][ZB_DS_CHARS + 1];
+    char      row[RENDER_ROWS][ZIGBEE_LINE_MAX_BYTES + 1];
 } render_shown_t;
 
 typedef struct {
     uint32_t ms;  /* uptime when it arrived */
-    zb_rx_t  ev;
+    zigbee_received_write_t  ev;
 } render_rx_t;
 
 /* What the proper screen shows (chosen by the state machine; the debug screen ignores it). */
@@ -65,7 +65,7 @@ typedef struct {
 
 /* Lay out a view: the active lines in dataset order; with more than RENDER_ROWS of them, the first
  * RENDER_ROWS - 1 and "további N" with the dots icon (DESIGN.md 5.2). */
-void render_build_rows(render_shown_t *out, const zb_dataset_t *ds, const zb_view_t *view);
+void render_build_rows(render_shown_t *out, const zigbee_dataset_t *ds, const zigbee_view_t *view);
 
 /* The age as the debug screen shows it: "12s", "5m", "3h", "-" when unknown. */
 #define RENDER_AGE_LEN 12

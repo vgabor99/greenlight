@@ -12,7 +12,7 @@ static const char *TAG = "greenlight";
 
 static SemaphoreHandle_t lock;
 static volatile bool     changed;
-static zb_dataset_t      dataset;
+static zigbee_dataset_t      dataset;
 static render_shown_t    shown;
 static bool              out_of_sync;    /* the last view received was for another dataset (not stored) */
 static bool              syncing;        /* dataset entries arrived and their commit has not */
@@ -92,18 +92,18 @@ static void log_shown_view(void)
     }
 }
 
-void display_model_on_view(const zb_view_t *view, zb_view_result_t result)
+void display_model_on_view(const zigbee_view_t *view, zigbee_view_result_t result)
 {
-    bool accepted = result == ZB_VIEW_OK || result == ZB_VIEW_TIME;
+    bool accepted = result == ZIGBEE_VIEW_NEW || result == ZIGBEE_VIEW_TIME_ONLY;
     xSemaphoreTake(lock, portMAX_DELAY);
-    out_of_sync = result == ZB_VIEW_OOS;
+    out_of_sync = result == ZIGBEE_VIEW_OUT_OF_SYNC;
     if (accepted) {
         view_received = true;
         view_freshness_renew();
     }
-    if (result == ZB_VIEW_OK) {
+    if (result == ZIGBEE_VIEW_NEW) {
         render_build_rows(&shown, &dataset, view);
-    } else if (result == ZB_VIEW_TIME) {
+    } else if (result == ZIGBEE_VIEW_TIME_ONLY) {
         shown.view.time = view->time;
     }
     changed = true;
@@ -111,12 +111,12 @@ void display_model_on_view(const zb_view_t *view, zb_view_result_t result)
     if (accepted) {
         persistent_store_save_blob(STORE_KEY_SHOWN_VIEW, &shown, sizeof(shown));
     }
-    if (result == ZB_VIEW_OK) {
+    if (result == ZIGBEE_VIEW_NEW) {
         log_shown_view();
     }
 }
 
-void display_model_on_dataset(const zb_dataset_t *new_dataset)
+void display_model_on_dataset(const zigbee_dataset_t *new_dataset)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
     dataset = *new_dataset;
@@ -126,12 +126,12 @@ void display_model_on_dataset(const zb_dataset_t *new_dataset)
     ESP_LOGI(TAG, "dataset %06lx stored: %u lines", (unsigned long)new_dataset->hash, new_dataset->count);
 }
 
-void display_model_on_received_write(const zb_rx_t *write)
+void display_model_on_received_write(const zigbee_received_write_t *write)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
-    if (write->kind == ZB_RX_ENTRY && write->entry.tag >= 0) {
+    if (write->kind == ZIGBEE_WRITE_DATASET_ENTRY && write->entry.dataset_hash >= 0) {
         syncing = true;
-    } else if (write->kind == ZB_RX_DS_COMMIT) {
+    } else if (write->kind == ZIGBEE_WRITE_DATASET_COMMIT) {
         syncing = false;
     }
     received_writes[next_write_slot] = (render_rx_t){.ms = pdTICKS_TO_MS(xTaskGetTickCount()), .ev = *write};

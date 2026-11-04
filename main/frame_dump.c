@@ -61,7 +61,7 @@ void frame_dump_samples(void)
     for (int sample = 0; sample < sizeof(sample_rows) / sizeof(sample_rows[0]); sample++) {
         memset(&content, 0, sizeof(content));
         content.screen = RENDER_HOUSE;
-        content.shown.view = (zb_view_t){.id = 1, .time = 1793472360};  /* Sat 2026-10-31 18:46 */
+        content.shown.view = (zigbee_view_t){.id = 1, .time = 1793472360};  /* Sat 2026-10-31 18:46 */
         for (int i = 0; i < RENDER_ROWS && sample_rows[sample][i]; i++) {
             strlcpy(content.shown.row[content.shown.nrows++], sample_rows[sample][i], sizeof(content.shown.row[0]));
         }
