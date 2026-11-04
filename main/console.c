@@ -5,9 +5,9 @@
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_log.h"
-#include "battery.h"
+#include "board/battery.h"
 #include "console.h"
-#include "display_model.h"
+#include "display/display_model.h"
 
 static const char *TAG = "greenlight";
 

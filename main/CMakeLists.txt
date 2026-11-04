@@ -1,9 +1,11 @@
-idf_component_register(SRCS "main.c" "state_machine.c" "inputs.c" "battery.c" "console.c" "sleep.c" "wake_reason.c"
-                            "board.c" "persistent_store.c" "view_freshness.c"
-                            "display.c" "display_model.c" "panel.c" "frame_dump.c"
-                            "render.c" "status_screen.c" "bitmap_text.c" "debug_screen.c" "view_layout.c"
-                            "framebuffer.c" "bitmaps.c" "utf8.c" "epaper.c"
-                            "zigbee.c" "zigbee_device.c" "zigbee_display_input.c" "zigbee_reports.c"
+idf_component_register(SRCS "main.c" "state_machine.c" "console.c" "persistent_store.c"
+                            "board/board.c" "board/inputs.c" "board/battery.c" "board/sleep.c" "board/wake_reason.c"
+                            "display/display.c" "display/display_model.c" "display/view_freshness.c" "display/panel.c"
+                            "display/frame_dump.c" "display/framebuffer.c" "display/epaper.c"
+                            "screen/render.c" "screen/status_screen.c" "screen/debug_screen.c" "screen/view_layout.c"
+                            "screen/bitmap_text.c" "screen/bitmaps.c"
+                            "util/utf8.c"
+                            "zigbee/zigbee.c" "zigbee/zigbee_device.c" "zigbee/zigbee_display_input.c" "zigbee/zigbee_reports.c"
                        PRIV_REQUIRES esp_driver_spi esp_driver_gpio esp_driver_usb_serial_jtag nvs_flash esp_timer esp_app_format u8g2
                        INCLUDE_DIRS ".")
 

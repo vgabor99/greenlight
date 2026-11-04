@@ -1,15 +1,15 @@
 /* greenlight: a battery-powered e-paper display that shows whether the house is closed up ("Bezárva?"), fed by
  * Home Assistant over Zigbee. See DESIGN.md. app_main() sets up the parts in order, then runs the state machine. */
 
-#include "battery.h"
-#include "board.h"
+#include "board/battery.h"
+#include "board/board.h"
+#include "board/inputs.h"
+#include "board/wake_reason.h"
 #include "console.h"
-#include "display_model.h"
-#include "inputs.h"
+#include "display/display_model.h"
+#include "display/view_freshness.h"
 #include "persistent_store.h"
 #include "state_machine.h"
-#include "view_freshness.h"
-#include "wake_reason.h"
 
 void app_main(void)
 {
