@@ -1,47 +1,171 @@
 # Architecture
 
-## Goal
+## Purpose
 
-A battery-powered Zigbee device with a 4.2" 400x300 e-paper panel that shows Home Assistant's list of
-"problems" (doors and windows left open, lights left on, ...). Each line is an icon, a name and a state,
-e.g. `Teraszajtó | nyitva`. An empty list shows a large "Minden OK" check instead. A badge in the corner shows
-when the screen is no longer confirmed up to date.
+A battery-powered device that shows Home Assistant's list of "problems" (doors and windows left open, lights left
+on, ...). Each line has an icon, a name and a state (e.g. `Teraszajtó | nyitva`). An empty list shows a large
+"Minden OK" checkmark instead. A badge in the corner shows when the screen is no longer confirmed up to date.
 
-The device sleeps (deep sleep) whenever nobody is around and is alive and live-updating while someone is
-looking at it. The PIR sensor and the pair button are the only things that wake it, and either one keeps it
-awake. Pairing comes first: an unpaired device does nothing useful until it is paired.
+## Design goals
+
+- Functional: show the list of problems with icon, name and state, or "Minden OK"
+- Responsiveness: the list updates in real time, with a delay under 1 s
+- Battery: at most one battery charge per year
+- Reliability: appliance-like, zero-maintenance operation: automatic recovery from the usual errors (network or
+  Home Assistant outage, power loss, restarts). Software bugs and hardware failures stay visible instead of being
+  masked.
+
+**Success metrics**
+
+- Time from device wake to first render of live data
+- Time from changed Home Assistant data to render of live data
+- Count of maintenance sessions (reset, re-pair, etc. - any touch of the device)
+- Time between battery charges
+
+## Design constraints
+
+- Zigbee frames carry a limited amount of data. No frame relies on a good position in the mesh: every frame must
+  fit the worst-case path (40 bytes of ZCL payload, [zigbee.md](zigbee.md#frame-size-and-polling)).
+- Frames to and from the sleepy device get lost, most often right after a wake (measured: 5-7 % per frame), and
+  each loss delays the exchange by about 13 seconds while Zigbee2MQTT recovers. Time-critical data goes first.
+  Writes are paced, never burst, so the parent router's small queue for sleepy devices never overflows.
 
 ## System overview
 
-```
-  HA (dataset: all possible lines,          Zigbee2MQTT (+ external converter)         device
-      view: which are active now)
-  ─────────────────────────────────        ─────────────────────────────              ──────
-                                                                                      PIR on -> wake
-  automation <──── wake counter   <──────── custom cluster report <────────────────── rejoin, report wake
-  dataset_hash (cached) != HA's?  ───────►  /set: ds_entry x N, ds_commit  ─────────► store dataset (rare)
-  every wake, any change, 5 s     ───────►  /set: one view write (1 frame) ─────────► redraw lines, fresh 8 s,
-                 shown_view_id    <──────── custom cluster report <────────────────── report shown_view_id
-                                                                                      PIR off + timeout
-                 awake=false      <──────────────────────────────────────────────────  report, deep sleep
+A screen nobody is looking at doesn't need to be up to date. Greenlight is a sleepy Zigbee end device that spends
+most of its life in deep sleep. A low-power PIR sensor wakes it when someone steps in front of it. It then rejoins
+the network and gets the latest state from Home Assistant. It stays live while someone is there and goes back to
+sleep afterwards. This shapes almost all aspects of the architecture and software design.
+
+**Data is pushed from Home Assistant.** A Home Assistant automation ([`ha/`](../ha/)) observes when Greenlight is
+awake and pushes data. The device never asks for data; it only reports what it shows.
+
+**The device is dumb.** Home Assistant creates the data lines, orders them as they should appear on the screen
+(dataset), and decides which lines of the dataset are active (view). The device only lays the view lines out.
+
+```mermaid
+flowchart LR
+    HA["Home Assistant<br/>dataset and view sensors<br/>push automation"]
+    Z2M["Zigbee2MQTT<br/>+ external converter"]
+    DEV["Greenlight<br/>ESP32-C6, e-paper, PIR"]
+    HA -- "MQTT: dataset sync, view write" --> Z2M
+    Z2M -- "Zigbee: writes to cluster 0xFC8A" --> DEV
+    DEV -- "Zigbee: reports" --> Z2M
+    Z2M -- "MQTT: wake_count, awake, shown_view_id,<br/>dataset_hash, battery, occupancy" --> HA
 ```
 
 The pieces: the firmware ([firmware.md](firmware.md)), the Zigbee interface ([zigbee.md](zigbee.md)), the
-Zigbee2MQTT converter in `z2m/` and the Home Assistant templates and automation in `ha/`
+Zigbee2MQTT converter in [`z2m/`](../z2m/) and the Home Assistant templates and automation in [`ha/`](../ha/)
 ([home-assistant.md](home-assistant.md)).
 
-## Principles
+## Data model
 
-- **Push from HA, state from the device.** The device never asks for data. It exposes `awake`,
-  `shown_view_id` and `dataset_hash`; HA pushes on every wake and whenever its view changes while awake.
-- **One frame per wake.** Every Zigbee frame right after a wake can stall the exchange for about 13 s
-  ([wake delivery bench](research/wake-delivery-bench.md)), so the per-wake exchange is one report up and one
-  write down. Everything that needs more frames (the dataset) is rare and checked by a hash.
-- **Full views, not deltas.** Every view push is the complete bitfield, so a lost, repeated or late frame
-  never leaves lasting damage, and a device that slept through any number of changes catches up in one push.
-- **Robust over payload.** No frame relies on a good position in the mesh: every frame fits the worst-case
-  path (40 bytes of ZCL payload, [zigbee.md](zigbee.md#frame-size-and-polling)), and writes to the sleepy
-  device are paced, never burst.
-- **The panel is the memory.** The e-paper keeps its image without power.
-- **The device is dumb.** HA writes the final text (in the dataset) and decides which lines are active and
-  in which order they appear; the device only lays them out.
+Data is split into two parts to minimize data transfer. Lost frames are the biggest cause of delays, so the "happy
+path" uses the minimum number of frames: each wake is one frame up (the wake counter) and one frame down (the
+view). Details: [data-model.md](data-model.md).
+
+**Dataset**
+
+The dataset consists of all possible lines the device can display (icon, name, state), in the order they should
+appear on the screen. This is a large amount of relatively stable data: it only changes when entities are added,
+removed or renamed in Home Assistant. A dataset sync transfers the entire dataset, one frame per line part, and
+takes from a few seconds to over a minute, depending on its size and on lost frames. During day-to-day operation,
+Greenlight uses its cached copy of the dataset, identified by a hash.
+
+**View**
+
+The view is a bitfield of active lines from the (cached) dataset. This is frequently changing but small data (it
+fits in a single Zigbee frame). Despite the minimal size, it carries the full view atomically. Every view push is
+the complete bitfield, so a lost, repeated or late frame never leaves lasting damage, and a device that slept
+through any number of changes catches up in one push.
+
+**Dataset and view out of sync**
+
+Dataset and view arrive separately and in no fixed order: a view can arrive before its dataset, e.g. after a sync
+cut short by sleep or a lost commit. The view is tied to its dataset by the dataset's hash. A view for another
+dataset is rejected: the device keeps its stored view, shows "Szinkronizálás" while awake, reports its own dataset
+hash and stays awake for the sync. Likewise, a new dataset alone never changes the screen.
+
+The mismatch fixes itself: every Home Assistant push syncs the dataset first if the hashes differ, then sends the
+view, so the next push (within 5 s while awake) repairs it. A lost or misordered frame costs a resend, never a
+wrong screen.
+
+## Wake window
+
+At the start of the wake window, the data exchange follows a strict priority order. Every frame risks a loss and a
+long delay, so critical data is exchanged first. The device reports only its wake counter, and Home Assistant
+answers with the view. During day-to-day operation the dataset is already cached; if it has changed, Home Assistant
+syncs it before the view, since the view refers to it.
+
+About 2 seconds after the wake counter, when the view has normally arrived, the device reports the rest of its
+state and diagnostics. While the device is awake, the Home Assistant automation pushes new datasets and new views
+as needed.
+
+At the end of the wake window, the device clears the panel, renders the current view one last time and sends
+goodbye messages (awake=false, occupancy=false). The panel is the memory: the e-paper keeps its image without
+power, so the screen keeps showing the last view while the device is in deep sleep. If the wake ended without fresh
+data, the stale badge stays on until the next wake.
+
+Both sides send heartbeats to the other to observe liveness:
+
+- Home Assistant sends a heartbeat every 5 seconds (the view, even if unchanged). Greenlight uses it to maintain
+  the staleness indicator.
+- Greenlight sends a heartbeat (shown_view_id and awake) every 30 seconds. Home Assistant uses it to detect a lost
+  goodbye.
+
+```mermaid
+sequenceDiagram
+    participant Greenlight
+    participant HomeAssistant as Home Assistant
+
+    rect rgba(200, 200, 200, 0.2)
+    Note left of Greenlight: 1: Waking
+    Note over Greenlight: PIR (or pair button) wake
+    Note over Greenlight: Render cached view, with stale badge
+    Greenlight->>HomeAssistant: Report wake: wake_count=N+1
+    opt Dataset changed (cached dataset_hash != HA's)
+    HomeAssistant->>Greenlight: Push dataset: ds_entry, ds_entry, ..., ds_commit
+    Greenlight->>HomeAssistant: Acknowledge: dataset_hash
+    end
+    HomeAssistant->>Greenlight: Push latest view: view_id, view_ds, view_bits, view_time
+    Note over Greenlight: Update view if changed, render (badge off)
+    Greenlight->>HomeAssistant: Acknowledge: shown_view_id
+    end
+
+    rect rgba(200, 200, 200, 0.2)
+    Note left of Greenlight: 2: State and diagnostic reports (2 s after the wake counter)
+    Greenlight->>HomeAssistant: Report state: dataset_hash, shown_view_id, awake=true
+    Greenlight->>HomeAssistant: Report diagnostics: battery, battery_low, voltage, occupancy
+    end
+
+    rect rgba(200, 200, 200, 0.2)
+    Note left of Greenlight: 3: Home sensor changes
+    Note over HomeAssistant: Home sensors report change, view (and maybe dataset) is updated
+    opt Dataset changed
+    HomeAssistant->>Greenlight: Push dataset: ds_entry, ds_entry, ..., ds_commit
+    end
+    HomeAssistant->>Greenlight: Push latest view: view_id, view_ds, view_bits, view_time
+    Greenlight->>HomeAssistant: Acknowledge: shown_view_id
+    end
+
+    rect rgba(200, 200, 200, 0.2)
+    Note left of Greenlight: 4: Home Assistant heartbeat
+    Note over HomeAssistant: 5 s timer
+    HomeAssistant->>Greenlight: Push latest view: view_id, view_ds, view_bits, view_time
+    Greenlight->>HomeAssistant: Acknowledge: shown_view_id
+    end
+
+    rect rgba(200, 200, 200, 0.2)
+    Note left of Greenlight: 5: Greenlight heartbeat
+    Note over Greenlight: 30 s timer
+    Greenlight->>HomeAssistant: Heartbeat: shown_view_id, awake
+    end
+
+    rect rgba(200, 200, 200, 0.2)
+    Note left of Greenlight: 6: Shutdown
+    Note over Greenlight: No PIR activity for 20 s
+    Note over Greenlight: Clear, render final view (the panel keeps it)
+    Greenlight->>HomeAssistant: Send goodbye: occupancy=false, awake=false
+    Note over Greenlight: Deep sleep
+    end
+```

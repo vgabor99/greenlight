@@ -2,7 +2,7 @@
 
 Bench log, 2026-10-14 to 2026-11-03: how reliably Zigbee frames reach the sleepy device right after a wake,
 and where the device sits in the mesh. It follows the research in [zigbee-payload.md](zigbee-payload.md) and
-is the evidence behind "one frame per wake" ([architecture.md](../architecture.md#principles)). Kept as
+is the evidence behind "one frame per wake" ([architecture.md](../architecture.md#data-model)). Kept as
 recorded; terms of the time: the "snapshot" is the rev 5 text push, `shown_hash` its acknowledgement
 ([history.md](../history.md)). The tool is `tools/paced_write_test.py` (the `bench-test` skill).
 
