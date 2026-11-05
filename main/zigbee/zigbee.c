@@ -16,7 +16,8 @@
 static const char *TAG = "zb";
 
 /* End device timeout requested from the parent. The longest value (16384 min) made the join fail with a TCLK
- * exchange error on Z2M, so use the value of the Espressif examples; revisit when the device sleeps for hours. */
+ * exchange error on Z2M, so use the value of the Espressif examples. A wake after a longer sleep rejoins fine
+ * (docs/behaviour.md#deep-sleep). */
 #define ALL_CHANNELS_MASK   0x07FFF800U  /* channels 11-26 */
 #define END_DEVICE_TIMEOUT  EZB_NWK_ED_TIMEOUT_64MIN
 #define PARENT_POLL_MS      50    /* how often the awake device polls its parent for queued messages (docs/zigbee.md#frame-size-and-polling) */

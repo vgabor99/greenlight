@@ -126,7 +126,7 @@ the battery:
   wakes in HA (`wake_count`, `awake`). For bench work there are build switches for a timer wake and a
   simulated sleep that keeps USB up ([firmware.md](firmware.md#build-switches)).
 - The parent ages the device out after `END_DEVICE_TIMEOUT` (64 min) without a poll. A wake after a longer
-  sleep depends on the rejoin finding the network again (not yet verified, [roadmap.md](roadmap.md)).
+  sleep still finds the network: the rejoin works (seen 2026-11-05 after 7 h asleep, 00:40 to 07:41).
 
 ## Pairing
 

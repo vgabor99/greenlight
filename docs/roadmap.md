@@ -29,7 +29,6 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 
 ## Remaining checks
 
-- A wake after more than `END_DEVICE_TIMEOUT` (64 min) asleep: does the rejoin find the network again?
 - The frame counter survives deep sleep (the SDK should persist it).
 - End-to-end latency from a wake to the view on screen, including HA's own delay before its push.
 - Wake delivery with the device next to the coordinator: if clean, the Tuya routers' handling of a rejoined
