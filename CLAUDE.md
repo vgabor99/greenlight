@@ -1,41 +1,78 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository.
 
 ## Overview
 
-"greenlight" is an ESP-IDF project (C, CMake) derived from the ESP-IDF `hello_world` example. It currently targets the **ESP32-C6** (`CONFIG_IDF_TARGET="esp32c6"` in `sdkconfig`). `app_main()` in `main/main.c` sets up the parts and runs the device state machine (`main/state_machine.c`; file map under Architecture notes); `main/screen/status_screen.c` draws the proper screen (DESIGN.md 8: the "Bezárva?" house status with problem lines or "Minden OK" filling the screen (no header), an inverted `sync` badge drawn over the top-right corner while the view is stale, and the device screens such as Párosítás (unpaired, with how to pair) / Hálózatkeresés / Szinkronizálás / Csatlakozási hiba) with Inter fonts and Material Design Icons that `tools/gen_bitmaps.py` renders into the generated `main/screen/bitmaps.c` (never edit it by hand; rerun the generator, Pillow venv in `%TEMP%\gl_gen\venv`); `main/screen/debug_screen.c` draws the RnD debug screen (state, dataset, shown view, age / validity / staleness flag, last received writes; u8g2's `t0_16b_te` font, Terminus Bold; 1 px fonts are too faint on this panel), selected with `idf.py -DDEBUG_SCREEN=1 build` (`=0` switches back; CMake caches the value). `idf.py -DSCREEN_DUMP=1 build` prints every frame on the console for `tools/fb_dump.py` (PNGs, DESIGN.md 8.2). Both render into a 1-bit framebuffer, which is pushed to a 4.2" 400x300 e-paper panel (Waveshare V2 rev 2.2, SSD1683) through the driver in `main/display/epaper.c` (wiring/pins in `main/board/board.h`, Seeed XIAO ESP32-C6). The README is a short project overview that points here and to DESIGN.md.
+Greenlight is a battery-powered Zigbee e-paper display that shows Home Assistant's list of things to fix before
+leaving the house (the "Bezárva?" screen). Firmware: ESP-IDF v6.1 (C, CMake) on a Seeed XIAO ESP32-C6, a
+sleepy end device with a 4.2" 400x300 SSD1683 panel, a PIR and a pair button. HA side: `ha/` (templates and an
+automation) and `z2m/` (Zigbee2MQTT converter).
+
+Documentation: start at [docs/README.md](docs/README.md), which says which file answers what. The design files
+describe the current state; [docs/history.md](docs/history.md) holds past designs and lessons,
+[docs/roadmap.md](docs/roadmap.md) what is open. Code comments point to docs as `docs/<file>.md#<heading>`.
+
+## Skills
+
+Load the matching skill before doing these:
+
+- `bench-test`: serial log, console commands, reset, Zigbee writes through Z2M, `paced_write_test.py`, factory reset.
+- `deploy-ha`: any change under `ha/` or `z2m/`.
+- `panel-troubleshoot`: panel failures in the log, or changes to `epaper.c` / `panel.c`.
+- `regen-bitmaps`: anything that changes `main/screen/bitmaps.c`, a new line icon, checking screens against the mockups.
 
 ## Build environment
 
-`idf.py` is not on PATH by default. ESP-IDF v6.1 was installed with EIM; activate it in each new shell:
+`idf.py` is not on PATH. ESP-IDF v6.1 was installed with EIM.
+
+**Windows** (IDF in `C:\esp\v6.1\esp-idf`, tools in `C:\Espressif\tools`, board on COM5): use PowerShell and
+source `C:\Espressif\tools\Microsoft.v6.1.PowerShell_profile.ps1`. From Git Bash, `idf.py` refuses to run
+("MSys/Mingw is no longer supported") because PowerShell inherits `MSYSTEM` and friends, so strip them first
+(Git Bash quoting):
 
 ```
-. ~/.espressif/tools/activate_idf_v6.1.sh
+powershell.exe -NoProfile -Command 'Get-ChildItem Env: | Where-Object { $_.Name -match '\''MSYS|MINGW'\'' } | ForEach-Object { Remove-Item "Env:$($_.Name)" }; . C:\Espressif\tools\Microsoft.v6.1.PowerShell_profile.ps1 *> $null; idf.py -p COM5 flash'
 ```
 
-On the Windows machine (IDF in `C:\esp\v6.1\esp-idf`, tools in `C:\Espressif\tools`) use PowerShell instead: `. C:\Espressif\tools\Microsoft.v6.1.PowerShell_profile.ps1`, and flash with `idf.py -p COM5 flash`. From Git Bash, `idf.py` refuses to run ("MSys/Mingw is no longer supported") because PowerShell inherits `MSYSTEM` and friends: remove every `Env:` variable matching `MSYS|MINGW` inside the PowerShell command before sourcing the profile. The board's USB port is exclusive: close any IDF monitor or debug (gdb) session before flashing. `idf.py monitor` needs a TTY, so read the log with a pyserial script instead.
-
-On the Mac, use only this script (it is also what the VS Code ESP-IDF extension uses). Do not source `~/.espressif/v6.1/esp-idf/export.sh`: it fails here, and a build configured with a different Python venv makes `idf.py` refuse to run until `idf.py fullclean`.
+**Mac** (board on `/dev/cu.usbmodem101`): `. ~/.espressif/tools/activate_idf_v6.1.sh` in each new shell (also
+what the VS Code ESP-IDF extension uses). Don't source `~/.espressif/v6.1/esp-idf/export.sh`: it fails, and a
+build configured with another Python venv makes `idf.py` refuse to run until `idf.py fullclean`.
 
 ## Commands
 
 ```
-idf.py build                          # build into ./build
-idf.py -p /dev/cu.usbmodem101 flash   # flash (board shows up as this port on the dev Mac)
-idf.py -p /dev/cu.usbmodem101 monitor # serial output (Ctrl+] to exit)
-idf.py set-target <chip>              # switch target; regenerates sdkconfig
-idf.py menuconfig                     # edit sdkconfig
+idf.py build                  # build into ./build
+idf.py -p COM5 flash          # flash
+idf.py menuconfig             # then: idf.py save-defconfig (sdkconfig.defaults is the tracked config)
 ```
 
-There are no automated tests; testing is on the board (serial log, `tools/console.py`, `tools/paced_write_test.py`).
+- The USB port is exclusive: close any monitor or gdb session before flashing. A board in deep sleep has no USB:
+  wake it first.
+- `idf.py monitor` needs a TTY; read the log with `tools/console.py` (the `bench-test` skill).
+- Build switches (CMake caches them, `=0` switches back): `-DDEBUG_SCREEN=1`, `-DSCREEN_DUMP=1`,
+  `-DSIM_SLEEP=1`, `-DSLEEP_TIMER_S=N` ([docs/firmware.md](docs/firmware.md#build-switches)).
+- There are no automated tests; testing is on the board.
 
-## Architecture notes
+## Code conventions
 
-- Firmware files (`main/`, grouped in folders), one purpose each, named after it; each module's functions carry its file name as prefix (`inputs_`, `battery_`, `zigbee_`, ...). Includes name the path from `main/` (`#include "zigbee/zigbee.h"`, also within a folder; `INCLUDE_DIRS` is only `.`), and a new `.c` goes into `SRCS` in `main/CMakeLists.txt`. Top level (application): `main.c` (start-up order), `state_machine.c` (the states), `console.c` (USB console commands), `persistent_store.c` (NVS keys and access). `board/`: `board.c/.h` (pin map, RF switch), `inputs.c` (PIR and pair button), `battery.c` (simulated battery, low-battery latch), `sleep.c` (deep / simulated sleep), `wake_reason.c`. `display/` (keeping and pushing the image): `display.c` (screen per state, redraw, `display_wait_ms()`), `display_model.c` (mutex-guarded dataset / shown view / received writes, the Zigbee callbacks), `view_freshness.c` (staleness deadline in RTC memory), `panel.c` (refresh/clear policy and the `panel:` log), `frame_dump.c` (`SCREEN_DUMP`), `framebuffer.c`, `epaper.c` (SSD1683 driver). `screen/` (drawing a frame): `render.c` (picks the proper or debug screen), `status_screen.c`, `debug_screen.c`, `view_layout.c` (the shown rows), `bitmap_text.c` (Inter text and icons), `bitmaps.c` (generated). `zigbee/`: `zigbee.c` (stack, network, public API), `zigbee_device.c` (clusters), `zigbee_display_input.c` (view and dataset writes), `zigbee_reports.c`, `zigbee_internal.h` (shared between those only). `util/`: `utf8.c`, `hex.h`, `elapsed_time.h`. Log tags stay `greenlight`, `zb` and `epd`, and log lines that `tools/` matches must not change.
-- Top-level `CMakeLists.txt` sets `MINIMAL_BUILD ON`, so only `main` and the components it depends on are built. A new component dependency must be declared in `main/CMakeLists.txt` (`REQUIRES` / `PRIV_REQUIRES`), otherwise it won't be built. Managed dependencies are in `main/idf_component.yml`: the Zigbee libs and u8g2 (upstream git, pinned to a commit; used only for fonts and text, through a callback into the framebuffer (`main/display/framebuffer.c`), never for the panel).
-- E-paper quirk: this panel's real full-refresh waveform (mode 1: `0x22 = 0xF7`, also `0xC7`/`0x91` which load it) never finishes (BUSY stays high even after 40 s, screen ends up garbled grey), even with `0x01` driver output control and `0x18 = 0x80` set. Only the mode-2 update (`0x22 = 0xFF`, ~440 ms) works. `epaper_refresh_partial()` follows Waveshare's partial example (`0x21=0x00`, write only RAM `0x24`, `0xFF`) but with border register `0x3C=0x05` instead of Waveshare's `0x80`: with `0x80` the panel border drifts to black/grey over many updates. Rewriting old RAM (`0x26`) with the previous frame made no difference. Black is weak and a small amount of grain on the white background is normal. A custom full-refresh waveform (Waveshare's 4-gray `LUT_ALL` via `0x32`, `0x22 = 0xCF`) hung as well, so it was removed. `epaper_clear()` drives the whole screen to white with `drive_pass()` (mode 2); one pass (`WHITE_PASSES`, ~0.5 s) gave the cleanest white. Tuning results: more drive makes the white background grainier, not cleaner (10 black/white cycles, 12 white passes, and going to black first were all worse). A checkerboard stage (removed) made the grain worse too, and with 1-pixel squares BUSY hung (suspected supply sag). Mode 2 only drives pixels where new RAM (`0x24`) != old RAM (`0x26`) and the controller scrambles its buffers after each update, so `drive_pass()` rewrites both every pass with old = inverse of new; re-triggering without rewriting RAM inverts the screen. BOOT and SHUTDOWN call `epaper_clear()`; in between every redraw is a partial refresh, with a full clear every `PARTIALS_BETWEEN_CLEARS` (50) partials against ghosting. Every clear and refresh logs `panel: ...` (duration, BUSY level before, black and changed pixel counts): a clear takes 500 ms, a partial 470 ms however many pixels change (tested up to about 22,600 black pixels per frame). BUSY hang = bad display GND on the breadboard (found 2026-10-14/15): a refresh never finishes, BUSY stays high, the panel goes grainy grey, and every later panel command fails (`busy before 1`) until a hardware reset (sometimes the first reset is not enough while the contact is still bad). Provoked with a stress test: 10 hangs in about 365 refreshes while the board and wires were handled, 0 in 1,546 untouched, and every later hang matched a touch of the display's GND jumper. Ruled out: radio TX (bursts of reports on top of the refresh made no difference), pixel density, refresh count, time awake. Fix is hardware: a solid display GND (new or doubled wire, soldered) and a bulk capacitor (47-220 uF + 100 nF) at the display's VCC/GND pins. Don't touch the board while it refreshes until then. Failures are left visible on purpose (DESIGN.md 9: automatic recovery is a later option). BUSY (GPIO21/D3) must be wired; the internal-pull "is it connected" test is unreliable because the module drives BUSY weakly.
-- Inputs and state machine (design in `DESIGN.md`, section 3): D0 (GPIO0, `PIR_PIN`) is the PIR (Panasonic EKMB1205111 on 3V3, active high, external 100k pull-down, no internal pull, `PIR_ACTIVE_LEVEL` 1; 0 = a test button to GND with the internal pull-up) and D1 (GPIO1, `PAIR_BUTTON_PIN`) is the pair button. Panel DC/RST are on D4/D5 so D0/D1 stay deep-sleep wake pins; a button wired straight to GND (or any load on D1/D2) shows up as `inputs at boot: ... =0` in the log. Both inputs are polled and debounced by `input_task` (level based). `app_main()` runs a state machine: BOOT, UNPAIRED, PAIRING, INTERVIEW, REJOIN, ACTIVE, ERASE_NETWORK, SHUTDOWN, SLEEP, LOW_BATTERY. Activity (D0 or D1 pressed) holds the `IDLE_TIMEOUT_MS` (20 s) timeout; it counts down after release. Holding D1 for 3 s does the same in both unpaired and paired states: in UNPAIRED it starts PAIRING, in ACTIVE it leaves and erases the Zigbee network (`zigbee_erase_network()`, which restarts the chip) and pairs right after the reboot; short presses only wake. Zigbee is real (`main/zigbee/*.c`): a sleepy end device that polls its parent every `PARENT_POLL_MS` (50 ms) while awake (rx-on-when-idle lost about half of Z2M's writes). The state that must survive sleep is in NVS (namespace `greenlight`: `pair_now`, `wake_n`, `ds` = the dataset, `view` = the shown view with its laid-out rows, `sim_mv` / `sim_usb` = the simulated battery voltage and USB power, `bat_low` = the low-battery latch). Low battery (DESIGN.md 6.6): the battery voltage and USB power are simulated, set on the USB-Serial-JTAG console (now the primary console, so it takes input) with `bat <mV>` / `usb 0|1` through `tools/console.py` (log monitor + sender in one process because COM5 is exclusive; `--send "SECONDS:CMD"`, `--for`, `--reset` = a wake without a button). Below 3.5 V (BOOT first, then ACTIVE / UNPAIRED / PAIRING every second) the wake ends through SHUTDOWN with the battery screen in LOW_BATTERY, which ignores D0/D1 and only USB power ends (exit threshold 3.7 V while latched; USB overrides a low battery). Data model rev 6 (DESIGN.md 5, 6.5): HA syncs a dataset of up to 32 lines rarely (`ds_entry` 0x0030 per line part: up to 64 UTF-8 bytes per line in up to 3 parts of 26, `ds_commit` 0x0031) and pushes one 4-record view write per wake (`view_bits/ds/time/id` 0x0020-0x0023), applied by `apply_view()` after the frame. Zigbee model rev 7 (DESIGN.md 6): a single endpoint (Basic, Power Configuration, Occupancy Sensing, custom 0xFC8A, OTA client declared only); the device state is reported from 0xFC8A: `wake_count` 0x0040, `shown_view_id` 0x0041, `dataset_hash` 0x0042 (uint32), `awake` 0x0043 (boolean), `battery_mv` 0x0013 (uint16, Z2M `voltage`). Z2M needs the external converter `z2m/greenlight.mjs` (`advanced.enable_external_js` on, file in Z2M's `data/external_converters/`) to publish them under those names; without it, Z2M's generated definition shows none of them. After a rejoin only `wake_count` is reported, the rest after `WAKE_REPORTS_DELAY_MS`. Occupancy is held `OCCUPANCY_HOLD_MS` (5 s) after the PIR was last active, and a PIR wake counts as activity at boot, so a short pulse that woke the device is still reported (only after a fast rejoin). SHUTDOWN (if joined) sends occupancy 0 + `awake` false with a default response requested and resends until Z2M confirms both (`zigbee_report_goodbye()`, up to `GOODBYE_TIMEOUT_MS`). Bench test: `tools/paced_write_test.py` (the user runs it in their own shell with the MQTT credentials; venv in `%TEMP%\gl_test\venv`, logs in `%TEMP%\gl_test`). SLEEP is real deep sleep (DESIGN.md 3.6): D0 (high) and D1 (low) wake it, and the wake is a reset, so every wake takes the full boot path. While it sleeps COM5 is gone: a sleeping board can't be flashed or reset over USB (wake it first), and after a deep-sleep wake no log reaches the PC at all, although COM5 comes back and opens (watch wakes in HA instead; a boot after a USB reset logs normally); `idf.py -DSLEEP_TIMER_S=N build` adds a timer wake for bench tests, and `idf.py -DSIM_SLEEP=1 build` brings back the simulated sleep (wait for D0 or D1, then `esp_restart()`), so USB, the log, the console and resets over USB keep working: use it for autonomous testing with `tools/console.py` (`=0` switches back; CMake caches it). LOW_BATTERY is still simulated (wait for `usb 1`, then `esp_restart()`). `choose_screen()` picks the screen per state (DESIGN.md 8); a frame identical to the panel's is not refreshed. Staleness (DESIGN.md 5.3): each received view (OK or same id) sets the validity deadline (`main/display/view_freshness.c`) = RTC time (`esp_rtc_get_time_us()`) + `VIEW_VALID_MS` (8 s = HA's 5 s push period + 3 s); it lives in `RTC_NOINIT_ATTR` memory (survives the restart and deep sleep, cleared after a power-on), and `display_wait_ms()` redraws when the flag (debug: the shown age) changes. Dataset lines are `II|name|state` (icon id in hex, DESIGN.md 5.1; the icon table in `tools/gen_bitmaps.py` is append-only and mirrored in the HA template). The Zigbee callbacks (Zigbee task) update the mutex-guarded display model and mark it changed (`display_model_mark_changed()`); the state loops wait with `display_wait_ms()`, which redraws when it has changed, so a burst of writes is drawn as it arrives (writes during a ~0.5 s refresh coalesce into the next one). To get a factory-new device: `python -m esptool --chip esp32c6 -p COM5 erase-region 0x9000 0x6000`.
-- HA side (DESIGN.md 7): `ha/custom_templates/greenlight.jinja` (dataset rules modelled on the "Bezárva?" dashboard) and `ha/packages/greenlight.yaml` (`sensor.greenlight_dataset`, `sensor.greenlight_view`, `automation.greenlight_push`, which also pushes the view every 5 s while the device is awake (the liveness signal behind the staleness flag); the lobby door, its lock and the disarmed alarm are expected at the install spot, and the small living-room lamp is the night light that arming turns off, so `greenlight_hidden_bits` masks their lines out of the view bits) are the sources of what runs in HA under the same paths. Deploy with ha-mcp: `ha_write_file` + `homeassistant.reload_custom_templates` for the macros, `ha_config_set_yaml` (keys `template`, `automation`) + reload for the package. Keep the repo copy and HA in sync.
-- `sdkconfig` is generated in the repo root and git-ignored; `sdkconfig.defaults` (from `idf.py save-defconfig`: target, USB-Serial-JTAG primary console, Zigbee end device) holds the non-default settings, so rerun `save-defconfig` after changing `menuconfig`; `sdkconfig.ci` holds CI-only overrides (currently empty).
-- `.devcontainer/` defines an ESP-IDF QEMU container; `.clangd` strips `-f*`/`-m*` flags so clangd copes with the RISC-V/Xtensa GCC flags in `compile_commands.json`.
+- Firmware files live under `main/`, grouped in folders (`board/`, `display/`, `screen/`, `zigbee/`, `util/`),
+  one purpose per file, named after it. File map: [docs/firmware.md](docs/firmware.md#source-layout).
+- Each module's functions carry its file name as prefix (`inputs_`, `battery_`, `zigbee_`, ...).
+- Includes name the path from `main/` (`#include "zigbee/zigbee.h"`, also within a folder; `INCLUDE_DIRS` is
+  only `.`). A new `.c` goes into `SRCS` in `main/CMakeLists.txt`; a new component dependency into its
+  `PRIV_REQUIRES` (the top level sets `MINIMAL_BUILD ON`).
+- Log tags stay `greenlight`, `zb` and `epd`. Log lines that `tools/` matches must not change.
+- `main/screen/bitmaps.c` is generated: never edit it by hand.
+
+## Rules
+
+- **Zigbee attribute ids and line icon ids are append-only**; identity, endpoint and cluster list are frozen
+  ([docs/zigbee.md](docs/zigbee.md#identity-and-freeze-rules)). Breaking these forces a re-pair or breaks HA.
+- **Every frame to the device carries at most 40 bytes of ZCL payload**, and writes are paced, never burst:
+  design for a bad spot in the mesh.
+- **NVS key strings never change** (they address state on devices).
+- **Keep `ha/` and `z2m/` in sync with what runs in HA / Z2M** (`deploy-ha` skill).
+- **Panel failures stay visible**: no automatic recovery until it is decided ([docs/roadmap.md](docs/roadmap.md)).
+- **Docs**: when behaviour changes, update the design file that owns it, move what it replaces to
+  `docs/history.md` if the reason matters, and keep each fact in one place.
