@@ -1,6 +1,6 @@
 ---
 name: regen-bitmaps
-description: Regenerate greenlight's fonts and icons (main/screen/bitmaps.c/.h) with tools/gen_bitmaps.py, add a line icon, change a font size or charset, and check the rendered screens against the mockups with SCREEN_DUMP and tools/fb_dump.py. Use whenever bitmaps.c needs to change (it is generated, never edited by hand) or a screen layout is checked.
+description: "Regenerate greenlight's fonts and icons (main/screen/bitmaps.c/.h) with tools/gen_bitmaps.py, add a line icon, change a font size or charset, and check the rendered screens against the mockups with SCREEN_DUMP and tools/fb_dump.py. Use whenever bitmaps.c needs to change (it is generated, never edited by hand) or a screen layout is checked."
 ---
 
 # Fonts, icons and screen checks

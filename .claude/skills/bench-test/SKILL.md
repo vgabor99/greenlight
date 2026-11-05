@@ -1,6 +1,6 @@
 ---
 name: bench-test
-description: Test the greenlight board on the bench - read its serial log, drive the simulated battery/USB over the console, reset it, send view/dataset writes through Zigbee2MQTT, run tools/paced_write_test.py, or make it factory new. Use whenever a task needs the device's serial output, a test on the real hardware, or writes sent to the device.
+description: "Test the greenlight board on the bench - read its serial log, drive the simulated battery/USB over the console, reset it, send view/dataset writes through Zigbee2MQTT, run tools/paced_write_test.py, or make it factory new. Use whenever a task needs the device's serial output, a test on the real hardware, or writes sent to the device."
 ---
 
 # Bench testing

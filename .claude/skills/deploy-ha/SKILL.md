@@ -1,6 +1,6 @@
 ---
 name: deploy-ha
-description: Deploy greenlight's Home Assistant and Zigbee2MQTT side - ha/custom_templates/greenlight.jinja, ha/packages/greenlight.yaml and z2m/greenlight.mjs - to the live HA / Z2M, and check that the deployed copy matches the repo. Use after editing any file under ha/ or z2m/, or when HA's greenlight sensors or push automation misbehave.
+description: "Deploy greenlight's Home Assistant and Zigbee2MQTT side - ha/custom_templates/greenlight.jinja, ha/packages/greenlight.yaml and z2m/greenlight.mjs - to the live HA / Z2M, and check that the deployed copy matches the repo. Use after editing any file under ha/ or z2m/, or when HA's greenlight sensors or push automation misbehave."
 ---
 
 # Deploying the HA and Z2M side
