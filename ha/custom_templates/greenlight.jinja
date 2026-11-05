@@ -1,5 +1,5 @@
 {# config/custom_templates/greenlight.jinja (source: greenlight repo, ha/custom_templates/) #}
-{# Dataset and view for the Greenlight e-paper display (DESIGN.md 5, 7). The rules mirror the
+{# Dataset and view for the Greenlight e-paper display (docs/data-model.md, docs/home-assistant.md). The rules mirror the
    "Bezárva?" dashboard (dashboard-away): every watched entity is one dataset line, whatever its
    current state, so the dataset only changes when entities are added, removed or renamed. Nothing
    is listed by hand: entities are found by domain / device class, and the label
@@ -11,7 +11,7 @@
    `%XX`, so the bytes of `text` are `(text | urlencode | length) - 2 * (number of '%')`. #}
 
 {# The watched entities as dataset items: [{'text': text, 'members': [[entity_id, kind], ...]}, ...].
-   The text is `II|name|state` (DESIGN.md 5.1): II is the line icon's id in hex (the append-only
+   The text is `II|name|state` (docs/data-model.md#line-format): II is the line icon's id in hex (the append-only
    table in tools/gen_bitmaps.py: 00 alert-circle, 01 dots-horizontal, 02 door-open, 04 window-open,
    08 lock-open-variant, 09 shield-off, 0D lightbulb-on, 13 remote-tv, 27 water), then the name and a
    one- or two-word state. More than max_lines items: the first max_lines - 1 stay and the last line is
@@ -137,13 +137,13 @@
   {% do returns(active - (active | bitwise_and((greenlight_hidden_bits | as_function)(items)))) %}
 {% endmacro %}
 
-{# 24-bit hash of a text, never 0 (DESIGN.md 5.1, 5.2). #}
+{# 24-bit hash of a text, never 0 (docs/data-model.md). #}
 {% macro greenlight_hash24(text, returns=none) %}
   {%- set hash = (text | sha1)[:6] | int(base=16) -%}
   {% do returns(hash if hash else 1) %}
 {% endmacro %}
 
-{# The ds_entry strings of a dataset (DESIGN.md 6.5): `HHHHHH|II|text`, a line split into parts of
+{# The ds_entry strings of a dataset (docs/zigbee.md#input-ha-to-device): `HHHHHH|II|text`, a line split into parts of
    at most 26 UTF-8 bytes at character boundaries, II = index | part << 5 | more << 7. #}
 {% macro greenlight_dataset_entries(hash, lines, returns=none) %}
   {%- set hash_hex = '%06X' | format(hash) -%}

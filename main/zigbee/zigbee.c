@@ -1,4 +1,4 @@
-/* Zigbee side of the device: the stack and the network. See DESIGN.md section 6 for the data model this implements
+/* Zigbee side of the device: the stack and the network. See docs/zigbee.md for the data model this implements
  * (rev 7): a single endpoint with Basic, Power Configuration, Occupancy Sensing, the OTA Upgrade client (declared
  * only) and the custom cluster 0xFC8A (zigbee_device.c). Its writable attributes carry the view and the dataset
  * (zigbee_display_input.c); its reported attributes are the device state (zigbee_reports.c). Z2M needs the
@@ -19,7 +19,7 @@ static const char *TAG = "zb";
  * exchange error on Z2M, so use the value of the Espressif examples; revisit when the device sleeps for hours. */
 #define ALL_CHANNELS_MASK   0x07FFF800U  /* channels 11-26 */
 #define END_DEVICE_TIMEOUT  EZB_NWK_ED_TIMEOUT_64MIN
-#define PARENT_POLL_MS      50    /* how often the awake device polls its parent for queued messages (ZIGBEE_PAYLOAD.md 6) */
+#define PARENT_POLL_MS      50    /* how often the awake device polls its parent for queued messages (docs/zigbee.md#frame-size-and-polling) */
 
 zigbee_context_t zigbee_context;
 

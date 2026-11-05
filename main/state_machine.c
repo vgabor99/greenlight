@@ -19,7 +19,7 @@
 
 static const char *TAG = "greenlight";
 
-/* ---- Timing (DESIGN.md 3.2) ---- */
+/* ---- Timing (docs/behaviour.md#timeouts) ---- */
 #define IDLE_TIMEOUT_MS        20000   /* no activity for this long ends the wake */
 #define PAIRING_WINDOW_MS      180000
 #define INTERVIEW_MS           60000   /* time to stay awake after joining, for the Z2M interview */
@@ -27,8 +27,8 @@ static const char *TAG = "greenlight";
 #define REJOIN_TIMEOUT_MS      15000   /* give up rejoining after this long */
 #define STACK_START_TIMEOUT_MS 30000   /* BOOT waits this long for the Zigbee stack to restore the network */
 #define HEARTBEAT_MS           30000   /* ACTIVE: repeat awake + shown_view_id this often */
-#define WAKE_REPORTS_DELAY_MS  2000    /* after a rejoin: the reports that follow the wake counter (DESIGN.md 6.4) */
-#define VIEW_WAIT_MS           45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (3.2) */
+#define WAKE_REPORTS_DELAY_MS  2000    /* after a rejoin: the reports that follow the wake counter (docs/zigbee.md#when-the-device-reports) */
+#define VIEW_WAIT_MS           45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (docs/behaviour.md#timeouts) */
 #define GOODBYE_TIMEOUT_MS     5000    /* SHUTDOWN: wait this long for Z2M to confirm occupancy 0 and awake false */
 #define BATTERY_CHECK_MS       1000    /* mid-wake battery check period */
 
@@ -76,7 +76,7 @@ static bool pair_button_held_long(void)
     return true;
 }
 
-/* The reports of a wake other than the wake counter (DESIGN.md 6.4). After a rejoin they follow the wake counter
+/* The reports of a wake other than the wake counter (docs/zigbee.md#when-the-device-reports). After a rejoin they follow the wake counter
  * by WAKE_REPORTS_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
 static void report_wake_state(void)
 {
@@ -89,7 +89,7 @@ static void report_wake_state(void)
 
 /* ---- BOOT ---- */
 
-/* The battery first, before the radio, the panel and any NVS write (DESIGN.md 6.6). STATE_BOOT to go on booting,
+/* The battery first, before the radio, the panel and any NVS write (docs/behaviour.md#low-battery). STATE_BOOT to go on booting,
  * else the state to go to. */
 static device_state_t check_battery_at_boot(void)
 {
@@ -124,7 +124,7 @@ static void start_stack_and_panel(void)
     zigbee_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
              battery_voltage_mv());
 
-    /* MVP: full clear on every wake (DESIGN.md 3.4), in parallel with the stack start-up. epaper_init() also
+    /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. epaper_init() also
      * releases the pin hold and recreates the SPI bus left by epaper_power_off(). */
     if (epaper_init() != ESP_OK || panel_clear("boot") != ESP_OK) {
         ESP_LOGE(TAG, "e-paper init failed");
@@ -238,7 +238,7 @@ static device_state_t run_rejoin(void)
     while (elapsed_ms(start) < REJOIN_TIMEOUT_MS) {
         if (zigbee_is_joined()) {
             ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)elapsed_ms(boot_tick));
-            zigbee_report_wake_count();  /* the only report before the push (DESIGN.md 6.4) */
+            zigbee_report_wake_count();  /* the only report before the push (docs/zigbee.md#when-the-device-reports) */
             wake_reports_pending = true;
             return STATE_ACTIVE;
         }

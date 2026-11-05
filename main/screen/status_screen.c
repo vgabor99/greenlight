@@ -26,7 +26,7 @@
 #define OK_LINE2_BASELINE  274
 
 #define BADGE_RADIUS 17  /* stale badge: black disc 34 px across, right edge at ROW_RIGHT_X, centred on the */
-#define BADGE_RING   4   /* first row's icon, with a white ring around it, 4.5 px wide (DESIGN.md 5.3) */
+#define BADGE_RING   4   /* first row's icon, with a white ring around it, 4.5 px wide (docs/data-model.md#staleness-flag) */
 
 #define DEVICE_ICON_Y        112  /* device screens: icon and one line */
 #define DEVICE_TEXT_BASELINE 240
@@ -38,7 +38,7 @@
 
 /* ---- House screens ---- */
 
-/* A dataset line, "II|name|state" (DESIGN.md 5.1): icon id in hex, name, state (may be empty). */
+/* A dataset line, "II|name|state" (docs/data-model.md#line-format): icon id in hex, name, state (may be empty). */
 typedef struct {
     const bitmap_icon_t *icon;
     const char      *name;
@@ -109,7 +109,7 @@ static void draw_all_ok(void)
     bitmap_text_draw_centered(&bitmap_font_detail, OK_LINE2_BASELINE, "Készülékek kikapcsolva");
 }
 
-/* The stale flag (DESIGN.md 5.3), drawn over whatever is under it: white sync arrows on a black disc in a
+/* The stale flag (docs/data-model.md#staleness-flag), drawn over whatever is under it: white sync arrows on a black disc in a
  * white ring. Distances are in half pixels, from pixel centres. */
 static void draw_stale_badge(void)
 {

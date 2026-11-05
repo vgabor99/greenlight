@@ -1,9 +1,9 @@
-// Zigbee2MQTT external converter for the greenlight e-paper display (DESIGN.md 6.2, 6.8; rev 7 data model).
+// Zigbee2MQTT external converter for the greenlight e-paper display (docs/zigbee.md#external-converter; rev 7 data model).
 // Install as data/external_converters/greenlight.mjs (advanced.enable_external_js must be on), then restart Z2M.
 // Written against Z2M 2.12 / zigbee-herdsman-converters 26.76 / zigbee-herdsman 10.6.
 //
 // No configure step: the device reports everything on its own (freeze rule 3), and reads to the sleepy device
-// would fail, so every expose is STATE only. HA writes the display input with Z2M's raw `write` (DESIGN.md 6.5);
+// would fail, so every expose is STATE only. HA writes the display input with Z2M's raw `write` (docs/zigbee.md#input-ha-to-device);
 // the input attributes are declared too, so they can also be written by name.
 
 import {Zcl} from "zigbee-herdsman";

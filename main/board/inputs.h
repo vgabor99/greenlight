@@ -17,7 +17,7 @@ uint32_t inputs_idle_ms(void);
 /* How long the pair button has been held down, 0 while it is up. */
 uint32_t inputs_pair_button_held_ms(void);
 
-/* Reported occupancy (DESIGN.md 6.4): the PIR was active within the occupancy hold time. */
+/* Reported occupancy (docs/zigbee.md#when-the-device-reports): the PIR was active within the occupancy hold time. */
 bool inputs_occupied(void);
 
 /* Restart the idle countdown, as an input would (HA working with the device counts as activity). */

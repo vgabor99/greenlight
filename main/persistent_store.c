@@ -61,7 +61,7 @@ void persistent_store_erase(const char *key)
 }
 
 /* Every boot is a wake (a deep-sleep wake is a reset), so count boots. 24 bits, like the ids and hashes
- * (DESIGN.md 6.4); one u32 write per wake is negligible flash wear for NVS. */
+ * (docs/zigbee.md#state-device-to-ha); one u32 write per wake is negligible flash wear for NVS. */
 uint32_t persistent_store_next_wake_count(void)
 {
     uint32_t count = 0;

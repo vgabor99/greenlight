@@ -11,7 +11,7 @@ static const char *TAG = "greenlight";
 static char wake_reason[24];
 
 /* The start of the log is lost after a deep-sleep wake on USB (the host re-enumerates the port, and on Windows no
- * data comes through at all, DESIGN.md 3.6), so the wake reason is logged again with the stack start-up. */
+ * data comes through at all, docs/behaviour.md#deep-sleep), so the wake reason is logged again with the stack start-up. */
 void wake_reason_init(void)
 {
     uint32_t causes = esp_sleep_get_wakeup_causes();

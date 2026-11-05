@@ -1,6 +1,6 @@
 #pragma once
 
-/* The device state machine (DESIGN.md 3.3) */
+/* The device state machine (docs/behaviour.md#state-machine) */
 typedef enum {
     STATE_BOOT, STATE_UNPAIRED, STATE_PAIRING, STATE_INTERVIEW, STATE_REJOIN, STATE_ACTIVE, STATE_ERASE_NETWORK,
     STATE_SHUTDOWN, STATE_SLEEP, STATE_LOW_BATTERY,

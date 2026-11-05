@@ -6,9 +6,9 @@
 #include "zigbee/zigbee.h"
 
 /* The panel image. Two renderers, chosen at build time:
- * - the proper screen (status_screen.c, DESIGN.md 8): the house status (problem lines or "Minden OK") and the
+ * - the proper screen (status_screen.c, docs/display.md): the house status (problem lines or "Minden OK") and the
  *   device screens (pairing, syncing, errors), in Inter with Material Design Icons;
- * - the debug screen for RnD (debug_screen.c, DESIGN.md 8.1): the device state, the dataset, the view on the panel
+ * - the debug screen for RnD (debug_screen.c, docs/display.md#debug-screen): the device state, the dataset, the view on the panel
  *   and the last writes received from HA, as UTF-8 text in u8g2's Terminus Bold 16 (49 columns, Hungarian
  *   accents included).
  * RENDER_DEBUG_SCREEN 1 selects the debug screen: `idf.py -DDEBUG_SCREEN=1 build` (`-DDEBUG_SCREEN=0` switches
@@ -47,7 +47,7 @@ typedef struct {
     uint8_t                 dataset_lines;
     shown_view_t            shown;
     bool                    out_of_sync;    /* the last view received was for another dataset */
-    bool                    stale;          /* the shown view is older than its validity (DESIGN.md 5.3) */
+    bool                    stale;          /* the shown view is older than its validity (docs/data-model.md#staleness-flag) */
     int64_t                 age_ms;         /* age of the last received view, -1 = unknown */
     uint32_t                valid_ms;       /* how long a received view stays fresh */
     uint16_t                battery_mv;

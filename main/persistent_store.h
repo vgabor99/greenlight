@@ -7,10 +7,10 @@
 /* State that survives the deep sleep (a wake is a reset): NVS, namespace "greenlight". The Zigbee stack keeps the
  * network in the same partition. The key strings address state stored on devices: never change them. */
 #define STORE_KEY_PAIR_ON_BOOT      "pair_now"  /* u8: start pairing right after the next boot (ERASE_NETWORK) */
-#define STORE_KEY_WAKE_COUNT        "wake_n"    /* u32: the wake counter (DESIGN.md 6.4) */
-#define STORE_KEY_DATASET           "ds"        /* blob: the dataset (DESIGN.md 5.1) */
+#define STORE_KEY_WAKE_COUNT        "wake_n"    /* u32: the wake counter (docs/zigbee.md#state-device-to-ha) */
+#define STORE_KEY_DATASET           "ds"        /* blob: the dataset (docs/data-model.md#dataset) */
 #define STORE_KEY_SHOWN_VIEW        "view"      /* blob: the view on the panel with its rows; its id is shown_view_id */
-#define STORE_KEY_SIMULATED_MV      "sim_mv"    /* u16: the simulated battery voltage (DESIGN.md 6.6) */
+#define STORE_KEY_SIMULATED_MV      "sim_mv"    /* u16: the simulated battery voltage (docs/firmware.md#simulated-parts) */
 #define STORE_KEY_SIMULATED_USB     "sim_usb"   /* u8: the simulated USB power */
 #define STORE_KEY_LOW_BATTERY       "bat_low"   /* u8: the LOW_BATTERY latch */
 #define STORE_KEY_RETIRED_SNAPSHOT  "snap"      /* rev 5 snapshot, no longer used: erased at boot */

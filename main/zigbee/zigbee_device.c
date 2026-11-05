@@ -1,4 +1,4 @@
-/* The data model (DESIGN.md 6.3): one endpoint with Basic, Power Configuration, Occupancy Sensing, the custom
+/* The data model (docs/zigbee.md#endpoint-and-clusters): one endpoint with Basic, Power Configuration, Occupancy Sensing, the custom
  * cluster 0xFC8A and the OTA Upgrade client. */
 
 #include <string.h>
@@ -57,7 +57,7 @@ static ezb_zcl_cluster_desc_t create_basic_cluster(void)
     return basic;
 }
 
-/* The battery as measured at boot (simulated for now, DESIGN.md 6.6) */
+/* The battery as measured at boot (simulated for now, docs/zigbee.md#battery) */
 static ezb_zcl_cluster_desc_t create_power_config_cluster(void)
 {
     ezb_zcl_power_config_cluster_server_config_t config = {
@@ -92,7 +92,7 @@ static ezb_zcl_cluster_desc_t create_occupancy_cluster(void)
     return ezb_zcl_occupancy_sensing_create_cluster_desc(&config, EZB_ZCL_CLUSTER_SERVER);
 }
 
-/* Declared so the cluster list stays final (DESIGN.md 6.3), not implemented yet */
+/* Declared so the cluster list stays final (docs/zigbee.md#endpoint-and-clusters), not implemented yet */
 static ezb_zcl_cluster_desc_t create_ota_cluster(void)
 {
     ezb_zcl_ota_upgrade_cluster_client_config_t config = {

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Battery (DESIGN.md 6.6): simulated until the hardware is there. */
+/* Battery (docs/behaviour.md#low-battery): simulated until the hardware is there. */
 #define BATTERY_LOW_ENTER_MV 3500  /* below this the wake ends in LOW_BATTERY */
 #define BATTERY_LOW_EXIT_MV  3700  /* LOW_BATTERY is left only at or above this, or on USB power */
 

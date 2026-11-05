@@ -15,12 +15,12 @@
 #define COORDINATOR_ENDPOINT 1
 #define CUSTOM_CLUSTER_ID    0xFC8A
 
-/* Custom cluster attribute ids (DESIGN.md 6.4, 6.5); 0x0000-0x0007 are retired, 0x0010-0x0014 reserved */
+/* Custom cluster attribute ids (docs/zigbee.md#state-device-to-ha, #input-ha-to-device); 0x0000-0x0007 are retired, 0x0010-0x0014 reserved */
 #define ATTR_VIEW_BITS       0x0020  /* .. ATTR_VIEW_ID: the four view_* attributes, in zigbee_view_t order */
 #define ATTR_VIEW_ID         0x0023
 #define ATTR_DATASET_ENTRY   0x0030
 #define ATTR_DATASET_COMMIT  0x0031
-#define ATTR_BATTERY_MV      0x0013  /* exact battery voltage in mV (DESIGN.md 6.6), reported, read-only */
+#define ATTR_BATTERY_MV      0x0013  /* exact battery voltage in mV (docs/zigbee.md#battery), reported, read-only */
 #define ATTR_WAKE_COUNT      0x0040  /* reported state, read-only */
 #define ATTR_SHOWN_VIEW_ID   0x0041
 #define ATTR_DATASET_HASH    0x0042

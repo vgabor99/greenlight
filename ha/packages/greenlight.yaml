@@ -1,5 +1,5 @@
 # config/packages/greenlight.yaml (source: greenlight repo, ha/packages/)
-# The Greenlight e-paper display (DESIGN.md 7): the dataset and view sensors and the push automation.
+# The Greenlight e-paper display (docs/home-assistant.md): the dataset and view sensors and the push automation.
 # The dataset rules are in custom_templates/greenlight.jinja.
 
 template:
@@ -47,7 +47,7 @@ automation:
     description: >-
       Pushes the dataset (when the device has another one) and the view to the Greenlight display,
       on every wake, on every view change while it is awake, and every 5 s while it is awake: each
-      received view keeps the display fresh for 8 s, so the periodic push is HA's liveness signal (DESIGN.md 5.3, 7).
+      received view keeps the display fresh for 8 s, so the periodic push is HA's liveness signal (docs/data-model.md#staleness-flag, docs/home-assistant.md).
     # queued: a run can take a minute (dataset sync, ack waits). One waiting run reads the newest
     # values when it sends, so it covers any number of changes made meanwhile.
     mode: queued

@@ -4,7 +4,7 @@
 #include "screen/render.h"
 #include "state_machine.h"
 
-/* The screen for the device state (DESIGN.md 8), drawn from the display model, on the proper or the debug screen. */
+/* The screen for the device state (docs/display.md), drawn from the display model, on the proper or the debug screen. */
 
 /* The state to show; the next display_wait_ms() redraws. */
 void display_show_state(device_state_t state);

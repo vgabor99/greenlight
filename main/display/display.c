@@ -42,7 +42,7 @@ void display_set_wake_number(uint32_t number)
     wake_number = number;
 }
 
-/* What the proper screen shows (DESIGN.md 8): the house status, unless the device is pairing, joining or
+/* What the proper screen shows (docs/display.md): the house status, unless the device is pairing, joining or
  * syncing, or this wake failed. */
 static render_screen_t choose_screen(device_state_t state, const render_content_t *content, bool syncing)
 {

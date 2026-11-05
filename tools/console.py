@@ -1,4 +1,4 @@
-"""Serial log monitor that also sends console commands to the device (the battery simulation, DESIGN.md 6.6).
+"""Serial log monitor that also sends console commands to the device (the battery simulation, docs/firmware.md#simulated-parts).
 
 The firmware reads lines on its USB-Serial-JTAG console: "bat <mV>" sets the simulated battery voltage, "usb 0|1"
 the simulated USB power, "bat" or "usb" alone print them. COM5 can only be opened once, so the log reader and the

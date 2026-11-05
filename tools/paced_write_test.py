@@ -1,4 +1,4 @@
-"""Dataset + view write test (DESIGN.md 6.5, rev 6; ZIGBEE_PAYLOAD.md 7).
+"""Dataset + view write test (docs/zigbee.md#input-ha-to-device; docs/research/wake-delivery-bench.md).
 
 Default mode: reset the device once and wait for its wake report. Then, per round, make sure the device has the
 test dataset (DS_LINES entries, SPACING ms apart, then the commit; skipped while the device already has it) and
@@ -11,14 +11,14 @@ and only publish after Z2M has received the wake report, as the HA automation do
 Env: MQTT_HOST (default 192.168.0.32), MQTT_PORT (1883), MQTT_USER, MQTT_PASS.
 --settle=S: after the wake trigger, wait S seconds before the first write (default 0.5).
 The wake trigger is a change of wake_count in the device's Z2M state, as in the HA
-automation (DESIGN.md 7), not the serial log.
+automation (docs/home-assistant.md#push-automation), not the serial log.
 
 --ds-lines=N: entries in the test dataset, 1 to 32 (default 8).
 --hu: Hungarian texts (UTF-8, every accented letter), cut to 64 bytes at a character boundary.
 --hu-long: like --hu, but every other line's name is accented letters up to 64 bytes (3 ds_entry parts).
 --drop-part: leave out the last part of the first multi-part line; expect the commit to be REJECTED.
-Lines are in the line format II|name|state (DESIGN.md 5.1), one icon per line.
-Every line is sent in parts of at most 26 bytes (DESIGN.md 6.5), split at character boundaries.
+Lines are in the line format II|name|state (docs/data-model.md#line-format), one icon per line.
+Every line is sent in parts of at most 26 bytes (docs/zigbee.md#input-ha-to-device), split at character boundaries.
 --resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
 --oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
 --same: the view id stays the same after round 1; expect "time only" (the footer time updates).
@@ -50,7 +50,7 @@ DEVICE = "gf_lobby_greenlight"
 DEVICE_IEEE = "0x10bda3fffea02724"
 CUSTOM_CLUSTER = 0xFC8A
 
-# Custom cluster attributes (DESIGN.md 6.5) and ZCL data types
+# Custom cluster attributes (docs/zigbee.md#input-ha-to-device) and ZCL data types
 VIEW_BITS, VIEW_DS, VIEW_TIME, VIEW_ID, DS_ENTRY, DS_COMMIT = 0x20, 0x21, 0x22, 0x23, 0x30, 0x31
 UINT32, STRING = 35, 66
 
@@ -291,7 +291,7 @@ def wait_for_wake(serial_monitor, z2m, since, settle_s, timeout=30.0):
 # ---- The test dataset ----
 
 def fit_utf8(text, limit=LINE_MAX_BYTES):
-    """The text cut to limit UTF-8 bytes (DESIGN.md 5.1), never inside a character."""
+    """The text cut to limit UTF-8 bytes (docs/data-model.md#dataset), never inside a character."""
     return text.encode()[:limit].decode(errors="ignore")
 
 
@@ -307,7 +307,7 @@ def split_parts(text):
 
 
 def dataset_line(index, name, state):
-    """Dataset line `index` in the line format II|name|state (DESIGN.md 5.1): icon ids from 0x02 (the first real
+    """Dataset line `index` in the line format II|name|state (docs/data-model.md#line-icons): icon ids from 0x02 (the first real
     icon, 0x21 for line 31), the name cut so the whole line fits LINE_MAX_BYTES bytes."""
     head, tail = f"{index + 2:02X}|", f"|{state}"
     return head + fit_utf8(name, LINE_MAX_BYTES - len(head.encode()) - len(tail.encode())) + tail
@@ -342,12 +342,12 @@ def sync_dataset(dataset_hash, lines, options, z2m, serial_monitor):
                 serial_monitor.log.write("test", f"dropping part {part_index} of line {index}")
                 dropped = True
                 continue
-            line_and_part = index | part_index << 5 | more << 7   # line index, part, "more" (DESIGN.md 6.5)
+            line_and_part = index | part_index << 5 | more << 7   # line index, part, "more" (docs/zigbee.md#input-ha-to-device)
             z2m.write_attributes({DS_ENTRY: (f"{dataset_hash:06X}|{line_and_part:02X}|{part}", STRING)})
             writes += 1
             time.sleep(options.spacing_s)
     z2m.write_attributes({DS_COMMIT: ((len(lines) << 24) | dataset_hash, UINT32)})
-    # 30 s plus 1.5 s per write: about 0.45 s per write reaches the sleepy device (ZIGBEE_PAYLOAD.md), with stalls
+    # 30 s plus 1.5 s per write: about 0.45 s per write reaches the sleepy device (docs/zigbee.md#dataset-sync), with stalls
     return serial_monitor.wait_for_verdict([("stored", f"ds_commit {dataset_hash:06x} accepted"),
                                             ("already", f"ds_commit {dataset_hash:06x}: already stored"),
                                             ("REJECTED", f"ds_commit {dataset_hash:06x} rejected")],
@@ -375,7 +375,7 @@ class Run:
         if self.options.resync_each and round_number > 1:
             self.dataset_hash, self.dataset_lines = make_dataset(round_number, self.options)
         if self.device_dataset is None and self.z2m.last_dataset_hash is not None:
-            # Z2M's cached value, as the HA automation uses it (DESIGN.md 7)
+            # Z2M's cached value, as the HA automation uses it (docs/home-assistant.md#push-automation)
             self.device_dataset = self.z2m.last_dataset_hash
         if self.device_dataset == self.dataset_hash:
             return None
@@ -408,7 +408,7 @@ class Run:
     def push_view(self):
         self.view_id = self.next_view_id()
         bits = random.randrange(0, 1 << self.options.dataset_lines)
-        local_now = calendar.timegm(time.localtime())  # local wall-clock seconds since 1970 (DESIGN.md 5.2)
+        local_now = calendar.timegm(time.localtime())  # local wall-clock seconds since 1970 (docs/data-model.md#view)
         view_dataset = self.dataset_hash ^ 1 if self.options.out_of_sync else self.dataset_hash
         start = time.perf_counter()
         self.z2m.write_attributes({VIEW_BITS: (bits, UINT32), VIEW_DS: (view_dataset, UINT32),

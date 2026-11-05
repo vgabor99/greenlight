@@ -1,4 +1,4 @@
-/* The display input (DESIGN.md 6.5): HA's writes to the custom cluster. A view comes as four view_* attributes in
+/* The display input (docs/zigbee.md#input-ha-to-device): HA's writes to the custom cluster. A view comes as four view_* attributes in
  * one write; a dataset as ds_entry writes (one per line part) followed by a ds_commit. */
 
 #include <string.h>

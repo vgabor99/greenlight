@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Staleness (DESIGN.md 5.3): every received view is fresh for VIEW_VALID_MS. HA pushes the view every 5 s while the
+/* Staleness (docs/data-model.md#staleness-flag): every received view is fresh for VIEW_VALID_MS. HA pushes the view every 5 s while the
  * device is awake, + 3 s latency. */
 #define VIEW_VALID_MS 8000
 

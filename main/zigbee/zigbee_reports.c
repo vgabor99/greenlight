@@ -1,4 +1,4 @@
-/* Reports to the coordinator (DESIGN.md 6.4): the device state, the occupancy and the battery. */
+/* Reports to the coordinator (docs/zigbee.md#state-device-to-ha): the device state, the occupancy and the battery. */
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -11,7 +11,7 @@
 
 static const char *TAG = "zb";
 
-/* Battery (DESIGN.md 6.6): batteryAlarmState bit 0 (BatteryMinThreshold) = low, Z2M's battery_low */
+/* Battery (docs/zigbee.md#battery): batteryAlarmState bit 0 (BatteryMinThreshold) = low, Z2M's battery_low */
 #define BATTERY_ALARM_LOW 0x00000001u
 #define GOODBYE_RETRY_MS  1000  /* zigbee_report_goodbye(): resend an unconfirmed report this often */
 

@@ -3,9 +3,9 @@
 #include <stdint.h>
 #include "zigbee/zigbee.h"
 
-#define VIEW_LAYOUT_ROWS 6  /* line rows on the screen (DESIGN.md 5.2) */
+#define VIEW_LAYOUT_ROWS 6  /* line rows on the screen (docs/data-model.md#layout-rule) */
 
-/* The view on the panel, with its rows already laid out, so a new dataset never changes it (DESIGN.md 6.5).
+/* The view on the panel, with its rows already laid out, so a new dataset never changes it (docs/data-model.md#view).
  * Stored in NVS as is: keep the layout. */
 typedef struct {
     zigbee_view_t view;          /* view.id 0 = nothing shown */
@@ -15,5 +15,5 @@ typedef struct {
 } shown_view_t;
 
 /* Lay out a view: the active lines in dataset order; with more than VIEW_LAYOUT_ROWS of them, the first
- * VIEW_LAYOUT_ROWS - 1 and "további N" with the dots icon (DESIGN.md 5.2). */
+ * VIEW_LAYOUT_ROWS - 1 and "további N" with the dots icon (docs/data-model.md#layout-rule). */
 void view_layout_build(shown_view_t *out, const zigbee_dataset_t *dataset, const zigbee_view_t *view);

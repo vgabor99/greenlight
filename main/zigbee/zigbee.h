@@ -3,15 +3,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Zigbee side of the device (DESIGN.md section 6): the data model, the reports and the display input.
+/* Zigbee side of the device (docs/zigbee.md): the data model, the reports and the display input.
  * The stack runs in its own task; every function here is safe to call from the application task. */
 
-#define ZIGBEE_DATASET_MAX_LINES 32  /* dataset lines, one bit each in the view (DESIGN.md 5.1) */
+#define ZIGBEE_DATASET_MAX_LINES 32  /* dataset lines, one bit each in the view (docs/data-model.md#dataset) */
 #define ZIGBEE_LINE_MAX_BYTES    64  /* longest dataset line text, UTF-8 bytes (32 accented letters) */
 #define ZIGBEE_LINE_MAX_PARTS    3   /* a line comes in up to this many ds_entry writes */
 #define ZIGBEE_PART_MAX_BYTES    26  /* longest text of one ds_entry write */
 
-/* The dataset (DESIGN.md 5.1): every line the screen can show; the index is the line's bit in the view. Stored
+/* The dataset (docs/data-model.md#dataset): every line the screen can show; the index is the line's bit in the view. Stored
  * in NVS as is: keep the layout. */
 typedef struct {
     uint32_t hash;   /* 24-bit hash chosen by HA, 0 = no dataset */
@@ -19,7 +19,7 @@ typedef struct {
     char     text[ZIGBEE_DATASET_MAX_LINES][ZIGBEE_LINE_MAX_BYTES + 1];
 } zigbee_dataset_t;
 
-/* A view (DESIGN.md 5.2): the four view_* attributes of one write. Stored in NVS as is: keep the layout. */
+/* A view (docs/data-model.md#view): the four view_* attributes of one write. Stored in NVS as is: keep the layout. */
 typedef struct {
     uint32_t bits;          /* bit i = dataset line i active */
     uint32_t dataset_hash;  /* the dataset the bits refer to */
@@ -41,7 +41,7 @@ typedef enum {
     ZIGBEE_COMMIT_REJECTED,        /* an entry is missing or tagged with another hash */
 } zigbee_commit_result_t;
 
-/* One received write to the display input (DESIGN.md 6.5), as it arrived; for the debug screen. */
+/* One received write to the display input (docs/zigbee.md#input-ha-to-device), as it arrived; for the debug screen. */
 typedef enum { ZIGBEE_WRITE_VIEW, ZIGBEE_WRITE_DATASET_ENTRY, ZIGBEE_WRITE_DATASET_COMMIT } zigbee_write_kind_t;
 
 typedef struct {
@@ -100,7 +100,7 @@ void zigbee_stop_pairing(void);
 /* Leave the network, erase all Zigbee data and restart the chip. Does not return. */
 void zigbee_erase_network(void);
 
-/* Reports to the coordinator (DESIGN.md 6.4) */
+/* Reports to the coordinator (docs/zigbee.md#state-device-to-ha) */
 void zigbee_report_wake_count(void);     /* 0xFC8A wake_count: HA's push trigger */
 void zigbee_report_shown_view_id(void);  /* 0xFC8A shown_view_id */
 void zigbee_report_dataset_hash(void);   /* 0xFC8A dataset_hash */
