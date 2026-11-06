@@ -26,12 +26,8 @@ panel: refresh #<partials since clear> (<label>) <ms> ms, busy before <0|1>, bla
 
 ## BUSY hang
 
-Signature: a refresh never finishes, BUSY stays high, the screen goes grainy grey, every later command fails until
-a hardware reset (sometimes the first reset is not enough while the contact is still bad).
-
-Cause: a bad display GND contact on the breadboard (stress test 2026-10-15: 10 hangs in about 365 refreshes
-while the wires were handled, 0 in 1,546 untouched). Radio TX, pixel density, refresh count and time awake were
-ruled out. So:
+Symptom, cause (a bad display GND contact on the breadboard) and the hardware fix still to do:
+docs/hardware.md#busy-hang. So:
 
 1. Ask whether the board or wires were touched during the refresh before suspecting the code.
 2. Don't touch the board during refreshes in a test.
@@ -39,9 +35,6 @@ ruled out. So:
    wake does it.
 4. The firmware does not recover on purpose, so failures stay visible (docs/behaviour.md#failure-modes);
    automatic recovery is planned in docs/roadmap.md#future-work. Don't add it unasked.
-
-The hardware fix (still to do): a solid, soldered display GND and a 47-220 uF + 100 nF capacitor at the
-display's VCC/GND pins.
 
 ## Other symptoms
 

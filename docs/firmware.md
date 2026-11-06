@@ -37,7 +37,8 @@ Every file under `main/` has one purpose and is named after it.
 | `zigbee/zigbee_internal.h` | shared between the `zigbee/` files only |
 | `util/utf8.c`, `util/hex.h`, `util/elapsed_time.h` | helpers |
 
-Other folders: `tools/` (bitmap generator, serial console, framebuffer dump, Zigbee bench test), `z2m/` (the
+Other folders: `tools/` (bitmap and mockup generators, serial console, framebuffer dump, Zigbee bench test,
+docs checker), `z2m/` (the
 Zigbee2MQTT converter), `ha/` (the Home Assistant sources).
 
 Dependencies: the Zigbee libraries (`espressif__esp-zigbee-lib`, `esp-zboss-lib`) and u8g2 (upstream git,

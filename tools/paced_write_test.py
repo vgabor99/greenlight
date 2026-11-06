@@ -21,7 +21,7 @@ Lines are in the line format II|name|state (docs/data-model.md#line-format), one
 Every line is sent in parts of at most 26 bytes (docs/zigbee.md#input-ha-to-device), split at character boundaries.
 --resync-each: a new dataset (new texts, new hash) in every round, then the view: tests the multi-frame path.
 --oos: views name a dataset the device does not have; expect "out of sync" and nothing drawn.
---same: the view id stays the same after round 1; expect "time only" (the footer time updates).
+--same: the view id stays the same after round 1; expect "time only" (nothing redrawn but the staleness flag).
 --no-view: send no view; the device should stay awake VIEW_WAIT_MS (45 s) instead of IDLE_TIMEOUT_MS (20 s).
 Use GAP_S >= 50.
 

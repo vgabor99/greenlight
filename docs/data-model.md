@@ -48,10 +48,7 @@ as "??? ???" with the fallback icon; an unknown icon id only gets the fallback i
 Material Design Icons 7.4.47 (the set HA uses). **The table is append-only**: HA's templates use the ids, so an
 entry is never moved or removed; new icons are added at the end (`LINE_ICONS` in `tools/gen_bitmaps.py`, then
 regenerate, see the `regen-bitmaps` skill). Most are not used yet; they are in the firmware so new kinds of
-lines need no reflash. Ids used by HA today: 00 (`problem`), 01 (catch-all), 02 (door), 04 (window), 08 (lock),
-09 (alarm), 0D (light), 13 (remote), 27 (moisture).
-
-The icon Id-s are fixed, the icon set and the ids are built in the firmware.
+lines need no reflash. The ids HA uses today: [home-assistant.md](home-assistant.md#dataset).
 
 | Id | Icon | Id | Icon | Id | Icon | Id | Icon |
 |---|---|---|---|---|---|---|---|

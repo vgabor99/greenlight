@@ -11,7 +11,7 @@
 | **Resistor**          | 100k                                                                                                 | External pull-down resistor for the PIR output<br>Resistance is chosen to keep the sensor's output current within spec, under 100 uA                    |
 | **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
 
-  ([firmware.md](firmware.md#simulated-parts)).
+The battery voltage and USB power are simulated for now ([firmware.md](firmware.md#simulated-parts)).
 
 ## Pins
 

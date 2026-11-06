@@ -22,7 +22,8 @@ re-pairing: the converter, the exposed names and units, and custom attributes ad
    (0x0000), so nothing depends on Z2M's bind / Configure Reporting step succeeding on a sleeping device. The
    converter has no configure step and no readable exposes.
 4. **Attribute ids are append-only.** Never reuse or renumber one. Retired: 0x0000-0x0007 (the rev 5 snapshot,
-   [history.md](history.md)); reserved for future work: 0x0010-0x0014 ([roadmap.md](roadmap.md#future-work)).
+   [history.md](history.md)); in use: 0x0013 (`battery_mv`); reserved for future work: 0x0010-0x0012 and 0x0014
+   ([roadmap.md](roadmap.md#future-work)).
 5. Z2M availability is disabled for the device. `last_seen` (updated by every report) is the liveness signal
    and doubles as "last wake".
 

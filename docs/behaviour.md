@@ -24,6 +24,7 @@ network (paired). The PIR's own hold time is ignored.
 | `PAIRING_WINDOW_MS` | 180 s | length of the pairing window. |
 | `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
 | `PAIR_BUTTON_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
+| `STACK_START_TIMEOUT_MS` | 30 s | BOOT waits this long for the Zigbee stack to report whether it restored a network ([Pairing](#pairing)). |
 | `REJOIN_TIMEOUT_MS` | 15 s | give up a rejoin after this long (a rejoin normally takes about 1.5 s). |
 | `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend ([home-assistant.md](home-assistant.md#push-automation)). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
 | `HEARTBEAT_MS` | 30 s | ACTIVE repeats `awake` + `shown_view_id` this often. |
@@ -67,7 +68,7 @@ stateDiagram-v2
     INTERVIEW --> ACTIVE: INTERVIEW_MS over
     PAIRING --> SHUTDOWN: battery low
     UNPAIRED --> SHUTDOWN: IDLE_TIMEOUT_MS expired or battery low
-    BOOT --> SHUTDOWN: battery low
+    BOOT --> SHUTDOWN: battery low or stack did not start
     BOOT --> LOW_BATTERY: battery still low (latched)
     SHUTDOWN --> LOW_BATTERY: battery low, panel off
     SHUTDOWN --> SLEEP: panel off
@@ -79,14 +80,14 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | deep sleep, nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
+| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (error screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
 | **UNPAIRED** | shows "Párosítás" with how to pair; `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> UNPAIRED; battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
-| **ERASE_NETWORK** | polite leave, erase the Zigbee storage, clear the stored dataset and view, set the `pair_now` flag, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | finish any refresh, final clean refresh (clear, then render the current view); if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin or an unpaired device sends nothing); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before `awake` = false, latch `bat_low`, draw the battery screen, -> LOW_BATTERY |
+| **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
+| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: latch `bat_low`, report the battery (`battery_low`) before the goodbye, draw the battery screen, -> LOW_BATTERY |
 | **LOW_BATTERY** | the battery screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
@@ -132,15 +133,17 @@ the battery:
 
 - **Detecting "no network"**: the stack signal `EZB_BDB_SIGNAL_DEVICE_FIRST_START` means factory new,
   `EZB_BDB_SIGNAL_DEVICE_REBOOT` means a network was restored from NVS. BOOT waits for it, so BOOT cannot
-  finish before the stack has reported.
+  finish before the stack has reported; after `STACK_START_TIMEOUT_MS` without it, the wake ends with the
+  error screen.
 - **PAIRING** runs BDB network steering with retries for `PAIRING_WINDOW_MS`. The user enables "Permit join" in
   Zigbee2MQTT meanwhile.
 - **INTERVIEW**: Z2M reads the Basic cluster attributes and so on (several seconds, sometimes tens). Z2M stores
   the identity it reads ([zigbee.md](zigbee.md#identity-and-freeze-rules)). HA can already sync the dataset and
   push the first view (`dataset_hash = 0` and `shown_view_id = 0` differ from anything HA has).
-- **ERASE_NETWORK** (`zigbee_erase_network()`): sets `pair_now`, then a polite leave
-  (`ezb_bdb_reset_via_local_action()`), then `esp_zigbee_factory_reset()`, which erases the Zigbee storage and
-  restarts the chip, so the next BOOT goes straight to PAIRING.
+- **ERASE_NETWORK** sets `pair_now` and clears the stored dataset and view, then calls
+  `zigbee_erase_network()`: a polite leave (`ezb_bdb_reset_via_local_action()`), then
+  `esp_zigbee_factory_reset()`, which erases the Zigbee storage and restarts the chip, so the next BOOT goes
+  straight to PAIRING.
 - **Z2M side**: after a reset, Z2M may still list the old device. A re-pair with the same IEEE address works
   as a rejoin; to start clean, remove the device in Z2M first.
 
@@ -174,7 +177,8 @@ LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only
 | HA down / Zigbee down | Screen keeps the stored view; the stale badge appears at most 8 s after the last view received. |
 | Rejoin fails (parent gone) | After `REJOIN_TIMEOUT_MS` the device shuts down with "Csatlakozási hiba" on screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. |
-| Device dies silently | `awake` expires in HA after about 90 s. |
+| Device dies silently | `awake` stays on in HA, but HA stops pushing 90 s after the last report ([awake gate](home-assistant.md#push-automation)). |
+| Zigbee stack does not start | After `STACK_START_TIMEOUT_MS` the device shuts down with "Ismeretlen hiba" on screen. |
 | Pairing fails | Back to UNPAIRED with the "Párosítás" screen; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it (to verify, [roadmap.md](roadmap.md)). |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |

@@ -29,11 +29,11 @@ breadboard. Details: [docs/roadmap.md](docs/roadmap.md).
 
 ```
 main/        firmware, grouped by part: board/, display/, screen/, zigbee/, util/
-tools/       bitmap generator, serial console, framebuffer dump, Zigbee bench test
+tools/       bitmap and mockup generators, serial console, framebuffer dump, Zigbee bench test, docs checker
 z2m/         Zigbee2MQTT external converter
 ha/          Home Assistant templates and package
 docs/        design, history, roadmap and research notes (start at docs/README.md)
-.claude/     Claude Code skills: bench testing, HA deploy, panel troubleshooting, bitmaps
+.claude/     Claude Code skills: bench testing, HA deploy, panel troubleshooting, bitmaps, docs check
 CLAUDE.md    build environment and conventions
 ```
 

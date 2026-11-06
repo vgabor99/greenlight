@@ -14,8 +14,9 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 
 ## Open questions
 
-- **Q1 Rejoin time over many wakes.** 1.4-1.5 s after boot in the deep-sleep test (31 wakes); still to measure
-  end to end (wake to view on screen) and after a long sleep. `join_time_ms` would make it visible in HA.
+- **Q1 Rejoin time over many wakes.** 1.4-1.5 s after boot in the deep-sleep test (31 wakes). A rejoin after a
+  long sleep works ([behaviour.md](behaviour.md#deep-sleep)); its time, and the time end to end (wake to view on
+  screen), are still to measure. `join_time_ms` would make it visible in HA.
 - **Q2 Retained RAM across `esp_restart()`.** Fine across deep sleep on the C6, unverified across a software
   restart. Only matters for flash wear, not for correctness.
 - **Q4 OTA.** The OTA client cluster is declared, so the cluster list never changes; the partition table (two
@@ -34,7 +35,6 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 - Wake delivery with the device next to the coordinator: if clean, the Tuya routers' handling of a rejoined
   sleepy child is the cause of the post-wake losses; if still lossy, look at the device's stack after a reboot
   ([wake delivery bench](research/wake-delivery-bench.md)).
-- Z2M availability disabled for the device.
 
 ## Future work
 

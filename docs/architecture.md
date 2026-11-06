@@ -108,8 +108,8 @@ About 2 seconds after the wake counter, when the view has normally arrived, the 
 state and diagnostics. While the device is awake, the Home Assistant automation pushes new datasets and new views
 as needed.
 
-At the end of the wake window, the device clears the panel, renders the current view one last time and sends
-goodbye messages (awake=false, occupancy=false). The panel is the memory: the e-paper keeps its image without
+At the end of the wake window, the device sends goodbye messages (awake=false, occupancy=false), then clears the
+panel and renders the current view one last time. The panel is the memory: the e-paper keeps its image without
 power, so the screen keeps showing the last view while the device is in deep sleep. If the wake ended without fresh
 data, the stale badge stays on until the next wake.
 
@@ -171,8 +171,8 @@ sequenceDiagram
     rect rgba(200, 200, 200, 0.2)
     Note left of Greenlight: 6: Shutdown
     Note over Greenlight: No PIR activity for 20 s
-    Note over Greenlight: Clear, render final view (the panel keeps it)
     Greenlight->>HomeAssistant: Send goodbye: occupancy=false, awake=false
+    Note over Greenlight: Clear, render final view (the panel keeps it)
     Note over Greenlight: Deep sleep
     end
 ```

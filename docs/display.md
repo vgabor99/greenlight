@@ -7,7 +7,7 @@ The panel itself and its quirks are in [hardware.md](hardware.md#e-paper-panel).
 
 ## Refresh policy
 
-- 400x300, 1 bit. A partial refresh takes about 470 ms however many pixels change, a full clear about 500 ms.
+- 400x300, 1 bit. Refresh and clear times: [hardware.md](hardware.md#e-paper-panel).
 - A frame identical to the one on the panel is not sent, so writes that change nothing on the screen cost no
   refresh.
 - BOOT and SHUTDOWN clear the panel ([behaviour.md](behaviour.md#panel-on-each-wake)); in between every redraw is
@@ -35,8 +35,9 @@ edited by hand; the `regen-bitmaps` skill):
 The mockups' text is about 4 % wider than this rendering (kerning, browser rasterising); positions and heights
 match. The sizes and positions were fitted by measuring the mockups before the [UI spec](uispec/ui-spec.md#layout-and-type)
 recorded the design values, so they differ from it slightly: the text weights are a step heavier (name 700 for
-600, state 600 for 400, detail and instruction lines 500 for 400), the right edge is 387 for 388, and the
-unpaired instruction baselines are 217 / 249 for 218 / 250.
+600, state 600 for 400, detail and instruction lines 500 for 400), the right edge is 387 for 388, the
+unpaired instruction baselines are 217 / 249 for 218 / 250, `check-circle` is 152 px for 150, and the stale
+badge's ring is 4.5 px wide for 4.
 
 ## House screens
 
@@ -94,5 +95,5 @@ boot every screen once with the mockups' content and a few edge cases (malformed
 name and state, empty state), without drawing them (`main/display/frame_dump.c`). `tools/fb_dump.py --reset`
 resets the board and saves the frames as PNGs. It costs about 2 s at boot and a few hundred ms per frame (the
 console is slow, and the Zigbee task logs through it too), so it is off in normal builds. Last checked
-2026-10-31: all ten mockups reproduced, the differences being glyph hinting. The mockups are in
+2026-10-31: the ten mockups of the time reproduced, the differences being glyph hinting. The mockups are in
 [mockups/](uispec/mockups/) since 2026-11-06.
