@@ -32,16 +32,19 @@ on, ...). Each line has an icon, a name and a state (e.g. `Teraszajtó | nyitva`
 
 ## System overview
 
-A screen nobody is looking at doesn't need to be up to date. Greenlight is a sleepy Zigbee end device that spends
-most of its life in deep sleep. A low-power PIR sensor wakes it when someone steps in front of it. It then rejoins
-the network and gets the latest state from Home Assistant. It stays live while someone is there and goes back to
-sleep afterwards. This shapes almost all aspects of the architecture and software design.
+Greenlight is a sleepy Zigbee end device that spends most of its life in deep sleep. A low-power PIR sensor wakes
+it when someone steps in front of it. It then rejoins the network and gets the latest state from Home Assistant.
+It stays live while someone is there and goes back to sleep afterwards. This shapes almost all aspects of the
+architecture and software design.
 
 **Data is pushed from Home Assistant.** A Home Assistant automation ([`ha/`](../ha/)) observes when Greenlight is
 awake and pushes data. The device never asks for data; it only reports what it shows.
 
 **The device is dumb.** Home Assistant creates the data lines, orders them as they should appear on the screen
 (dataset), and decides which lines of the dataset are active (view). The device only lays the view lines out.
+The dataset and the view are both identified by a hash, so the system can detect when updates are needed.
+The hashes are computed exclusively in the Home Assistant automation. The device never computes hashes, 
+only stores and acknowledges the received ones.
 
 ```mermaid
 flowchart LR
@@ -95,7 +98,10 @@ wrong screen.
 At the start of the wake window, the data exchange follows a strict priority order. Every frame risks a loss and a
 long delay, so critical data is exchanged first. The device reports only its wake counter, and Home Assistant
 answers with the view. During day-to-day operation the dataset is already cached; if it has changed, Home Assistant
-syncs it before the view, since the view refers to it.
+syncs it before the view, since the view refers to it. This initial exchange is the most time-critical part; and
+unfortunately, this is when most frame losses are observed to happen. To mitigate the risk and give the best chance
+of achieving a low wake-to-render time, the first 2 seconds of the wake window are reserved for the initial
+exchange, to free up resources in the Zigbee network.
 
 About 2 seconds after the wake counter, when the view has normally arrived, the device reports the rest of its
 state and diagnostics. While the device is awake, the Home Assistant automation pushes new datasets and new views

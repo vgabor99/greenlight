@@ -2,12 +2,15 @@
 
 ## Parts
 
-- **MCU**: Seeed XIAO ESP32-C6 (ESP-IDF target `esp32c6`).
-- **Panel**: 4.2" 400x300 1-bit e-paper, Waveshare V2 rev 2.2, SSD1683 controller; driver `main/display/epaper.c`.
-- **PIR**: Panasonic EKMB1205111 (2 uA, 36°x150°) on 3V3.
-- **Pair button**: to GND.
-- **Battery** (planned): a single 1000 mAh LiPo cell with a protection circuit, which cuts the cell off before
-  it is damaged (around 2.5-3 V). Until it exists the battery is simulated
+| Part                  | Type                                                                                                 | Reason for choice                                                                                                                                       |
+|-----------------------|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **MCU**               | Seeed XIAO ESP32-C6 (ESP-IDF target `esp32c6`)                                                       | Low-power<br>Supports deep sleep<br>Supports Zigbee<br>Has battery management<br>Sufficient GPIOs and peripherals<br>Support external antenna if needed |
+| **Panel**             | 4.2" 400x300 1-bit e-paper, Waveshare V2 rev 2.2, SSD1683 controller; driver `main/display/epaper.c` | Low-power<br>Supports partial updates (~0.5s)<br>Sufficient size and resolution for glanceability                                                       |
+| **PIR**               | Panasonic EKMB1205111 (2 uA, dT=4°C, 36°x150°) on 3V3                                                | Ultra low-power<br>High senstivity<br>Wide lens fits the shape of the room<br>Voltage levels compatible with the 3.3V board                             |
+| **Pair button**       | One I had lying around                                                                               | User facing button for (re-) pairing                                                                                                                    |
+| **Resistor**          | 100k                                                                                                 | External pull-down resistor for the PIR output<br>Resistance is chosen to keep the sensor's output current within spec, under 100 uA                    |
+| **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
+
   ([firmware.md](firmware.md#simulated-parts)).
 
 ## Pins

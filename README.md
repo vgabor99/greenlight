@@ -16,7 +16,7 @@ target of one charge a year or less, so both the hardware and the software are d
 ## Parts
 
 - Hardware: Seeed XIAO ESP32-C6, 4.2" 400x300 e-paper (Waveshare V2, SSD1683), Panasonic EKMB1205111 low-power
-  PIR sensor, pair button.
+  PIR sensor, pair button. Details: [docs/hardware.md](docs/hardware.md).
 - Firmware: ESP-IDF v6.1 (C, CMake), a Zigbee sleepy end device.
 - Home Assistant side: Zigbee2MQTT with the external converter in `z2m/`, templates and an automation in `ha/`.
 

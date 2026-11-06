@@ -14,8 +14,15 @@ How they travel over Zigbee is in [zigbee.md](zigbee.md#input-ha-to-device); how
 ## Dataset
 
 ```json
-{ "hash": 4821377,
-  "lines": [ "02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "27|Mosogató|nedves" ] }
+{
+  "hash": 4821377,
+  "lines": [ 
+    "02|Teraszajtó|nyitva",
+    "04|Háló ablak|nyitva",
+    "0D|Nappali lámpa|be",
+    "27|Mosogató|tócsa"
+  ]
+}
 ```
 
 - `lines`: **at most 32** entries (`ZIGBEE_DATASET_MAX_LINES`); the position is the line's **index** (0-31),
@@ -44,6 +51,8 @@ regenerate, see the `regen-bitmaps` skill). Most are not used yet; they are in t
 lines need no reflash. Ids used by HA today: 00 (`problem`), 01 (catch-all), 02 (door), 04 (window), 08 (lock),
 09 (alarm), 0D (light), 13 (remote), 27 (moisture).
 
+The icon Id-s are fixed, the icon set and the ids are built in the firmware.
+
 | Id | Icon | Id | Icon | Id | Icon | Id | Icon |
 |---|---|---|---|---|---|---|---|
 | 00 | alert-circle (fallback) | 10 | led-strip-variant | 20 | washing-machine | 30 | thermometer |
@@ -68,18 +77,23 @@ No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an 
 ## View
 
 ```json
-{ "ds": 4821377, "bits": 5, "time": 1793112720, "id": 9871234 }
+{ 
+  "ds": 4821377,
+  "bits": 5,
+  "id": 9871234,
+  "time": 1793112720
+}
 ```
 
-- `bits`: bitfield over the dataset, bit *i* set = line *i* is active. 0 = "All OK".
 - `ds`: the dataset hash the bits refer to. The device accepts the view only if `ds` equals its stored
   `dataset_hash`; otherwise it is **out of sync** and leaves the screen as it is.
+- `bits`: bitfield over the dataset, bit *i* set = line *i* is active. 0 = "All OK".
 - `id`: **24-bit**, chosen by HA, identifying `ds` + `bits`. **Not 0**. The device echoes it as
   `shown_view_id` when the view is on the panel; it never computes it. The time is **not** part of the id: a
   new time alone must not look like new content.
 - `time`: local wall-clock time as seconds since 1970-01-01, i.e. HA's Unix time plus its UTC offset. The
   device stores it with the view but does not draw it (the [staleness flag](#staleness-flag) shows freshness
-  instead). 0 = unknown.
+  instead). 0 = unknown. Currently unused.
 
 The device stores the rendered rows of the shown view (at most 6 texts, the id and the time), not only the
 bits. A new dataset therefore never changes the screen by itself: the old rows stay until a view for the new
