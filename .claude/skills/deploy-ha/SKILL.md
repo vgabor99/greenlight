@@ -1,6 +1,6 @@
 ---
 name: deploy-ha
-description: "Deploy greenlight's Home Assistant and Zigbee2MQTT side - ha/custom_templates/greenlight.jinja, ha/packages/greenlight.yaml and z2m/greenlight.mjs - to the live HA / Z2M, and check that the deployed copy matches the repo. Use after editing any file under ha/ or z2m/, or when HA's greenlight sensors or push automation misbehave."
+description: "Deploy greenlight's Home Assistant and Zigbee2MQTT side - ha/custom_templates/greenlight.jinja, ha/packages/greenlight.yaml and z2m/greenlight.mjs - to the live HA / Z2M (the converter through the user), and check that the deployed copy matches the repo. Use after editing any file under ha/ or z2m/, or when HA's greenlight sensors or push automation misbehave."
 ---
 
 # Deploying the HA and Z2M side
@@ -33,18 +33,25 @@ changes the user agreed to, not new ones.
 
 ## Converter: z2m/greenlight.mjs
 
-1. Z2M needs `advanced.enable_external_js: true` (restart after turning it on).
-2. Copy the file to Z2M's `data/external_converters/greenlight.mjs`, or publish it to
-   `zigbee2mqtt/bridge/request/converter/save`.
-3. A copied file and its folder must belong to Z2M's user (`chown -R --reference=data data/external_converters`):
+**The user deploys the converter, not Claude.** Claude cannot write to Z2M: the MQTT tool has no write
+permission on `zigbee2mqtt/bridge/request/converter/save`, and the Z2M host is not reachable from here. Don't
+try either. Before handing over, read the live copy (step 1) so a change that exists only in Z2M is not
+overwritten. Then give the user steps 2-5 and check the result afterwards (step 6).
+
+1. Before: read the retained `zigbee2mqtt/bridge/converters` topic (`mqtt_read`; it holds each converter's
+   `name` and `code`) and compare `greenlight.mjs` with the last committed repo copy. Report any difference.
+2. Z2M needs `advanced.enable_external_js: true` (restart after turning it on).
+3. Copy the file to Z2M's `data/external_converters/greenlight.mjs`.
+4. The file and its folder must belong to Z2M's user (`chown -R --reference=data data/external_converters`):
    Z2M copies the file to a temp file in that folder before loading it, and with root ownership that fails
    (`EACCES`, "Invalid external converter ... was ignored").
-4. Restart Z2M. No re-pair: Z2M picks the definition by the device's fingerprint. A new custom attribute needs a
+5. Restart Z2M. No re-pair: Z2M picks the definition by the device's fingerprint. A new custom attribute needs a
    line in the cluster and an expose in the converter.
-5. Check: the device's Exposes tab in Z2M, or the MQTT state on `zigbee2mqtt/gf_lobby_greenlight` showing
-   `wake_count`, `shown_view_id`, `dataset_hash`, `awake`, `voltage`.
+6. After: read `zigbee2mqtt/bridge/converters` again and compare it with the repo copy; check the MQTT state on
+   `zigbee2mqtt/gf_lobby_greenlight` shows `wake_count`, `shown_view_id`, `dataset_hash`, `awake`, `voltage`.
 
 ## Verify the sync
 
-`ha_read_file` each deployed file and compare it with the repo copy; report any difference instead of
-overwriting silently if HA holds a change the repo doesn't.
+`ha_read_file` each deployed HA file and compare it with the repo copy; report any difference instead of
+overwriting silently if HA holds a change the repo doesn't. The converter is compared over MQTT (converter
+step 1).
