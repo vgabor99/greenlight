@@ -33,7 +33,10 @@ edited by hand; the `regen-bitmaps` skill):
   `sync` at 24 px.
 
 The mockups' text is about 4 % wider than this rendering (kerning, browser rasterising); positions and heights
-match.
+match. The sizes and positions were fitted by measuring the mockups before the [UI spec](uispec/ui-spec.md#layout-and-type)
+recorded the design values, so they differ from it slightly: the text weights are a step heavier (name 700 for
+600, state 600 for 400, detail and instruction lines 500 for 400), the right edge is 387 for 388, and the
+unpaired instruction baselines are 217 / 249 for 218 / 250.
 
 ## House screens
 

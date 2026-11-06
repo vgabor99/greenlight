@@ -1,0 +1,27 @@
+{
+  "house_problems": {"layout": "problems", "rows": [
+    ["door-open", "Teraszajtó", "nyitva"], ["window-open", "Háló ablak", "nyitva"],
+    ["lightbulb-on", "Nappali lámpa", "be"], ["fridge", "Hűtő", "túl meleg"],
+    ["snowflake", "Fagyasztó", "túl meleg"], ["water", "Mosogató", "nedves"]]},
+  "house_overflow": {"layout": "problems", "rows": [
+    ["door-open", "Teraszajtó", "nyitva"], ["window-open", "Háló ablak", "nyitva"],
+    ["lightbulb-on", "Nappali lámpa", "be"], ["fridge", "Hűtő", "túl meleg"],
+    ["snowflake", "Fagyasztó", "túl meleg"], ["dots-horizontal", "további 4", ""]]},
+  "house_two_problems": {"layout": "problems", "rows": [
+    ["door-open", "Teraszajtó", "nyitva"], ["window-open", "Háló ablak", "nyitva"]]},
+  "house_ok": {"layout": "ok", "title": "Minden OK", "lines": ["Ajtók, ablakok zárva", "Készülékek kikapcsolva"]},
+  "house_problems_stale": {"layout": "problems", "stale": true, "rows": [
+    ["door-open", "Teraszajtó", "nyitva"], ["window-open", "Háló ablak", "nyitva"],
+    ["lightbulb-on", "Nappali lámpa", "be"], ["fridge", "Hűtő", "túl meleg"],
+    ["snowflake", "Fagyasztó", "túl meleg"], ["water", "Mosogató", "nedves"]]},
+  "house_ok_stale": {"layout": "ok", "stale": true, "title": "Minden OK",
+    "lines": ["Ajtók, ablakok zárva", "Készülékek kikapcsolva"]},
+  "unpaired": {"layout": "unpaired", "icon": "gesture-tap-hold", "title": "Párosítás",
+    "lines": ["Engedélyezd a csatlakozást", "Nyomd a gombot 3 mp-ig"]},
+  "searching": {"layout": "device", "icon": "access-point", "text": "Hálózatkeresés"},
+  "joining": {"layout": "device", "icon": "access-point", "text": "Csatlakozás"},
+  "syncing": {"layout": "device", "icon": "sync", "text": "Szinkronizálás"},
+  "join_failed": {"layout": "device", "icon": "alert-outline", "text": "Csatlakozási hiba"},
+  "battery": {"layout": "device", "icon": "battery-outline", "text": "Akkumulátor lemerült"},
+  "error": {"layout": "device", "icon": "alert-outline", "text": "Ismeretlen hiba"}
+}

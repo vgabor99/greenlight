@@ -67,6 +67,17 @@ to PNG, and write a mockup | firmware | diff image per screen. A layout change c
 flashing, and a new screen designed as a firmware change. Needs a C compiler for the PC (e.g. MinGW-w64); the
 sample content now in `frame_dump_samples()` would move to a file both builds share.
 
+**Grey levels.** The panel (Waveshare 4.2" V2, SSD1683) has a 4-level grey mode in Waveshare's driver
+(`Init_4Gray` / `display_4Gray`); the firmware and the [UI spec](uispec/ui-spec.md#panel) use 1 bit today. Grey
+could anti-alias the text and icons, and de-emphasise the separators. To check first:
+- that it works on our panel with our driver ([hardware.md](hardware.md#e-paper-panel));
+- refresh: Waveshare's 4-grey path uses a full refresh only, while every redraw is a partial refresh today
+  (about 470 ms, no flashing; [display.md](display.md#refresh-policy));
+- memory: 2 bits per pixel doubles the framebuffer to 30 KB;
+- glanceability: All OK must stay the only large black shape, so grey stays out of large areas.
+
+The mockups would move to 4 levels as well (`tools/gen_mockups.py` thresholds to 1 bit today).
+
 **OTA** firmware updates (Q4). A friendlier converter `toZigbee` (one `view` message, one `dataset` message).
 
 **Hold view writes in Z2M while asleep** (only if the wake push turns out too slow once deployed). HA would send
