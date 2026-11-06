@@ -46,7 +46,7 @@ ablakok zárva": doors and windows closed; "Készülékek kikapcsolva": applianc
 shape on any screen, so it reads as "OK to arm" from across the room.
 
 <table>
-<tr><td><img src="mockups/house_ok.png" alt="All OK" title="All OK"></td></tr>
+<tbody><tr><td><img src="mockups/house_ok.png" alt="All OK" title="All OK"></td></tr></tbody>
 </table>
 
 ### Problems
@@ -56,14 +56,14 @@ state in regular weight right-aligned, dotted separators between rows. With fewe
 top and the rest stays blank; the rows never spread out or grow.
 
 <table>
-<tr><td><img src="mockups/house_problems.png" alt="Six problems" title="Six problems"></td><td><img src="mockups/house_two_problems.png" alt="Two problems" title="Two problems"></td></tr>
+<tbody><tr><td><img src="mockups/house_problems.png" alt="Six problems" title="Six problems"></td><td><img src="mockups/house_two_problems.png" alt="Two problems" title="Two problems"></td></tr></tbody>
 </table>
 
 With more than 6 problems, 5 rows are shown and the sixth says "további N" (N more) with the `dots-horizontal`
 icon and no state: 9 problems give "további 4".
 
 <table>
-<tr><td><img src="mockups/house_overflow.png" alt="Overflow" title="Overflow"></td></tr>
+<tbody><tr><td><img src="mockups/house_overflow.png" alt="Overflow" title="Overflow"></td></tr></tbody>
 </table>
 
 ### Stale data
@@ -75,7 +75,7 @@ the first row's icon. It may cover the end of the first row's state; nothing els
 no badge.
 
 <table>
-<tr><td><img src="mockups/house_ok_stale.png" alt="All OK, stale" title="All OK, stale"></td><td><img src="mockups/house_problems_stale.png" alt="Problems, stale" title="Problems, stale"></td></tr>
+<tbody><tr><td><img src="mockups/house_ok_stale.png" alt="All OK, stale" title="All OK, stale"></td><td><img src="mockups/house_problems_stale.png" alt="Problems, stale" title="Problems, stale"></td></tr></tbody>
 </table>
 
 ## Device screens
@@ -98,10 +98,10 @@ the user to act.
 A failed pairing attempt goes back to *Pairing*, which says what to do; *Join failed* is only for a paired device.
 
 <table>
-<tr><td><img src="mockups/unpaired.png" alt="Pairing" title="Pairing"></td><td><img src="mockups/searching.png" alt="Network search" title="Network search"></td></tr>
-<tr><td><img src="mockups/joining.png" alt="Connecting" title="Connecting"></td><td><img src="mockups/syncing.png" alt="Synchronizing" title="Synchronizing"></td></tr>
-<tr><td><img src="mockups/join_failed.png" alt="Join failed" title="Join failed"></td><td><img src="mockups/battery.png" alt="Battery dead" title="Battery dead"></td></tr>
-<tr><td><img src="mockups/error.png" alt="Unknown error" title="Unknown error"></td></tr>
+<tbody><tr><td><img src="mockups/unpaired.png" alt="Pairing" title="Pairing"></td><td><img src="mockups/searching.png" alt="Network search" title="Network search"></td></tr></tbody>
+<tbody><tr><td><img src="mockups/joining.png" alt="Connecting" title="Connecting"></td><td><img src="mockups/syncing.png" alt="Synchronizing" title="Synchronizing"></td></tr></tbody>
+<tbody><tr><td><img src="mockups/join_failed.png" alt="Join failed" title="Join failed"></td><td><img src="mockups/battery.png" alt="Battery dead" title="Battery dead"></td></tr></tbody>
+<tbody><tr><td><img src="mockups/error.png" alt="Unknown error" title="Unknown error"></td></tr></tbody>
 </table>
 
 ## Layout and type
