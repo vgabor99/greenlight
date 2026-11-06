@@ -7,7 +7,7 @@
 #include "screen/status_screen.h"
 #include "util/hex.h"
 
-/* Layout, measured from the accepted mockups ("Bezárva? e-paper kijelző – design specifikáció").
+/* Layout, measured from the accepted mockups (docs/uispec/ui-spec.md).
  * Text is placed by its baseline, icons by their centre. */
 #define ROW_HEIGHT         (EPAPER_HEIGHT / VIEW_LAYOUT_ROWS)  /* VIEW_LAYOUT_ROWS rows of 50 px fill the screen, no header */
 #define ROW_ICON_X         27                               /* line icon centre */

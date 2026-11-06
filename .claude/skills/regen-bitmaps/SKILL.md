@@ -28,12 +28,14 @@ never reorder or remove an entry. Add the new Material Design Icons 7.4.47 name 
 variants), regenerate, and:
 
 1. add the id to the table in docs/data-model.md#line-icons;
-2. if HA should use it, add it to the rules in `ha/custom_templates/greenlight.jinja` (and the id list in its
+2. add the icon with an example row to `DATA` in docs/uispec/mockups/icons.html;
+3. if HA should use it, add it to the rules in `ha/custom_templates/greenlight.jinja` (and the id list in its
    comment), then deploy with the `deploy-ha` skill.
 
 ## Check against the mockups
 
-The accepted UI spec is the Claude doc "Bezárva? e-paper kijelző – design specifikáció" (mockups at actual size).
+The accepted designs are the mockups in docs/uispec/mockups/, described in docs/uispec/ui-spec.md (actual size,
+1 bit).
 
 1. Build with `idf.py -DSCREEN_DUMP=1 build` and flash. At boot it dumps every screen once with the mockups'
    content and edge cases (malformed line, unknown icon id, long name and state, empty state), then every frame

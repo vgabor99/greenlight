@@ -10,7 +10,8 @@ Each file answers one kind of question. The design files describe the system as 
 | What is a dataset, a view, a line, the staleness flag? | [data-model.md](data-model.md) |
 | Which clusters and attributes, what is reported when, what HA writes? | [zigbee.md](zigbee.md) |
 | How does HA build the lines and decide when to push? | [home-assistant.md](home-assistant.md) |
-| What does each screen look like, how are fonts and icons made? | [display.md](display.md) |
+| What does each screen look like and why (principles, mockups)? | [uispec/ui-spec.md](uispec/ui-spec.md) |
+| When is each screen shown, how is it built, how are fonts and icons made? | [display.md](display.md) |
 | Which parts and pins, what are the panel's quirks? | [hardware.md](hardware.md) |
 | Where is the code for X, what is stored where, which build switches exist? | [firmware.md](firmware.md) |
 | Why is it like this, what was tried and dropped? | [history.md](history.md) |

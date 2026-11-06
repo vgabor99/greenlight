@@ -1,0 +1,197 @@
+<!doctype html>
+<!-- Visual reference for the icons in docs/uispec/ui-spec.md: each icon large and at its 30 px panel size.
+     Open it in a browser (it loads @mdi/js 7.4.47 and the fonts from CDNs). The line icon ids are in
+     docs/data-model.md#line-icons; a new line icon is added here too (regen-bitmaps skill).
+     The example rows are panel texts, so they are Hungarian. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Greenlight icon set</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #f3f3f0; --panel: #ffffff; --ink: #141414; --muted: #5d5f5a; --line: #d9dad4; --chip: #ebece6;
+  --font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161716; --panel: #1f201f; --ink: #ececea; --muted: #a2a49e; --line: #353733; --chip: #2a2c29; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161716; --panel: #1f201f; --ink: #ececea; --muted: #a2a49e; --line: #353733; --chip: #2a2c29; color-scheme: dark }
+
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 28px 16px 56px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; margin-bottom: 28px; }
+h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 6px 0 0; max-width: 62ch; }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.toggle button { font: 500 13px var(--font-ui); background: transparent; color: var(--muted); border: 0; padding: 7px 12px; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.toggle button:focus-visible, .card:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+section { margin-top: 30px; }
+h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 12px; display: flex; gap: 8px; align-items: baseline; }
+h2 .n { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center; cursor: pointer; text-align: left; color: inherit; font: inherit; min-width: 0; }
+.big { grid-row: span 3; width: 48px; height: 48px; }
+.big svg { width: 48px; height: 48px; display: block; fill: var(--ink); }
+.name { font-family: var(--font-mono); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+.meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cp { font-family: var(--font-mono); font-size: 12px; color: var(--muted); background: var(--chip); border-radius: 4px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.small svg { width: 30px; height: 30px; display: block; fill: var(--ink); }
+.ex { grid-column: 1 / -1; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--muted); }
+.ex b { color: var(--ink); font-weight: 600; }
+.status { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.status.on { opacity: 1; }
+.err { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+@media (prefers-reduced-motion: reduce) { .status { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Greenlight icon set</h1>
+      <p class="sub">Material Design Icons 7.4.47 for the e-paper screens. Each card shows the icon large and at its 30&nbsp;px panel size, with an example row. Click a card to copy its <code>mdi:</code> name.</p>
+    </div>
+    <div class="toggle" role="group" aria-label="Rendering">
+      <button id="mode-smooth" aria-pressed="true">Smooth</button>
+      <button id="mode-epaper" aria-pressed="false">1-bit preview</button>
+    </div>
+  </header>
+  <main id="root"><p class="sub">Loading icons…</p></main>
+</div>
+<div class="status" id="status" role="status"></div>
+
+<script type="module">
+// [category, [[mdi name, codepoint, example name, example state], ...]]
+const DATA = [
+  ["Openings and security", [
+    ["door-open","F081C","Teraszajtó","nyitva"],
+    ["door-sliding-open","F1820","Tolóajtó","nyitva"],
+    ["window-open","F05B1","Háló ablak","nyitva"],
+    ["window-shutter-open","F111E","Redőny","nyitva"],
+    ["garage-open-variant","F12D4","Garázs","nyitva"],
+    ["gate-open","F116A","Kapu","nyitva"],
+    ["lock-open-variant","F0FC6","Bejárati zár","nyitva"],
+    ["shield-off","F099E","Riasztó","kikapcsolva"],
+    ["shield-home","F068A","Riasztó","kikapcsolva"],
+    ["motion-sensor","F0D91","Mozgás","nappali"],
+    ["cctv","F07AE","Kamera","offline"]]],
+  ["Lights and devices left on", [
+    ["lightbulb-on","F06E8","Nappali lámpa","be"],
+    ["ceiling-light","F0769","Mennyezeti lámpa","be"],
+    ["lamp","F06B5","Állólámpa","be"],
+    ["led-strip-variant","F1051","TV háttérfény","be"],
+    ["power-plug","F06A5","Konnektor","be"],
+    ["television","F0502","TV","be"],
+    ["remote-tv","F0EC5","Távirányító","be"],
+    ["speaker","F04C3","Hangszóró","be"],
+    ["fan","F0210","Ventilátor","be"],
+    ["air-conditioner","F001B","Klíma","be"],
+    ["air-humidifier","F1099","Párátlanító","be"],
+    ["radiator","F0438","Fűtés","be"],
+    ["heat-pump","F1A43","Hőszivattyú","be"],
+    ["fireplace","F0E2E","Kandalló","be"],
+    ["stove","F04DE","Tűzhely","be"],
+    ["iron","F1824","Vasaló","be"],
+    ["coffee-maker","F109F","Kávéfőző","be"],
+    ["kettle","F05FA","Vízforraló","be"],
+    ["printer","F042A","Nyomtató","be"]]],
+  ["Appliances and robots running", [
+    ["washing-machine","F072A","Mosógép","fut"],
+    ["tumble-dryer","F0917","Szárító","fut"],
+    ["dishwasher","F0AAC","Mosogatógép","fut"],
+    ["robot-vacuum","F070D","Porszívó","fut"],
+    ["robot-mower","F11F7","Malvin","kint"],
+    ["ev-station","F05F1","Autótöltő","tölt"],
+    ["car","F010B","Autó","nyitva"]]],
+  ["Water, climate and safety", [
+    ["water","F058C","Mosogató","nedves"],
+    ["faucet","F1B29","Csap","nyitva"],
+    ["valve","F1066","Főelzáró","nyitva"],
+    ["water-pump","F058F","Szivattyú","be"],
+    ["water-boiler","F0F92","Bojler","be"],
+    ["sprinkler-variant","F1060","Öntözés","be"],
+    ["pool","F0606","Medence","szivattyú be"],
+    ["fridge","F0290","Hűtő","túl meleg"],
+    ["snowflake","F0717","Fagyasztó","túl meleg"],
+    ["thermometer","F050F","Fürdő","túl hideg"],
+    ["water-percent","F058E","Fürdő","párás"],
+    ["smoke-detector-variant","F180B","Füstérzékelő","riaszt"],
+    ["fire","F0238","Tűz",""],
+    ["molecule-co","F12FE","Szén-monoxid",""],
+    ["molecule-co2","F07E4","CO₂","magas"],
+    ["gas-burner","F1A1B","Gáz",""],
+    ["weather-pouring","F0596","Eső","ablak nyitva"],
+    ["weather-windy","F059D","Szél","napellenző kint"]]],
+  ["Household reminders", [
+    ["trash-can","F0A79","Kuka","ki kell vinni"],
+    ["mailbox","F06EE","Posta","megjött"]]],
+  ["Infrastructure", [
+    ["battery-low","F12A1","Háló ablak","elem"],
+    ["wifi-off","F05AA","Wi-Fi","nincs"]]],
+  ["Fallback and overflow", [
+    ["alert-circle","F0028","unknown icon id",""],
+    ["dots-horizontal","F01D8","további 4",""]]],
+  ["All OK and stale", [
+    ["check-circle","F05E0","Minden OK","All OK screen"],
+    ["sync","F04E6","stale badge","top-right corner"]]],
+  ["Device screens", [
+    ["gesture-tap-hold","F0D77","Párosítás","Unpaired"],
+    ["access-point","F0003","Hálózatkeresés, Csatlakozás","Searching, Joining"],
+    ["sync","F04E6","Szinkronizálás","Syncing"],
+    ["alert-outline","F002A","Csatlakozási hiba, Ismeretlen hiba","Join failed, Error"],
+    ["battery-outline","F008E","Akkumulátor lemerült","Battery"]]],
+];
+
+const camel = n => "mdi" + n.split("-").map(p => p[0].toUpperCase() + p.slice(1)).join("");
+const svg = (d, s) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path d="${d}"/></svg>`;
+const root = document.getElementById("root");
+const status = document.getElementById("status");
+let timer;
+function say(t) { status.textContent = t; status.classList.add("on"); clearTimeout(timer); timer = setTimeout(() => status.classList.remove("on"), 1400); }
+
+let mdi;
+try {
+  mdi = await import("https://cdn.jsdelivr.net/npm/@mdi/js@7.4.47/+esm");
+} catch (e) {
+  root.innerHTML = '<p class="err">The icon library could not load. Reload the page to try again.</p>';
+}
+
+if (mdi) {
+  root.innerHTML = DATA.map(([cat, items]) => `
+    <section>
+      <h2>${cat} <span class="n">${items.length}</span></h2>
+      <div class="grid">
+        ${items.map(([n, cp, name, st]) => {
+          const d = mdi[camel(n)] || "";
+          return `<button class="card" data-n="mdi:${n}" type="button" aria-label="Copy mdi:${n}">
+            <span class="big">${svg(d, 48)}</span>
+            <span class="name">mdi:${n}</span>
+            <span class="meta"><span class="cp">U+${cp}</span><span class="small">${svg(d, 30)}</span></span>
+            <span></span>
+            <span class="ex"><b>${name}</b>${st ? " · " + st : ""}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    </section>`).join("");
+  root.addEventListener("click", e => {
+    const c = e.target.closest(".card"); if (!c) return;
+    const t = c.dataset.n;
+    navigator.clipboard?.writeText(t).then(() => say(`Copied ${t}`), () => say(t));
+  });
+}
+
+const bS = document.getElementById("mode-smooth"), bE = document.getElementById("mode-epaper");
+function setMode(ep) {
+  bS.setAttribute("aria-pressed", String(!ep)); bE.setAttribute("aria-pressed", String(ep));
+  document.querySelectorAll(".big svg, .small svg").forEach(s => s.style.shapeRendering = ep ? "crispEdges" : "");
+}
+bS.onclick = () => setMode(false); bE.onclick = () => setMode(true);
+</script>
+</body>
+</html>

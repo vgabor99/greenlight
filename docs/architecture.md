@@ -8,7 +8,8 @@ on, ...). Each line has an icon, a name and a state (e.g. `Teraszajtó | nyitva`
 
 ## Design goals
 
-- Functional: show the list of problems with icon, name and state, or "Minden OK"
+- Functional: show the list of problems with icon, name and state, or "Minden OK", readable at a glance
+  ([UI spec](uispec/ui-spec.md#principles))
 - Responsiveness: the list updates in real time, with a delay under 1 s
 - Battery: at most one battery charge per year
 - Reliability: appliance-like, zero-maintenance operation: automatic recovery from the usual errors (network or

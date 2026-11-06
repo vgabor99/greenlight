@@ -61,6 +61,12 @@ in the converter):
 - Do not touch the panel on wake if nothing changed (clear lazily, only when a redraw is needed).
 - Skip the final clean refresh at SHUTDOWN when no partial update happened since the last one.
 
+**Screens rendered on the PC.** Build the screen code (`main/screen/`: `status_screen.c`, `render.c`,
+`bitmap_text.c`, `bitmaps.c`; no ESP-IDF dependencies) for the PC, render each [mockup](uispec/ui-spec.md)'s content
+to PNG, and write a mockup | firmware | diff image per screen. A layout change could then be checked without
+flashing, and a new screen designed as a firmware change. Needs a C compiler for the PC (e.g. MinGW-w64); the
+sample content now in `frame_dump_samples()` would move to a file both builds share.
+
 **OTA** firmware updates (Q4). A friendlier converter `toZigbee` (one `view` message, one `dataset` message).
 
 **Hold view writes in Z2M while asleep** (only if the wake push turns out too slow once deployed). HA would send
