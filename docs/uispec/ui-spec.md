@@ -39,26 +39,26 @@ large black areas stay away from the edges.
 
 ## House screens
 
-### Problems
-
-Up to 6 problem rows fill the screen from top to bottom: the line icon on the left, the name in semibold, the
-state in regular weight right-aligned, dotted separators between rows. With fewer problems the rows start at the top and the rest stays
-blank; the rows never spread out or grow.
-
-![Six problems](mockups/house_problems.png) ![Two problems](mockups/house_two_problems.png)
-
-With more than 6 problems, 5 rows are shown and the sixth says "további N" (N more) with the `dots-horizontal`
-icon and no state: 9 problems give "további 4".
-
-![Overflow](mockups/house_overflow.png)
-
 ### All OK
 
 A large solid black `check-circle` in the centre, "Minden OK" below it, then two fixed detail lines ("Ajtók,
 ablakok zárva": doors and windows closed; "Készülékek kikapcsolva": appliances off). It is the only large black
 shape on any screen, so it reads as "OK to arm" from across the room.
 
-![All OK](mockups/house_ok.png)
+<img src="mockups/house_ok.png" alt="All OK" title="All OK" style="border:1px solid #bfbfbf">
+
+### Problems
+
+Up to 6 problem rows fill the screen from top to bottom: the line icon on the left, the name in semibold, the
+state in regular weight right-aligned, dotted separators between rows. With fewer problems the rows start at the
+top and the rest stays blank; the rows never spread out or grow.
+
+<img src="mockups/house_problems.png" alt="Six problems" title="Six problems" style="border:1px solid #bfbfbf"> <img src="mockups/house_two_problems.png" alt="Two problems" title="Two problems" style="border:1px solid #bfbfbf">
+
+With more than 6 problems, 5 rows are shown and the sixth says "további N" (N more) with the `dots-horizontal`
+icon and no state: 9 problems give "további 4".
+
+<img src="mockups/house_overflow.png" alt="Overflow" title="Overflow" style="border:1px solid #bfbfbf">
 
 ### Stale data
 
@@ -68,7 +68,7 @@ underneath. Its right edge lines up with the end of the states and separators, a
 the first row's icon. It may cover the end of the first row's state; nothing else moves. With fresh data there is
 no badge.
 
-![Problems, stale](mockups/house_problems_stale.png) ![All OK, stale](mockups/house_ok_stale.png)
+<img src="mockups/house_ok_stale.png" alt="All OK, stale" title="All OK, stale" style="border:1px solid #bfbfbf"> <img src="mockups/house_problems_stale.png" alt="Problems, stale" title="Problems, stale" style="border:1px solid #bfbfbf">
 
 ## Device screens
 
@@ -89,15 +89,24 @@ the user to act.
 
 A failed pairing attempt goes back to Unpaired, which says what to do; Join failed is only for a paired device.
 
-![Unpaired](mockups/unpaired.png) ![Searching](mockups/searching.png) ![Joining](mockups/joining.png)
-![Syncing](mockups/syncing.png) ![Join failed](mockups/join_failed.png) ![Battery](mockups/battery.png)
-![Error](mockups/error.png)
+<img src="mockups/unpaired.png" alt="Unpaired" title="Unpaired" style="border:1px solid #bfbfbf"> <img src="mockups/searching.png" alt="Searching" title="Searching" style="border:1px solid #bfbfbf">
+<img src="mockups/joining.png" alt="Joining" title="Joining" style="border:1px solid #bfbfbf"> <img src="mockups/syncing.png" alt="Syncing" title="Syncing" style="border:1px solid #bfbfbf">
+<img src="mockups/join_failed.png" alt="Join failed" title="Join failed" style="border:1px solid #bfbfbf"> <img src="mockups/battery.png" alt="Battery" title="Battery" style="border:1px solid #bfbfbf">
+<img src="mockups/error.png" alt="Error" title="Error" style="border:1px solid #bfbfbf">
 
 ## Layout and type
 
 Coordinates in pixels from the top-left corner. Text is placed by its baseline; an icon by the top-left corner of
 its box (the 24-unit MDI viewBox scaled to the icon size). Font: Inter 4.0 (the static OTF instances); icons:
 Material Design Icons 7.4.47.
+
+**All OK**
+
+| Element | Type / size | Position |
+|---|---|---|
+| `check-circle` | 150 px, solid | box at (125, 22) |
+| "Minden OK" | Inter Bold (700) 32 px | centred on x 200, baseline 214 |
+| Detail lines | Inter Regular (400) 18 px | centred, baselines 248 and 274 |
 
 **Problems** (row *i* = 0..5, top *t* = 50 *i*)
 
@@ -108,14 +117,6 @@ Material Design Icons 7.4.47.
 | Name | Inter SemiBold (600) 24 px | x 56, baseline *t* + 33 |
 | State | Inter Regular (400) 22 px | right-aligned at x 388, baseline *t* + 33 |
 | Separator | 1 px dotted, 2 px on, 3 px off, starting on at x 56 | x 56 to 388, y *t* + 49, between rows only |
-
-**All OK**
-
-| Element | Type / size | Position |
-|---|---|---|
-| `check-circle` | 150 px, solid | box at (125, 22) |
-| "Minden OK" | Inter Bold (700) 32 px | centred on x 200, baseline 214 |
-| Detail lines | Inter Regular (400) 18 px | centred, baselines 248 and 274 |
 
 **Stale badge** (both house screens)
 
