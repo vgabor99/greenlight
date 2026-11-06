@@ -48,14 +48,14 @@ The hashes are computed exclusively in the Home Assistant automation. The device
 only stores and acknowledges the received ones.
 
 ```mermaid
-flowchart LR
+flowchart TB
     HA["Home Assistant<br/>dataset and view sensors<br/>push automation"]
     Z2M["Zigbee2MQTT<br/>+ external converter"]
     DEV["Greenlight<br/>ESP32-C6, e-paper, PIR"]
     HA -- "MQTT: dataset sync, view write" --> Z2M
+    Z2M -- "MQTT: wake_count, awake, shown_view_id,<br/>dataset_hash, battery, occupancy" --> HA
     Z2M -- "Zigbee: writes to cluster 0xFC8A" --> DEV
     DEV -- "Zigbee: reports" --> Z2M
-    Z2M -- "MQTT: wake_count, awake, shown_view_id,<br/>dataset_hash, battery, occupancy" --> HA
 ```
 
 The pieces: the firmware ([firmware.md](firmware.md)), the Zigbee interface ([zigbee.md](zigbee.md)), the
