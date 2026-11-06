@@ -45,7 +45,9 @@ A large solid black `check-circle` in the centre, "Minden OK" below it, then two
 ablakok zárva": doors and windows closed; "Készülékek kikapcsolva": appliances off). It is the only large black
 shape on any screen, so it reads as "OK to arm" from across the room.
 
-<img src="mockups/house_ok.png" alt="All OK" title="All OK" style="border:1px solid #bfbfbf">
+<table>
+<tr><td><img src="mockups/house_ok.png" alt="All OK" title="All OK"></td></tr>
+</table>
 
 ### Problems
 
@@ -53,12 +55,16 @@ Up to 6 problem rows fill the screen from top to bottom: the line icon on the le
 state in regular weight right-aligned, dotted separators between rows. With fewer problems the rows start at the
 top and the rest stays blank; the rows never spread out or grow.
 
-<img src="mockups/house_problems.png" alt="Six problems" title="Six problems" style="border:1px solid #bfbfbf"> <img src="mockups/house_two_problems.png" alt="Two problems" title="Two problems" style="border:1px solid #bfbfbf">
+<table>
+<tr><td><img src="mockups/house_problems.png" alt="Six problems" title="Six problems"></td><td><img src="mockups/house_two_problems.png" alt="Two problems" title="Two problems"></td></tr>
+</table>
 
 With more than 6 problems, 5 rows are shown and the sixth says "további N" (N more) with the `dots-horizontal`
 icon and no state: 9 problems give "további 4".
 
-<img src="mockups/house_overflow.png" alt="Overflow" title="Overflow" style="border:1px solid #bfbfbf">
+<table>
+<tr><td><img src="mockups/house_overflow.png" alt="Overflow" title="Overflow"></td></tr>
+</table>
 
 ### Stale data
 
@@ -68,7 +74,9 @@ underneath. Its right edge lines up with the end of the states and separators, a
 the first row's icon. It may cover the end of the first row's state; nothing else moves. With fresh data there is
 no badge.
 
-<img src="mockups/house_ok_stale.png" alt="All OK, stale" title="All OK, stale" style="border:1px solid #bfbfbf"> <img src="mockups/house_problems_stale.png" alt="Problems, stale" title="Problems, stale" style="border:1px solid #bfbfbf">
+<table>
+<tr><td><img src="mockups/house_ok_stale.png" alt="All OK, stale" title="All OK, stale"></td><td><img src="mockups/house_problems_stale.png" alt="Problems, stale" title="Problems, stale"></td></tr>
+</table>
 
 ## Device screens
 
@@ -89,10 +97,12 @@ the user to act.
 
 A failed pairing attempt goes back to *Pairing*, which says what to do; *Join failed* is only for a paired device.
 
-<img src="mockups/unpaired.png" alt="Pairing" title="Pairing" style="border:1px solid #bfbfbf"> <img src="mockups/searching.png" alt="Network search" title="Network search" style="border:1px solid #bfbfbf">
-<img src="mockups/joining.png" alt="Connecting" title="Connecting" style="border:1px solid #bfbfbf"> <img src="mockups/syncing.png" alt="Synchronizing" title="Synchronizing" style="border:1px solid #bfbfbf">
-<img src="mockups/join_failed.png" alt="Join failed" title="Join failed" style="border:1px solid #bfbfbf"> <img src="mockups/battery.png" alt="Battery dead" title="Battery dead" style="border:1px solid #bfbfbf">
-<img src="mockups/error.png" alt="Unknown error" title="Unknown error" style="border:1px solid #bfbfbf">
+<table>
+<tr><td><img src="mockups/unpaired.png" alt="Pairing" title="Pairing"></td><td><img src="mockups/searching.png" alt="Network search" title="Network search"></td></tr>
+<tr><td><img src="mockups/joining.png" alt="Connecting" title="Connecting"></td><td><img src="mockups/syncing.png" alt="Synchronizing" title="Synchronizing"></td></tr>
+<tr><td><img src="mockups/join_failed.png" alt="Join failed" title="Join failed"></td><td><img src="mockups/battery.png" alt="Battery dead" title="Battery dead"></td></tr>
+<tr><td><img src="mockups/error.png" alt="Unknown error" title="Unknown error"></td></tr>
+</table>
 
 ## Layout and type
 
