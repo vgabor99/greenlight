@@ -84,7 +84,7 @@ No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an 
 
 - `ds`: the dataset hash the bits refer to. The device accepts the view only if `ds` equals its stored
   `dataset_hash`; otherwise it is **out of sync** and leaves the screen as it is.
-- `bits`: bitfield over the dataset, bit *i* set = line *i* is active. 0 = "All OK".
+- `bits`: bitfield over the dataset, bit *i* set = line *i* is active. 0 = *All OK*.
 - `id`: **24-bit**, chosen by HA, identifying `ds` + `bits`. **Not 0**. The device echoes it as
   `shown_view_id` when the view is on the panel; it never computes it. The time is **not** part of the id: a
   new time alone must not look like new content.
@@ -99,7 +99,7 @@ dataset arrives (HA sends one right after the sync).
 ### Layout rule
 
 The active lines in dataset order, at most 6 rows. With more than 6 active lines the device shows the first 5
-and "további N" (dots icon) as the sixth row. Code: `main/screen/view_layout.c`.
+and "N more" ("további N", dots icon) as the sixth row. Code: `main/screen/view_layout.c`.
 
 ## Staleness flag
 

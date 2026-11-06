@@ -74,7 +74,7 @@ could anti-alias the text and icons, and de-emphasise the separators. To check f
 - refresh: Waveshare's 4-grey path uses a full refresh only, while every redraw is a partial refresh today
   (about 470 ms, no flashing; [display.md](display.md#refresh-policy));
 - memory: 2 bits per pixel doubles the framebuffer to 30 KB;
-- glanceability: All OK must stay the only large black shape, so grey stays out of large areas.
+- glanceability: *All OK* must stay the only large black shape, so grey stays out of large areas.
 
 The mockups would move to 4 levels as well (`tools/gen_mockups.py` thresholds to 1 bit today).
 

@@ -13,25 +13,26 @@ the device (for battery devices it only trips after hours, so it says nothing us
 
 ## Dataset
 
-Built automatically with the rules of the "Bezárva?" dashboard (`dashboard-away`): one line per watched entity
+Built automatically with the rules of the `dashboard-away` ("Bezárva?") dashboard: one line per watched entity
 **whatever its state**, so the dataset only changes when entities are added, removed or renamed. Nothing is
 listed by hand; the label `exclude_from_alerts` keeps an entity out.
 
 | Prio | Match | Icon | State word | Active when |
 |---|---|---|---|---|
-| 1 | `alarm_control_panel.*` (two lines) | 09 | `kikapcsolva` / `ismeretlen` | `disarmed` / neither `disarmed` nor `armed_*` |
-| 2 | binary_sensor `moisture` | 27 | `nedves` | `on` |
-| 3 | binary_sensor `problem` | 00 | `hiba` | `on` |
-| 4-6 | binary_sensor `lock`, `door`, `window` | 08, 02, 04 | `nyitva` | `on` |
-| 7 | `light.*` except groups (`entity_id` attribute) | 0D | `be` | `on` |
-| 8 | `remote.*` | 13 | `be` | not `off`, `unavailable` or `unknown` |
+| 1 | `alarm_control_panel.*` (two lines) | 09 | off (`kikapcsolva`) / unknown (`ismeretlen`) | `disarmed` / neither `disarmed` nor `armed_*` |
+| 2 | binary_sensor `moisture` | 27 | wet (`nedves`) | `on` |
+| 3 | binary_sensor `problem` | 00 | fault (`hiba`) | `on` |
+| 4-6 | binary_sensor `lock`, `door`, `window` | 08, 02, 04 | open (`nyitva`) | `on` |
+| 7 | `light.*` except groups (`entity_id` attribute) | 0D | on (`be`) | `on` |
+| 8 | `remote.*` | 13 | on (`be`) | not `off`, `unavailable` or `unknown` |
 
 - Each line is `II|<entity name>|<state word>` ([line format](data-model.md#line-format)); the name is cut so
   the line fits 64 UTF-8 bytes.
 - Order: priority, then `entity_id`. Sorted rather than "append new entities at the end": an added entity
   changes the hash and resyncs anyway, and priority order is the better display order.
-- More than 32 entities: the first 31 stay and line 31 is the fixed catch-all `01|…és még több|`, active when
-  any of the remaining entities is; its text never changes, so trimming causes no resyncs.
+- More than 32 entities: the first 31 stay and line 31 is the fixed catch-all "…and more"
+  (`01|…és még több|`), active when any of the remaining entities is; its text never changes, so trimming causes
+  no resyncs.
 - Like the dashboard, an `unavailable` sensor is not active.
 - `ds_hash` (the state of `sensor.greenlight_dataset`) = 24-bit hash of the lines joined by newlines
   (`greenlight_hash24`, never 0).
@@ -50,7 +51,7 @@ off, so it is no problem for whoever is leaving. Those members (`greenlight_expe
 `binary_sensor.gf_lobby_door_contact` and `light.gf_living_light_sw` `on`) keep their dataset lines, but
 `greenlight_hidden_bits` masks out every line whose members are all expected: `bits` = `raw_bits` without
 `hidden`, and `view_id` is computed from the filtered `bits`, so those entities changing push nothing. The
-alarm's `ismeretlen` line stays a problem.
+alarm's unknown (`ismeretlen`) line stays a problem.
 
 ## Push automation
 

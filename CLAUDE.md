@@ -5,9 +5,9 @@ Guidance for Claude Code in this repository.
 ## Overview
 
 Greenlight is a battery-powered Zigbee e-paper display that shows Home Assistant's list of things to fix before
-leaving the house (the "Bezárva?" screen). Firmware: ESP-IDF v6.1 (C, CMake) on a Seeed XIAO ESP32-C6, a
-sleepy end device with a 4.2" 400x300 SSD1683 panel, a PIR and a pair button. HA side: `ha/` (templates and an
-automation) and `z2m/` (Zigbee2MQTT converter).
+leaving the house (as HA's `dashboard-away` ("Bezárva?") dashboard does). Firmware: ESP-IDF v6.1 (C, CMake) on
+a Seeed XIAO ESP32-C6, a sleepy end device with a 4.2" 400x300 SSD1683 panel, a PIR and a pair button. HA side:
+`ha/` (templates and an automation) and `z2m/` (Zigbee2MQTT converter).
 
 Documentation: start at [docs/README.md](docs/README.md), which says which file answers what. The design files
 describe the current state; [docs/history.md](docs/history.md) holds past designs and lessons,
@@ -78,3 +78,9 @@ idf.py menuconfig             # then: idf.py save-defconfig (sdkconfig.defaults 
 - **Panel failures stay visible**: no automatic recovery until it is decided ([docs/roadmap.md](docs/roadmap.md)).
 - **Docs**: when behaviour changes, update the design file that owns it, move what it replaces to
   `docs/history.md` if the reason matters, and keep each fact in one place.
+- **Docs are for readers who do not speak Hungarian.** English comes first: screens by their names in
+  [docs/uispec/ui-spec.md](docs/uispec/ui-spec.md#device-screens), in italics where mentioned (*All OK*,
+  *Problems*, *Pairing*, ...), HA dashboards by their name. Where the Hungarian is worth showing (HA state words, a
+  dashboard's title, example data in prose), it follows in parentheses: off (`kikapcsolva`), `dashboard-away`
+  ("Bezárva?"). Exempt: docs/uispec/ui-spec.md (it specifies the Hungarian panel texts), code, code blocks and
+  images.

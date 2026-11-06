@@ -55,6 +55,9 @@ Read docs/README.md first, then each design file. Look for:
 6. **Skills**: commands, paths, ports and log lines in `.claude/skills/*/SKILL.md` still match the code and
    `tools/` (log lines that `tools/` matches must exist in `main/` as written).
 7. **Comments in code** that restate a doc fact with a different value.
+8. **Hungarian** (the docs rule in CLAUDE.md): Hungarian in prose that does not follow its English in parentheses,
+   or a screen not called by its name in docs/uispec/ui-spec.md#device-screens, in italics. docs/uispec/ui-spec.md,
+   code blocks and images are exempt.
 
 docs/history.md and docs/research/ are records: do not "fix" their facts, only their links.
 

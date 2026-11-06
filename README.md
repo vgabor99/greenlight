@@ -2,7 +2,7 @@
 
 Greenlight is a battery-powered display that tells you whether the house is ready to be armed and left. Mounted
 next to the alarm panel at the entrance, it lists anything that needs attention first, such as a window or door
-left open or a light left on, and shows "Minden OK" (all OK) when there is nothing to do.
+left open or a light left on, and shows *All OK* when there is nothing to do.
 
 In what it shows, it is close to a Home Assistant dashboard. The difference is that it runs on a battery, with a
 target of one charge a year or less, so both the hardware and the software are designed around power use:

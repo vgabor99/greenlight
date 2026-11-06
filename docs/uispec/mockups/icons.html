@@ -141,11 +141,11 @@ const DATA = [
     ["check-circle","F05E0","Minden OK","All OK screen"],
     ["sync","F04E6","stale badge","top-right corner"]]],
   ["Device screens", [
-    ["gesture-tap-hold","F0D77","Párosítás","Unpaired"],
-    ["access-point","F0003","Hálózatkeresés, Csatlakozás","Searching, Joining"],
-    ["sync","F04E6","Szinkronizálás","Syncing"],
-    ["alert-outline","F002A","Csatlakozási hiba, Ismeretlen hiba","Join failed, Error"],
-    ["battery-outline","F008E","Akkumulátor lemerült","Battery"]]],
+    ["gesture-tap-hold","F0D77","Párosítás","Pairing"],
+    ["access-point","F0003","Hálózatkeresés, Csatlakozás","Network search, Connecting"],
+    ["sync","F04E6","Szinkronizálás","Synchronizing"],
+    ["alert-outline","F002A","Csatlakozási hiba, Ismeretlen hiba","Join failed, Unknown error"],
+    ["battery-outline","F008E","Akkumulátor lemerült","Battery dead"]]],
 ];
 
 const camel = n => "mdi" + n.split("-").map(p => p[0].toUpperCase() + p.slice(1)).join("");

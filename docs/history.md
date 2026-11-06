@@ -41,8 +41,8 @@ live the same day.
 
 ### Rev 8: the designed screen (2026-10-31)
 
-The proper "Bezárva?" screen from the UI spec replaced the debug screen, which stays behind a build switch. The
-line format became `II|name|state` with an icon id from an append-only table; fonts (Inter) and icons (MDI) are
+The designed screens from the UI spec replaced the debug screen, which stays behind a build switch. The line
+format became `II|name|state` with an icon id from an append-only table; fonts (Inter) and icons (MDI) are
 generated bitmaps instead of u8g2 fonts.
 
 ### Since rev 8
@@ -53,7 +53,7 @@ generated bitmaps instead of u8g2 fonts.
 - 2026-11-02: low battery with a simulated battery; exact voltage via `battery_mv`.
 - 2026-11-03: the real PIR replaced the stand-in button; real deep sleep replaced the simulated one (31 wakes in
   35 min, each rejoined 1.4-1.5 s after boot); `WAKE_REPORTS_DELAY_MS` 3 s -> 2 s (no effect on the view push in
-  39 wakes, brings `awake` to HA 1 s sooner); UNPAIRED shows how to pair instead of "Csatlakozási hiba".
+  39 wakes, brings `awake` to HA 1 s sooner); UNPAIRED shows how to pair instead of the *Join failed* screen.
 - 2026-11-04: the sources were split into one file per purpose and grouped into folders; `INTERVIEW_MS` got the
   full minute.
 

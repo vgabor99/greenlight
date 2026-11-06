@@ -80,15 +80,15 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | deep sleep, nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (battery screen); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (error screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
-| **UNPAIRED** | shows "Párosítás" with how to pair; `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
+| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (*Battery dead* screen); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (*Unknown error* screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
+| **UNPAIRED** | shows the *Pairing* screen (how to pair); `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> UNPAIRED; battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: latch `bat_low`, report the battery (`battery_low`) before the goodbye, draw the battery screen, -> LOW_BATTERY |
-| **LOW_BATTERY** | the battery screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |
+| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: latch `bat_low`, report the battery (`battery_low`) before the goodbye, draw the *Battery dead* screen, -> LOW_BATTERY |
+| **LOW_BATTERY** | the *Battery dead* screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
 
@@ -134,7 +134,7 @@ the battery:
 - **Detecting "no network"**: the stack signal `EZB_BDB_SIGNAL_DEVICE_FIRST_START` means factory new,
   `EZB_BDB_SIGNAL_DEVICE_REBOOT` means a network was restored from NVS. BOOT waits for it, so BOOT cannot
   finish before the stack has reported; after `STACK_START_TIMEOUT_MS` without it, the wake ends with the
-  error screen.
+  *Unknown error* screen.
 - **PAIRING** runs BDB network steering with retries for `PAIRING_WINDOW_MS`. The user enables "Permit join" in
   Zigbee2MQTT meanwhile.
 - **INTERVIEW**: Z2M reads the Basic cluster attributes and so on (several seconds, sometimes tens). Z2M stores
@@ -150,9 +150,9 @@ the battery:
 ## Low battery
 
 Below `BATTERY_LOW_ENTER_MV` (3.5 V) the wake ends. BOOT checks first, before the radio, the panel and any NVS
-write; ACTIVE, UNPAIRED and PAIRING check every `BATTERY_CHECK_MS` (1 s) and go to SHUTDOWN with the battery
-screen ("Akkumulátor lemerült", one final refresh, the farewell `battery_low` report when joined). INTERVIEW and
-REJOIN (bounded) and ERASE_NETWORK are not interrupted. SHUTDOWN sets the NVS latch `bat_low` and goes to
+write; ACTIVE, UNPAIRED and PAIRING check every `BATTERY_CHECK_MS` (1 s) and go to SHUTDOWN with the
+*Battery dead* screen (one final refresh, the farewell `battery_low` report when joined). INTERVIEW and REJOIN
+(bounded) and ERASE_NETWORK are not interrupted. SHUTDOWN sets the NVS latch `bat_low` and goes to
 LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power does**.
 
 - While latched, the exit threshold `BATTERY_LOW_EXIT_MV` (3.7 V) applies. The entry voltage may be read
@@ -175,13 +175,13 @@ LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only
 | Device sleeps mid-sync | Staged dataset entries dropped; `dataset_hash` unchanged, so HA syncs again at the next wake. A view is one frame and cannot be half applied. |
 | View for another dataset | Out of sync ([zigbee.md](zigbee.md#view-push)): screen unchanged (it goes stale), `dataset_hash` reported, device stays awake for the sync. |
 | HA down / Zigbee down | Screen keeps the stored view; the stale badge appears at most 8 s after the last view received. |
-| Rejoin fails (parent gone) | After `REJOIN_TIMEOUT_MS` the device shuts down with "Csatlakozási hiba" on screen; network kept. |
+| Rejoin fails (parent gone) | After `REJOIN_TIMEOUT_MS` the device shuts down with the *Join failed* screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. |
 | Device dies silently | `awake` stays on in HA, but HA stops pushing 90 s after the last report ([awake gate](home-assistant.md#push-automation)). |
-| Zigbee stack does not start | After `STACK_START_TIMEOUT_MS` the device shuts down with "Ismeretlen hiba" on screen. |
-| Pairing fails | Back to UNPAIRED with the "Párosítás" screen; still factory new. |
+| Zigbee stack does not start | After `STACK_START_TIMEOUT_MS` the device shuts down with the *Unknown error* screen. |
+| Pairing fails | Back to UNPAIRED with the *Pairing* screen; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it (to verify, [roadmap.md](roadmap.md)). |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
-| Battery low | Battery screen, `battery_low` reported when joined, LOW_BATTERY until USB power. |
+| Battery low | *Battery dead* screen, `battery_low` reported when joined, LOW_BATTERY until USB power. |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale. Seen once in 39 wakes. Next wake is normal. |
 | Panel BUSY hang | A refresh never finishes and the controller stays stuck until a hardware reset ([hardware.md](hardware.md#busy-hang)). **No recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epaper_init()` resets the panel. Automatic recovery is a later option ([roadmap.md](roadmap.md#future-work)). |

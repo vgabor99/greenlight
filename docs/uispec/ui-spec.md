@@ -20,7 +20,7 @@ knowing the system. Three situations must look different from each other and be 
 | Not ready to arm | a list of rows filling the screen | [Problems](#problems) |
 | Device needs attention | one large outline icon and a single word line | [Device screens](#device-screens) |
 
-All OK is told apart before anything is read: every other screen is mostly white with plain or outline icons.
+*All OK* is told apart before anything is read: every other screen is mostly white with plain or outline icons.
 The staleness indicator must be glanceable too, but not obtrusive.
 
 **Readable.** The problem list uses the whole screen, large legible fonts and short texts. When a text does not
@@ -73,26 +73,26 @@ no badge.
 ## Device screens
 
 A large outline icon, centred, with one line of bold text below; no header and no stale badge. Outline icons keep these screens apart from the
-solid check of All OK, and the single centred line keeps them apart from the problem list. The unpaired screen
+solid check of *All OK*, and the single centred line keeps them apart from the problem list. The *Pairing* screen
 adds two instruction lines under the title, with a slightly smaller icon, because it is the one screen that asks
 the user to act.
 
 | Screen | Situation | Icon | Text |
 |---|---|---|---|
-| Unpaired | not paired: out of the box, and after a failed pairing attempt | `gesture-tap-hold` | Párosítás / Engedélyezd a csatlakozást / Nyomd a gombot 3 mp-ig (Pairing / Allow joining / Hold the button for 3 s) |
-| Searching | Zigbee pairing | `access-point` | Hálózatkeresés (searching for network) |
-| Joining | Zigbee interview | `access-point` | Csatlakozás (joining) |
-| Syncing | waiting for data from HA | `sync` | Szinkronizálás (syncing) |
+| Pairing | not paired: out of the box, and after a failed pairing attempt | `gesture-tap-hold` | Párosítás / Engedélyezd a csatlakozást / Nyomd a gombot 3 mp-ig (Pairing / Allow joining / Hold the button for 3 s) |
+| Network search | Zigbee pairing | `access-point` | Hálózatkeresés (searching for network) |
+| Connecting | Zigbee interview | `access-point` | Csatlakozás (joining) |
+| Synchronizing | waiting for data from HA | `sync` | Szinkronizálás (syncing) |
 | Join failed | a paired device failed to rejoin its network | `alert-outline` | Csatlakozási hiba (connection error) |
-| Battery | battery dead | `battery-outline` | Akkumulátor lemerült (battery dead) |
-| Error | any other failure | `alert-outline` | Ismeretlen hiba (unknown error) |
+| Battery dead | battery dead | `battery-outline` | Akkumulátor lemerült (battery dead) |
+| Unknown error | any other failure | `alert-outline` | Ismeretlen hiba (unknown error) |
 
-A failed pairing attempt goes back to Unpaired, which says what to do; Join failed is only for a paired device.
+A failed pairing attempt goes back to *Pairing*, which says what to do; *Join failed* is only for a paired device.
 
-<img src="mockups/unpaired.png" alt="Unpaired" title="Unpaired" style="border:1px solid #bfbfbf"> <img src="mockups/searching.png" alt="Searching" title="Searching" style="border:1px solid #bfbfbf">
-<img src="mockups/joining.png" alt="Joining" title="Joining" style="border:1px solid #bfbfbf"> <img src="mockups/syncing.png" alt="Syncing" title="Syncing" style="border:1px solid #bfbfbf">
-<img src="mockups/join_failed.png" alt="Join failed" title="Join failed" style="border:1px solid #bfbfbf"> <img src="mockups/battery.png" alt="Battery" title="Battery" style="border:1px solid #bfbfbf">
-<img src="mockups/error.png" alt="Error" title="Error" style="border:1px solid #bfbfbf">
+<img src="mockups/unpaired.png" alt="Pairing" title="Pairing" style="border:1px solid #bfbfbf"> <img src="mockups/searching.png" alt="Network search" title="Network search" style="border:1px solid #bfbfbf">
+<img src="mockups/joining.png" alt="Connecting" title="Connecting" style="border:1px solid #bfbfbf"> <img src="mockups/syncing.png" alt="Synchronizing" title="Synchronizing" style="border:1px solid #bfbfbf">
+<img src="mockups/join_failed.png" alt="Join failed" title="Join failed" style="border:1px solid #bfbfbf"> <img src="mockups/battery.png" alt="Battery dead" title="Battery dead" style="border:1px solid #bfbfbf">
+<img src="mockups/error.png" alt="Unknown error" title="Unknown error" style="border:1px solid #bfbfbf">
 
 ## Layout and type
 
@@ -133,7 +133,7 @@ Material Design Icons 7.4.47.
 | Icon | 150 px, outline | centred on x 200, box top y 38 |
 | Text | Inter Bold (700) 30 px | centred, baseline 240 |
 
-**Unpaired**
+**Pairing**
 
 | Element | Type / size | Position |
 |---|---|---|

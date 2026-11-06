@@ -3,12 +3,12 @@
 ## Purpose
 
 A battery-powered device that shows Home Assistant's list of "problems" (doors and windows left open, lights left
-on, ...). Each line has an icon, a name and a state (e.g. `Teraszajtó | nyitva`). An empty list shows a large
-"Minden OK" checkmark instead. A badge in the corner shows when the screen is no longer confirmed up to date.
+on, ...). Each line has an icon, a name and a state, such as `Patio door | open`. An empty list shows a large
+*All OK* checkmark instead. A badge in the corner shows when the screen is no longer confirmed up to date.
 
 ## Design goals
 
-- Functional: show the list of problems with icon, name and state, or "Minden OK", readable at a glance
+- Functional: show the list of problems with icon, name and state, or *All OK*, readable at a glance
   ([UI spec](uispec/ui-spec.md#principles))
 - Responsiveness: the list updates in real time, with a delay under 1 s
 - Battery: at most one battery charge per year
@@ -87,8 +87,8 @@ through any number of changes catches up in one push.
 
 Dataset and view arrive separately and in no fixed order: a view can arrive before its dataset, e.g. after a sync
 cut short by sleep or a lost commit. The view is tied to its dataset by the dataset's hash. A view for another
-dataset is rejected: the device keeps its stored view, shows "Szinkronizálás" while awake, reports its own dataset
-hash and stays awake for the sync. Likewise, a new dataset alone never changes the screen.
+dataset is rejected: the device keeps its stored view, shows the *Synchronizing* screen while awake, reports its
+own dataset hash and stays awake for the sync. Likewise, a new dataset alone never changes the screen.
 
 The mismatch fixes itself: every Home Assistant push syncs the dataset first if the hashes differ, then sends the
 view, so the next push (within 5 s while awake) repairs it. A lost or misordered frame costs a resend, never a
