@@ -19,6 +19,8 @@ Load the matching skill before doing these:
 
 - `bench-test`: serial log, console commands, reset, Zigbee writes through Z2M, `paced_write_test.py`, factory reset.
 - `deploy-ha`: any change under `ha/` or `z2m/`.
+- `docs-check`: checking the docs for broken links, contradictions or drift from the code; after renaming a
+  heading or a file.
 - `panel-troubleshoot`: panel failures in the log, or changes to `epaper.c` / `panel.c`.
 - `regen-bitmaps`: anything that changes `main/screen/bitmaps.c`, a new line icon, checking screens against the mockups.
 
