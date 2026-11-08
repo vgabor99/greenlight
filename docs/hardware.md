@@ -1,5 +1,8 @@
 # Hardware
 
+The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) (being drawn; until it is done,
+the pin table below is the wiring).
+
 ## Parts
 
 | Part                  | Type                                                                                                 | Reason for choice                                                                                                                                       |

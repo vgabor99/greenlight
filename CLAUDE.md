@@ -6,8 +6,9 @@ Guidance for Claude Code in this repository.
 
 Greenlight is a battery-powered Zigbee e-paper display that shows Home Assistant's list of things to fix before
 leaving the house (as HA's `dashboard-away` ("Bezárva?") dashboard does). Firmware: ESP-IDF v6.1 (C, CMake) on
-a Seeed XIAO ESP32-C6, a sleepy end device with a 4.2" 400x300 SSD1683 panel, a PIR and a pair button. HA side:
-`ha/` (templates and an automation) and `z2m/` (Zigbee2MQTT converter).
+a Seeed XIAO ESP32-C6, a sleepy end device with a 4.2" 400x300 SSD1683 panel, a PIR and a pair button.
+Schematic and PCB: `hardware/` (KiCad 10). HA side: `ha/` (templates and an automation) and `z2m/` (Zigbee2MQTT
+converter).
 
 Documentation: start at [docs/README.md](docs/README.md), which says which file answers what. The design files
 describe the current state; [docs/history.md](docs/history.md) holds past designs and lessons,
@@ -21,6 +22,7 @@ Load the matching skill before doing these:
 - `deploy-ha`: any change under `ha/` or `z2m/`.
 - `docs-check`: checking the docs for broken links, contradictions or drift from the code; after renaming a
   heading or a file.
+- `kicad`: anything under `hardware/` (the KiCad 10 schematic and PCB).
 - `panel-troubleshoot`: panel failures in the log, or changes to `epaper.c` / `panel.c`.
 - `regen-bitmaps`: anything that changes `main/screen/bitmaps.c`, a new line icon, checking screens against the mockups.
 
