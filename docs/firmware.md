@@ -99,5 +99,5 @@ CMake caches them; pass `=0` to switch back.
   input): `bat <mV>` (2500-4500), `usb 0|1`; `bat` / `usb` alone print them. They are kept in NVS (`sim_mv`,
   default 4100; `sim_usb`, default 0 = on battery), so they survive the sleep, a power cycle and a reflash like
   a real battery's charge. Usage with `tools/console.py`: the `bench-test` skill.
-- **LOW_BATTERY** waits for `usb 1`, then calls `esp_restart()`: its real wake source, VBUS sense, is not wired,
+- **LOW_BATTERY** waits for `usb 1`, then calls `esp_restart()`: the real USB sense is not wired,
   and the simulated `usb 1` cannot reach a sleeping chip.

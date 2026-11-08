@@ -163,8 +163,8 @@ LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only
   the next wake the same way.
 - A low battery found at boot does not start the radio, so HA keeps the last wake's report.
 - The battery voltage and USB power are simulated for now ([firmware.md](firmware.md#simulated-parts)), and
-  LOW_BATTERY waits for the simulated `usb 1`, then restarts. The real one will be deep sleep with VBUS sense
-  as the only wake source ([hardware.md](hardware.md#power-and-battery)).
+  LOW_BATTERY waits for the simulated `usb 1`, then restarts. The real one will be deep sleep with a timer
+  wake that checks USB sense ([hardware.md](hardware.md#power-and-battery)).
 - How the battery is reported over Zigbee: [zigbee.md](zigbee.md#battery).
 
 ## Failure modes

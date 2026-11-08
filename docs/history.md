@@ -71,6 +71,7 @@ generated bitmaps instead of u8g2 fonts.
 | `IDLE_TIMEOUT_MS` 5 s | too short to see a push arrive after a wake (up to about 20 s) |
 | A "monitoring" LOW_BATTERY state forced at any transition | monitoring means staying awake or waking by timer, and after real deep sleep every check is a boot anyway; a transition-only check misses ACTIVE and UNPAIRED, which can run indefinitely; and the cleanup depends on the state |
 | Retained RAM for the dataset and view | NVS survives a battery change too, and one write per wake is negligible wear |
+| USB sense on D2 as LOW_BATTERY's only wake source | D2 is the only free header pin with both ADC and deep-sleep wake, and the battery measurement needs the ADC; USB sense moved to D7, and LOW_BATTERY wakes by timer instead (2026-11-08) |
 | Holding view writes in Z2M while asleep | parked, not rejected: [roadmap.md](roadmap.md#future-work) |
 
 ## E-paper driver

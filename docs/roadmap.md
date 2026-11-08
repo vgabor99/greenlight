@@ -39,7 +39,7 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 ## Future work
 
 **Hardware**: a solid display GND and a bulk capacitor ([hardware.md](hardware.md#busy-hang)); the battery, its
-measurement and VBUS sense on D2 ([hardware.md](hardware.md#power-and-battery)), which turn the simulated battery
+measurement on D2 and USB sense on D7 ([hardware.md](hardware.md#power-and-battery)), which turn the simulated battery
 and LOW_BATTERY into real ones.
 
 **Reserved attributes** (0xFC8A; append-only ids, so they can be added without a re-pair; each also needs a line

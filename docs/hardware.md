@@ -19,20 +19,23 @@ The battery voltage and USB power are simulated for now ([firmware.md](firmware.
 ## Pins
 
 Both wake inputs must be deep-sleep wake pins, which on the ESP32-C6 are GPIO0-7 (on the XIAO header: D0, D1,
-D2). So the panel's DC and RST lines are on D4/D5, not D1/D2. Pin map in `main/board/board.h`.
+D2). So the panel's DC and RST lines are on D4/D5, not D1/D2. The ADC also reaches only GPIO0-6 (D0-D2 on the
+header), so D2 goes to the battery measurement. Pin map in `main/board/board.h`; the schematic names its nets
+after these defines (the planned ones after the defines they will get).
 
 | Pin | Use |
 |---|---|
 | D0 (GPIO0) | **PIR output** (`PIR_PIN`), active high (`PIR_ACTIVE_LEVEL` 1), external 100k pull-down to GND, no internal pull (keeps the sensor's output current under 100 uA); wake pin. `PIR_ACTIVE_LEVEL` 0 = a test button to GND with the internal pull-up. |
 | D1 (GPIO1) | **pair button** (`PAIR_BUTTON_PIN`), to GND, internal pull-up; wake pin |
-| D2 (GPIO2) | free (spare wake pin); planned: VBUS sense ([Power and battery](#power-and-battery)) |
+| D2 (GPIO2) | planned: **battery sense** (BATTERY_SENSE_PIN), ADC ([Power and battery](#power-and-battery)) |
 | D3 (GPIO21) | panel BUSY. Must be wired: the internal-pull "is it connected" test is unreliable because the module drives BUSY weakly. |
 | D4 (GPIO22) | panel DC |
 | D5 (GPIO23) | panel RST |
+| D7 (GPIO17) | planned: **USB sense** (VBUS_SENSE_PIN); not a wake pin ([Power and battery](#power-and-battery)) |
 | D8, D9, D10 | panel SCK, CS, MOSI |
 
-The panel pins are held low before power-off; that works on any GPIO. Avoid D6/D7 (UART0) in case the console
-moves there. A button wired straight to GND (or any load on D1/D2) shows up as `inputs at boot: ... =0` in the
+The panel pins are held low before power-off; that works on any GPIO. D6 is free. With USB sense on D7 (UART0 RX)
+the console cannot move to UART0. A button wired straight to GND (or any load on D1/D2) shows up as `inputs at boot: ... =0` in the
 log.
 
 ## E-paper panel
@@ -74,12 +77,15 @@ not recover on purpose ([behaviour.md](behaviour.md#failure-modes)).
 
 - The ESP32-C6 cannot switch itself off; deep sleep is its floor. On the XIAO the cell, the charger and the
   system share the BAT pad, so a switch that cuts the system would also stop charging.
-- The real LOW_BATTERY will be `esp_deep_sleep_start()` with VBUS sense as the only wake source: planned as a
-  divider from the 5V pad to D2 (GPIO2, an LP wake pin, ext1 any-high), and the PIR's supply cut if it is
-  switchable. The protection circuit is the last cutoff.
-- Battery measurement (planned): ADC on a spare pin with a high-value divider and a capacitor at the pin; first
-  check whether the XIAO ESP32-C6 already has a battery sense path. Measured once per wake before the radio and
-  the panel start.
+- The battery (planned) is soldered to the XIAO's BAT pads on its underside, not to the PCB: the XIAO sits on
+  header pins, so those pads do not reach the board. A thin wire from the BAT+ pad to a PCB pad (J1 in the
+  schematic) feeds the battery measurement.
+- Battery measurement (planned): the XIAO ESP32-C6 has no battery sense path of its own. VBAT goes through a
+  1M/1M divider (about 2 uA) with 100 nF at the pin to D2. Measured once per wake before the radio and the panel
+  start.
+- USB sense (planned): the 5V pin through 100k/150k (about 3 V) to D7. The 5V pin carries no voltage on
+  battery. D7 cannot wake the chip, so the real LOW_BATTERY will be `esp_deep_sleep_start()` with a timer wake
+  (interval to be decided) that checks USB sense and sleeps again. The protection circuit is the last cutoff.
 - On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
 
 ## USB console and deep sleep
