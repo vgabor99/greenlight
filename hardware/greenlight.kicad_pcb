@@ -209,8 +209,8 @@
 			(uuid "afbfc7c5-15c4-4687-9ceb-45231b140205")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -487,8 +487,8 @@
 			(uuid "812fcc26-d412-4394-801e-cfba10632014")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -652,14 +652,14 @@
 		(at 140.936 150)
 		(descr "Seeed Studio XIAO ESP32-C6 on header pins: Seeed's XIAO-ESP32-C6-DIP without the SMD pads")
 		(property "Reference" "U1"
-			(at -0.125 -10.25 0)
+			(at 0.004 0 0)
 			(unlocked yes)
 			(layer "F.SilkS")
 			(uuid "fc666527-3b39-4149-b781-575cf035aec6")
 			(effects
 				(font
-					(size 0.635 0.635)
-					(thickness 0.1016)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -1027,13 +1027,13 @@
 		(descr "Capacitor SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C2"
-			(at 3.22 0 0)
+			(at 3.02 0 0)
 			(layer "F.SilkS")
 			(uuid "584e8c7d-2108-4b8c-9083-ea5f8c509f5b")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -1361,7 +1361,7 @@
 		(descr "tactile switch SPST right angle, PTS645VL31-2 LFS")
 		(tags "tactile switch SPST angled PTS645VL31-2 LFS C&K Button")
 		(property "Reference" "SW1"
-			(at 2.25 1.68 180)
+			(at 2.25 1.68 0)
 			(layer "F.SilkS")
 			(uuid "3eb9502a-4d81-4dd2-818e-c3bc95b17411")
 			(effects
@@ -1875,7 +1875,7 @@
 		(descr "THT pad as test Point, diameter 2.0mm, hole diameter 1.0mm")
 		(tags "test point THT pad")
 		(property "Reference" "J1"
-			(at 0 -1.998 0)
+			(at 0 -2 0)
 			(layer "F.SilkS")
 			(uuid "762cc720-c6fd-434d-88c2-534e1235dbab")
 			(effects
@@ -2139,13 +2139,13 @@
 		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C3"
-			(at 0 -2.1 0)
+			(at 3.02 0 0)
 			(layer "F.SilkS")
 			(uuid "b9b73b59-0c8e-4d3a-ac74-26985561674b")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -2315,8 +2315,8 @@
 			(uuid "df74889b-06a0-4783-bf26-2a3ff1c65ad9")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -2486,8 +2486,8 @@
 			(uuid "11757f9f-9fe1-4fc2-874c-3b910b9c8957")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -2759,13 +2759,13 @@
 		(descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "resistor")
 		(property "Reference" "R1"
-			(at 2.675 0 90)
+			(at -0.005 -2.2 0)
 			(layer "F.SilkS")
 			(uuid "9ab13fd2-46c4-4459-96a2-d8a8c13023c2")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -2935,8 +2935,8 @@
 			(uuid "da72948f-63b2-4db6-9172-5050ba008476")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -3359,7 +3359,7 @@
 		(effects
 			(font
 				(size 2 2)
-				(thickness 0.15)
+				(thickness 0.3)
 			)
 		)
 	)
@@ -3370,7 +3370,7 @@
 		(effects
 			(font
 				(size 2 2)
-				(thickness 0.15)
+				(thickness 0.3)
 			)
 		)
 	)
