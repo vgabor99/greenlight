@@ -3225,6 +3225,17 @@
 			)
 		)
 	)
+	(gr_rect
+		(start 64.5 101.5)
+		(end 123.5 138.5)
+		(stroke
+			(width 0.15)
+			(type default)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "b8e4bfcb-6b87-4064-b4e8-4a17df946381")
+	)
 	(gr_arc
 		(start 48.5 62.75)
 		(mid 49.085786 61.335786)
@@ -3339,6 +3350,17 @@
 			(font
 				(size 1.5 1.5)
 				(thickness 0.15)
+			)
+		)
+	)
+	(gr_text "Battery"
+		(at 94 120 0)
+		(layer "F.SilkS")
+		(uuid "f8563403-02f8-4cd6-91ed-92a325fb3567")
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.3)
 			)
 		)
 	)
