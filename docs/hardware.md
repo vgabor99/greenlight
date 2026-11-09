@@ -43,23 +43,29 @@ The outline and the positions of the XIAO, the PIR, the panel wires and the moun
 enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](../hardware/mechanical/pcb-layout.dxf)
 (mm, origin at the centre of the panel's outline, seen from the front; in KiCad x = 100 + X, y = 100 - Y).
 
-- 103 x 95.5 mm, two layers. The upper 103 x 78.5 mm sits behind the panel; the XIAO (USB down, at the bottom
-  edge), the PIR (bottom centre) and the pair button (bottom edge, pushing down) are on the 17 mm strip below it.
+- 103 x 98.5 mm, two layers. The upper 103 x 78.5 mm sits behind the panel; the 20 mm strip below it holds the
+  XIAO (bottom right, USB to the right edge), the PIR (bottom centre) and the pair button (bottom left, a
+  TS11-674-50 right-angle switch pushing down out of the bottom edge).
 - All parts are on the front, which faces the panel; the back lies against the enclosure.
-- Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, lower left behind the panel)
-  or above it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the
-  battery 8 mm. The PIR sticks out of the enclosure; keep its 27 x 14 mm lens (centred on it) clear. KiCad rule areas mark the
-  battery and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat
-  SMD parts (C2, C3).
+- Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, behind the panel) or above
+  it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the battery 8 mm.
+  The PIR sticks out of the enclosure; keep its 26 x 12 mm lens holder clear. KiCad rule areas mark the battery
+  and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD parts
+  (C2, C3).
+- Antenna: the XIAO lies entirely below the panel, its chip antenna at the left end (marked in the Fusion
+  sketch), so no metal is over it. No copper fill under the XIAO, and no copper at all (fill, tracks, vias)
+  under its antenna end, 5 mm left of it and up to the top pin row; tracks reach the XIAO from above. The
+  footprint is a header-only copy of Seeed's (`XIAO-ESP32-C6-Header`): Seeed's also has the SMD pads, which
+  stick out 0.8 mm past the XIAO's long edges.
 - The battery is soldered to the XIAO's BAT pads; a wire from BAT+ comes up to J1 above the XIAO for the
-  battery measurement.
+  battery measurement. The dividers (R2-R5, C1) sit above the XIAO too, not under it, where the battery wires
+  are.
 - The panel connects by 8 wires to a row of holes at the right edge (VCC at the bottom, BUSY at the top), so
   the panel and the board open like a book.
-- Six M3 holes for standoffs.
-- Two layers routed with Freerouting, ground fill on both. No copper fill under the XIAO's chip antenna (its
-  end away from the USB socket) and a few mm around it: a rule area keeps it clear, for Zigbee range.
-- Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow JLCPCB's limits: 0.3 mm copper to the board edge, 0.15
-  mm minimum track (Freerouting narrows tracks between the XIAO's pads).
+- Four M3 holes for standoffs.
+- Routed with Freerouting, ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
+  JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting narrows tracks between
+  the XIAO's pads).
 - Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
   part numbers are in each symbol's LCSC field). The XIAO, the PIR, the button and the wires are soldered by
   hand.
