@@ -18,6 +18,7 @@ copy the files again from a newer commit and change the commit above.
   instead of two (the outer one sat on the board edge). The board uses it.
 - `XIAO-ESP32-C6-DIP` (symbol): Seeed's `XIAO-ESP32-C6-SMD` symbol without the bottom pads 15-24, to match the
   header-pin footprint.
+- `Panel_Wires_1x08` (footprint): 8 solder holes (1 mm) for the panel's wires, 2.54 mm pitch, no header.
 - `EKMB1205111` (symbol) and `PIR_Panasonic_EKMB_TO5` (footprint): the PIR, pins 1 VDD, 2 OUT, 3 GND. Seen from
   the top with the can's tab at the lower right: GND left, OUT top, VDD right (checked on the breadboard). The
   footprint draws the 27 x 14 mm lens on F.Fab.
