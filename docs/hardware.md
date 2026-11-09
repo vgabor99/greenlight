@@ -53,9 +53,9 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD parts
   (C2, C3).
 - Antenna: the XIAO lies entirely below the panel, its chip antenna at the left end (marked in the Fusion
-  sketch), so no metal is over it. No copper fill under the XIAO, 6.5 mm left of it (around the antenna) and
-  up to 1.1 mm above it. Tracks may cross that area but are kept away from the antenna end; they reach the
-  XIAO from above. The
+  sketch), so no metal is over it. No copper fill under the XIAO, and no copper at all (fill, tracks, vias)
+  under its antenna end, 7 mm left of it and up to 0.8 mm above the top pin row; tracks reach the XIAO from
+  above. The
   footprint is a header-only copy of Seeed's (`XIAO-ESP32-C6-Header`): Seeed's also has the SMD pads, which
   stick out 0.8 mm past the XIAO's long edges.
 - The battery is soldered to the XIAO's BAT pads; a wire from BAT+ comes up to J1 above the XIAO for the

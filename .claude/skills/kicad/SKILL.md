@@ -64,10 +64,9 @@ small steps with an ERC and a PDF after each.
 - The board is hand-edited (tracks tidied in the PCB Editor): never rebuild it from the netlist or re-route
   it whole, which would throw that work away. Make targeted changes (one footprint, one zone, one text) with
   `pcbnew`, or ask the user to do them in the GUI.
-- After the user edits the board, check that the rule areas are all still there (`XIAO`, `battery`,
+- After the user edits the board, check that the rule areas are all still there (`XIAO`, `antenna`, `battery`,
   `panel parts`, `edges`, `edge bottom`, `edge left`, `edge right`, `hole 1`-`hole 4`): one is easily deleted
-  by accident. Then DRC with `--refill-zones --schematic-parity`. The `XIAO` area (no fill) also covers the
-  antenna; it does not keep tracks out, so check that none runs under the XIAO's left (antenna) end.
+  by accident (`antenna` was once). Then DRC with `--refill-zones --schematic-parity`.
 - KiCad 10 keeps a local history in `hardware/.history/` (its own git repository; ignored here).
 - Footprints come into the board from the schematic only through the GUI ("Update PCB from Schematic", F8);
   kicad-cli cannot do it. Ask the user to run it after schematic changes, then check with DRC
