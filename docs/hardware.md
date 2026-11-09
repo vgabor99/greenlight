@@ -50,7 +50,10 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, lower left behind the panel)
   or above it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the
   battery 8 mm. The PIR sticks out of the enclosure; keep its 27 mm lens clear. KiCad rule areas mark the
-  battery and the area above it.
+  battery and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat
+  SMD parts (C2, C3).
+- The battery is soldered to the XIAO's BAT pads; a wire from BAT+ comes up to J1 above the XIAO for the
+  battery measurement.
 - The panel connects by 8 wires to a row of holes at the right edge (VCC at the bottom, BUSY at the top), so
   the panel and the board open like a book.
 - Six M3 holes for standoffs.
