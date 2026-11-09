@@ -38,7 +38,9 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 
 ## Future work
 
-**Hardware**: a solid display GND and a bulk capacitor ([hardware.md](hardware.md#busy-hang)); the battery, its
+**Hardware**: the PCB, whose soldered display GND fixes the BUSY hang ([hardware.md](hardware.md#busy-hang)); the
+sleep current measured on the battery, including whether the panel module's LDO (about 90 uA if it stays on) is
+off while RST is held low; the battery, its
 measurement on D2 and USB sense on D7 ([hardware.md](hardware.md#power-and-battery)), which turn the simulated battery
 and LOW_BATTERY into real ones.
 

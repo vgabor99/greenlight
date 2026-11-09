@@ -51,7 +51,7 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the battery 8 mm.
   The PIR sticks out of the enclosure; keep its 27 x 14 mm lens (centred on it) clear. KiCad rule areas mark the battery
   and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD parts
-  (C2, C3).
+  (C2, C3, not fitted: [BUSY hang](#busy-hang)).
 - Antenna: the XIAO lies entirely below the panel, its chip antenna at the left end (marked in the Fusion
   sketch), so no metal is over it. No copper fill under the XIAO, and no copper at all (fill, tracks, vias)
   under its antenna end, 7 mm left of it and up to 0.8 mm above the top pin row; tracks reach the XIAO from
@@ -75,8 +75,8 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting narrows tracks between
   the XIAO's pads).
 - Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
-  part numbers are in each symbol's LCSC field). The XIAO, the PIR, the button and the wires are soldered by
-  hand.
+  part numbers are in each symbol's LCSC field), except those marked DNP (C2, C3). The XIAO, the PIR, the button
+  and the wires are soldered by hand.
 
 ## E-paper panel
 
@@ -109,9 +109,25 @@ Cause (found 2026-10-14/15): a bad display GND contact on the breadboard. A stre
 of the display's GND jumper. Ruled out: radio TX (bursts of reports during the refresh), pixel density, refresh
 count, time awake.
 
-Fix (hardware, still to do): a solid display GND (new or doubled wire, soldered) and a bulk capacitor (47-220 uF
-+ 100 nF) at the display's VCC/GND pins. Until then, don't touch the board while it refreshes. The firmware does
-not recover on purpose ([behaviour.md](behaviour.md#failure-modes)).
+Fix: a solid display GND, which the PCB's soldered wires and ground fill give. Until it is built, don't touch the
+breadboard while it refreshes. The firmware does not recover on purpose
+([behaviour.md](behaviour.md#failure-modes)).
+
+No bulk capacitor at the display: C2 (100 uF) and C3 (100 nF) have footprints at the panel wire holes but are not
+fitted (DNP), and get soldered on only if the board shows supply trouble. Reasons:
+
+- The hangs needed a touch: 0 in 1,546 untouched refreshes on the breadboard, with no bulk capacitor.
+- The module decouples its own supply. Waveshare's rev 2.x modules feed VCC (1 uF) into an RT9193-33 LDO,
+  followed by 1 uF and 2 x 4.7 uF at the panel's booster; the panel's reference circuit asks for only 4.7 uF + 100
+  nF. A refresh draws about 5.6 mA (typical, panel datasheet).
+- The XIAO's +3V3 already carries its SGM6029C buck's recommended 10 uF output capacitor plus about 4 uF at the
+  ESP32-C6.
+- On the PCB the wires to the module lie between C2/C3 and the module, so they would mostly sit beside the XIAO's
+  own 10 uF.
+- Costs: the buck's datasheet recommends 10 uF and gives no maximum, so 10 times that is untested territory for
+  its control loop; the 100 uF ceramic's leakage is typically well under 1 uA but specified only to a few uA,
+  against a deep-sleep budget of a few tens of uA. The startup inrush (about 0.6-0.9 A over the 410 us
+  soft-start) stays under the buck's 1.58 A current limit.
 
 ## Power and battery
 

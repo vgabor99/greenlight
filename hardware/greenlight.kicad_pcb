@@ -1107,7 +1107,7 @@
 			)
 		)
 		(path "/731319c9-5fce-4d3f-b4fe-a443e779f35f")
-		(attr smd)
+		(attr smd dnp)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
 			(start -0.711252 -0.91)
@@ -2219,7 +2219,7 @@
 			)
 		)
 		(path "/02ba10a8-4e75-495f-b358-0fe73abe4428")
-		(attr smd)
+		(attr smd dnp)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
 			(start -0.14058 -0.51)
