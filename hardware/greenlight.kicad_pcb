@@ -1198,7 +1198,7 @@
 		(descr "Panasonic EKMB (PaPIRs WL) PIR sensor, TO5 can, 3 leads on a 5.08 mm circle. Pads as seen from the top with the tab at the lower right: GND left, OUT top, VDD right. The 27 x 14 mm lens is drawn on F.Fab; keep parts out of it.")
 		(tags "PIR Panasonic EKMB PaPIRs TO5")
 		(property "Reference" "U2"
-			(at 0 -7 0)
+			(at -9.5 -4 0)
 			(layer "F.SilkS")
 			(uuid "e8ef3c87-420b-4edf-896a-3a4190f1bcc1")
 			(effects
@@ -3093,6 +3093,18 @@
 				(xyz 0 0 0)
 			)
 		)
+	)
+	(gr_poly
+		(pts
+			(xy 86.5 142) (xy 113.5 142) (xy 113.5 156) (xy 86.5 156)
+		)
+		(stroke
+			(width 0.15)
+			(type dash)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "d11531ef-29cd-571d-9e93-8a422f9763a8")
 	)
 	(gr_circle
 		(center 51.6 63.85)
@@ -5813,11 +5825,4 @@
 		)
 	)
 	(embedded_fonts no)
-	(gr_poly
-		(pts (xy 90.8018 155.0000) (xy 87.2000 155.0000) (xy 87.0000 154.8000) (xy 87.0000 143.2000) (xy 87.2000 143.0000) (xy 90.5000 143.0000) (xy 91.6000 143.0000) (xy 91.5000 143.1000) (xy 91.5000 143.9000) (xy 95.5000 143.9000) (xy 95.5000 143.1000) (xy 95.4000 143.0000) (xy 96.6982 143.0000) (xy 103.3018 143.0000) (xy 104.6000 143.0000) (xy 104.5000 143.1000) (xy 104.5000 143.9000) (xy 108.5000 143.9000) (xy 108.5000 143.1000) (xy 108.4000 143.0000) (xy 109.5000 143.0000) (xy 112.8000 143.0000) (xy 113.0000 143.2000) (xy 113.0000 154.8000) (xy 112.8000 155.0000) (xy 109.1982 155.0000) (xy 107.9000 155.0000) (xy 108.0000 154.9000) (xy 108.0000 154.1000) (xy 105.0000 154.1000) (xy 105.0000 154.9000) (xy 105.1000 155.0000) (xy 103.8018 155.0000) (xy 96.1982 155.0000) (xy 94.9000 155.0000) (xy 95.0000 154.9000) (xy 95.0000 154.1000) (xy 92.0000 154.1000) (xy 92.0000 154.9000) (xy 92.1000 155.0000))
-		(stroke (width 0.15) (type dash))
-		(fill no)
-		(layer "F.SilkS")
-		(uuid "d11531ef-29cd-571d-9e93-8a422f9763a8")
-	)
 )

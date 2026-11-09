@@ -49,7 +49,7 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - All parts are on the front, which faces the panel; the back lies against the enclosure.
 - Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, behind the panel) or above
   it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the battery 8 mm.
-  The PIR sticks out of the enclosure; keep its 26 x 12 mm lens holder clear. KiCad rule areas mark the battery
+  The PIR sticks out of the enclosure; keep its 27 x 14 mm lens (centred on it) clear. KiCad rule areas mark the battery
   and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD parts
   (C2, C3).
 - Antenna: the XIAO lies entirely below the panel, its chip antenna at the left end (marked in the Fusion
@@ -68,7 +68,7 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   them), none within an 8 mm circle around each mounting hole (ground fill may reach the hole); above the lower holes no tracks or vias within 3 mm of
   the left, top and right edges (2.6 mm on the right, beside the panel wire holes); below them 0.5 mm, as
   Freerouting does not know JLCPCB's 0.3 mm copper-to-edge rule.
-- Silkscreen: the battery's outline, the PIR lens holder's outline (dashed, from the DXF), a 6 mm circle around
+- Silkscreen: the battery's outline, the PIR lens (a dashed 27 x 14 mm rectangle), a 6 mm circle around
   each mounting hole, the panel wire names, BAT+, and
   "Greenlight v1 / Gabor Varga 2026" above the pair button.
 - Routed with Freerouting, ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
