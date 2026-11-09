@@ -68,7 +68,8 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   them), none within an 8 mm circle around each mounting hole (ground fill may reach the hole); above the lower holes no tracks or vias within 3 mm of
   the left, top and right edges (2.6 mm on the right, beside the panel wire holes); below them 0.5 mm, as
   Freerouting does not know JLCPCB's 0.3 mm copper-to-edge rule.
-- Silkscreen: the battery's outline, a 6 mm circle around each mounting hole, the panel wire names, BAT+, and
+- Silkscreen: the battery's outline, the PIR lens holder's outline (dashed, from the DXF), a 6 mm circle around
+  each mounting hole, the panel wire names, BAT+, and
   "Greenlight v1 / Gabor Varga 2026" above the pair button.
 - Routed with Freerouting, ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
   JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting narrows tracks between

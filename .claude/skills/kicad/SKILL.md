@@ -78,6 +78,8 @@ small steps with an ERC and a PDF after each.
      in the same process crashes it.
   4. In another new process: fill the zones (`pcbnew.ZONE_FILLER`), save, DRC.
   Track widths come from the net classes in `greenlight.kicad_pro` (Default 0.3 mm, Power 0.5 mm for +3V3 and GND).
+- KiCad's Python does not expose line styles: a dashed line is written into the `.kicad_pcb` as
+  text (`(stroke (width 0.15) (type dash))`), with KiCad closed.
 - Mechanical constraints (outline, heights, keep-outs, the Fusion coordinate mapping, assembly) are in
   docs/hardware.md#board. Check a placement against them and against `hardware/mechanical/pcb-layout.dxf`.
 - SMD parts are placed by JLCPCB: basic parts only, top side only, with the part number in the symbol's `LCSC`
