@@ -66,6 +66,12 @@ small steps with an ERC and a PDF after each.
   `--schematic-parity`.
 - Placement, outline (`Edge.Cuts`), tracks and zones can be scripted with `pcbnew` in KiCad's Python
   (`pcbnew.LoadBoard()`, change, `board.Save()`), with KiCad closed; then DRC and the SVG/PNG export.
+- Routing: Freerouting 2.5 at `C:\Tools\freerouting\freerouting-2.5.0.jar`, run with Java at
+  `C:\Program Files\Eclipse Adoptium\jre-25.0.5.8-hotspot\bin\java.exe` (not on the Git Bash PATH). With KiCad
+  closed: export with `pcbnew.ExportSpecctraDSN(board, "x.dsn")` (tracks removed first), run
+  `java -jar freerouting-2.5.0.jar -de x.dsn -do x.ses -mp 30 -l en --gui.enabled=false`, import with
+  `pcbnew.ImportSpecctraSES(board, "x.ses")`, refill the zones (`pcbnew.ZONE_FILLER`), save, DRC. Track widths come
+  from the net classes in `greenlight.kicad_pro` (Default 0.3 mm, Power 0.5 mm for +3V3 and GND).
 - Mechanical constraints (outline, heights, keep-outs, the Fusion coordinate mapping, assembly) are in
   docs/hardware.md#board. Check a placement against them and against `hardware/mechanical/pcb-layout.dxf`.
 - SMD parts are placed by JLCPCB: basic parts only, top side only, with the part number in the symbol's `LCSC`

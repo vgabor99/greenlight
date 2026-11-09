@@ -1,7 +1,6 @@
 # Hardware
 
-The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) ([Board](#board); the board is
-not routed yet).
+The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) ([Board](#board)).
 
 ## Parts
 
@@ -57,6 +56,10 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - The panel connects by 8 wires to a row of holes at the right edge (VCC at the bottom, BUSY at the top), so
   the panel and the board open like a book.
 - Six M3 holes for standoffs.
+- Two layers routed with Freerouting, ground fill on both. No copper fill under the XIAO's chip antenna (its
+  end away from the USB socket) and a few mm around it: a rule area keeps it clear, for Zigbee range.
+- Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow JLCPCB's limits: 0.3 mm copper to the board edge, 0.15
+  mm minimum track (Freerouting narrows tracks between the XIAO's pads).
 - Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
   part numbers are in each symbol's LCSC field). The XIAO, the PIR, the button and the wires are soldered by
   hand.
