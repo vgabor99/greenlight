@@ -18,6 +18,6 @@ copy the files again from a newer commit and change the commit above.
   header-pin footprint.
 - `EKMB1205111` (symbol) and `PIR_Panasonic_EKMB_TO5` (footprint): the PIR, pins 1 VDD, 2 OUT, 3 GND. Seen from
   the top with the can's tab at the lower right: GND left, OUT top, VDD right (checked on the breadboard). The
-  footprint draws the 27 mm lens on F.Fab.
+  footprint draws the 27 x 14 mm lens on F.Fab.
 - `Waveshare_ePaper_4.2_Module`: the panel module, pins numbered in the cable's order (VCC, GND, DIN, CLK, CS,
   DC, RST, BUSY).
