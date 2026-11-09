@@ -71,7 +71,7 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - Silkscreen: the battery's outline, the PIR lens (a dashed 27 x 14 mm rectangle), a 6 mm circle around
   each mounting hole, the panel wire names, BAT+, and
   "Greenlight v1 / Gabor Varga 2026" above the pair button.
-- Routed with Freerouting, ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
+- Routed with Freerouting, then tidied by hand in KiCad; ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
   JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting narrows tracks between
   the XIAO's pads).
 - Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
