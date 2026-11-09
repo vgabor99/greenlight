@@ -3433,7 +3433,7 @@
 	(segment
 		(start 134.586 156.9502)
 		(end 133.9858 156.9502)
-		(width 0.225)
+		(width 0.3)
 		(layer "B.Cu")
 		(net "/VBUS_SENSE_PIN")
 		(uuid "6c2e8ffc-2930-41af-94fd-1f4855793ade")
@@ -3449,7 +3449,7 @@
 	(segment
 		(start 134.3502 141.5776)
 		(end 134.4282 141.6556)
-		(width 0.225)
+		(width 0.3)
 		(layer "B.Cu")
 		(net "/VBUS_SENSE_PIN")
 		(uuid "83dba43a-3835-42ca-80ef-126c5169055a")
@@ -3457,7 +3457,7 @@
 	(segment
 		(start 133.9858 156.9502)
 		(end 133.316 157.62)
-		(width 0.225)
+		(width 0.3)
 		(layer "B.Cu")
 		(net "/VBUS_SENSE_PIN")
 		(uuid "9a79ea09-9fb6-4766-8766-f95d309112be")
@@ -3535,8 +3535,8 @@
 		(uuid "26d09940-5afb-4751-8aa8-89c553876fdc")
 	)
 	(segment
-		(start 147.1698 106.35)
-		(end 141.5 106.35)
+		(start 141.5 106.35)
+		(end 148.47 106.35)
 		(width 0.5)
 		(layer "F.Cu")
 		(net "GND")
@@ -3597,14 +3597,6 @@
 		(layer "F.Cu")
 		(net "GND")
 		(uuid "754ad94f-834a-4f37-95d5-48d2040032d6")
-	)
-	(segment
-		(start 148.47 106.35)
-		(end 147.1698 106.35)
-		(width 0.375)
-		(layer "F.Cu")
-		(net "GND")
-		(uuid "76612cce-65b2-478a-af38-38ad38058a5b")
 	)
 	(segment
 		(start 141.825 135.9171)
@@ -3808,19 +3800,11 @@
 	)
 	(segment
 		(start 145.9247 141.2678)
-		(end 145.8353 141.1784)
-		(width 0.225)
-		(layer "F.Cu")
-		(net "/PIR_PIN")
-		(uuid "3cfe7130-4ffd-4f2f-949b-3ce3ccb6c568")
-	)
-	(segment
-		(start 145.8353 141.1784)
 		(end 145.3812 140.7243)
 		(width 0.3)
 		(layer "F.Cu")
 		(net "/PIR_PIN")
-		(uuid "6e183123-ea77-4d69-a9bb-3fbee75459f3")
+		(uuid "3cfe7130-4ffd-4f2f-949b-3ce3ccb6c568")
 	)
 	(segment
 		(start 122.4507 140.7243)
@@ -3841,7 +3825,7 @@
 	(segment
 		(start 147.57 141.2678)
 		(end 145.9247 141.2678)
-		(width 0.225)
+		(width 0.3)
 		(layer "F.Cu")
 		(net "/PIR_PIN")
 		(uuid "b07b0bd0-50a2-416a-b09d-9cd16444f334")
@@ -4209,7 +4193,7 @@
 	(segment
 		(start 135.4417 137.6489)
 		(end 135.891 137.1996)
-		(width 0.225)
+		(width 0.3)
 		(layer "B.Cu")
 		(net "/EPAPER_PIN_SCK")
 		(uuid "3e2448a4-b786-4d48-b53d-cf9c9bb83c2b")
@@ -4232,19 +4216,11 @@
 	)
 	(segment
 		(start 135.891 137.1996)
-		(end 135.891 136.8104)
-		(width 0.225)
-		(layer "B.Cu")
-		(net "/EPAPER_PIN_SCK")
-		(uuid "a2d64014-8ca5-463b-a16c-d709638e360c")
-	)
-	(segment
-		(start 135.891 107.9572)
-		(end 135.891 136.8104)
+		(end 135.891 107.9572)
 		(width 0.3)
 		(layer "B.Cu")
 		(net "/EPAPER_PIN_SCK")
-		(uuid "c4436cfe-576e-4112-b262-ca1471baca08")
+		(uuid "a2d64014-8ca5-463b-a16c-d709638e360c")
 	)
 	(segment
 		(start 136.9737 140.0974)
@@ -4433,7 +4409,7 @@
 	(segment
 		(start 148.47 108.89)
 		(end 148.4498 108.89)
-		(width 0.375)
+		(width 0.5)
 		(layer "B.Cu")
 		(net "+3V3")
 		(uuid "43cab524-6dd4-434d-91c6-94dba7428b2c")
@@ -4497,7 +4473,7 @@
 	(segment
 		(start 148.4498 108.89)
 		(end 148.3047 109.0351)
-		(width 0.375)
+		(width 0.5)
 		(layer "B.Cu")
 		(net "+3V3")
 		(uuid "b5bbcd54-e3f3-47eb-875e-41643374a841")
