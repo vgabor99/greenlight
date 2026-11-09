@@ -63,6 +63,10 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - The panel connects by 8 wires to a row of holes at the right edge (VCC at the bottom, BUSY at the top), so
   the panel and the board open like a book.
 - Four M3 holes for standoffs.
+- Routing keep-outs (KiCad rule areas): no tracks or vias under the battery; nothing (tracks, vias, fill) within
+  an 8 mm circle around each mounting hole; above the lower holes no tracks or vias within 3 mm of the left,
+  top and right edges (2.6 mm on the right, beside the panel wire holes). Below the lower holes tracks may run
+  near the edges.
 - Routed with Freerouting, ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
   JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting narrows tracks between
   the XIAO's pads).

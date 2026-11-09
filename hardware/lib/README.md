@@ -14,7 +14,8 @@ copy the files again from a newer commit and change the commit above.
 `greenlight.kicad_sym` and `greenlight.pretty/` hold the parts made for this project:
 
 - `XIAO-ESP32-C6-Header` (footprint): Seeed's `XIAO-ESP32-C6-DIP` without the SMD pads (they stick out 0.8 mm
-  past the XIAO's long edges) and without its 3D models (they belong to other XIAO boards). The board uses it.
+  past the XIAO's long edges), without its 3D models (they belong to other XIAO boards) and with one pin-1 dot
+  instead of two (the outer one sat on the board edge). The board uses it.
 - `XIAO-ESP32-C6-DIP` (symbol): Seeed's `XIAO-ESP32-C6-SMD` symbol without the bottom pads 15-24, to match the
   header-pin footprint.
 - `EKMB1205111` (symbol) and `PIR_Panasonic_EKMB_TO5` (footprint): the PIR, pins 1 VDD, 2 OUT, 3 GND. Seen from
