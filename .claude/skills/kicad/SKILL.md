@@ -66,5 +66,8 @@ small steps with an ERC and a PDF after each.
   `--schematic-parity`.
 - Placement, outline (`Edge.Cuts`), tracks and zones can be scripted with `pcbnew` in KiCad's Python
   (`pcbnew.LoadBoard()`, change, `board.Save()`), with KiCad closed; then DRC and the SVG/PNG export.
-- The XIAO goes on as `Seeed_Studio_XIAO_Series:XIAO-ESP32-C6-SMD` (the footprint that reaches the battery pads
-  on the underside), unless the user decides on headers (`-DIP`).
+- Mechanical constraints (outline, heights, keep-outs, the Fusion coordinate mapping, assembly) are in
+  docs/hardware.md#board. Check a placement against them and against `hardware/mechanical/pcb-layout.dxf`.
+- SMD parts are placed by JLCPCB: basic parts only, top side only, with the part number in the symbol's `LCSC`
+  field. A new SMD part needs a basic LCSC part (look it up, for example on jlcsearch.tscircuit.com with
+  `is_basic=true`).

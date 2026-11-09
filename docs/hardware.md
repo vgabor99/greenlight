@@ -1,7 +1,7 @@
 # Hardware
 
-The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) (being drawn; until it is done,
-the pin table below is the wiring).
+The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) ([Board](#board); the board is
+not routed yet).
 
 ## Parts
 
@@ -37,6 +37,26 @@ after these defines (the planned ones after the defines they will get).
 The panel pins are held low before power-off; that works on any GPIO. D6 is free. With USB sense on D7 (UART0 RX)
 the console cannot move to UART0. A button wired straight to GND (or any load on D1/D2) shows up as `inputs at boot: ... =0` in the
 log.
+
+## Board
+
+The outline and the positions of the XIAO, the PIR, the panel wires and the mounting holes come from the
+enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](../hardware/mechanical/pcb-layout.dxf)
+(mm, origin at the centre of the panel's outline, seen from the front; in KiCad x = 100 + X, y = 100 - Y).
+
+- 103 x 95.5 mm, two layers. The upper 103 x 78.5 mm sits behind the panel; the XIAO (USB down, at the bottom
+  edge), the PIR (bottom centre) and the pair button (bottom edge, pushing down) are on the 17 mm strip below it.
+- All parts are on the front, which faces the panel; the back lies against the enclosure.
+- Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, lower left behind the panel)
+  or above it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the
+  battery 8 mm. The PIR sticks out of the enclosure; keep its 27 mm lens clear. KiCad rule areas mark the
+  battery and the area above it.
+- The panel connects by 8 wires to a row of holes at the right edge (VCC at the bottom, BUSY at the top), so
+  the panel and the board open like a book.
+- Six M3 holes for standoffs.
+- Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
+  part numbers are in each symbol's LCSC field). The XIAO, the PIR, the button and the wires are soldered by
+  hand.
 
 ## E-paper panel
 
