@@ -138,10 +138,10 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
   header pins, so those pads do not reach the board. A thin wire from the BAT+ pad to a PCB pad (J1 in the
   schematic) feeds the battery measurement.
 - Battery measurement: the XIAO ESP32-C6 has no battery sense path of its own. VBAT goes through a 1M/1M divider
-  (about 2 uA) with 100 nF at the pin to D2. Measured once per wake before the radio and the panel start
-  ([firmware.md](firmware.md#simulated-parts)). Any two equal resistors keep the ratio; a meter with a 1 MΩ
-  input reads the divider's halves low, the ADC does not. On the breadboard (681k/681k, 100 nF) the ADC read
-  3872 mV against 3880 mV on the meter, without a correction factor; check again on the PCB.
+  (about 2 uA) with 100 nF at the pin to D2. Measured at boot, before the radio and the panel start, and every
+  second while awake ([firmware.md](firmware.md#simulated-parts)). Any two equal resistors keep the ratio; a meter
+  with a 1 MΩ input reads the divider's halves low, the ADC does not. On the breadboard (681k/681k, 100 nF) the ADC
+  read 3872 mV against 3880 mV on the meter, without a correction factor; check again on the PCB.
 - USB sense (planned): the 5V pin through 100k/150k (about 3 V) to D7. The 5V pin carries no voltage on
   battery. D7 cannot wake the chip, so the real LOW_BATTERY will be `esp_deep_sleep_start()` with a timer wake
   (interval to be decided) that checks USB sense and sleeps again. The protection circuit is the last cutoff.

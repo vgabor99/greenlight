@@ -3,6 +3,8 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "board/battery_sense.h"
 #include "board/board.h"
 
@@ -15,10 +17,16 @@ static const char *TAG = "greenlight";
 static adc_oneshot_unit_handle_t adc_unit;
 static adc_cali_handle_t         calibration;
 static adc_channel_t             channel;
+static SemaphoreHandle_t         lock;  /* the state machine and the console both measure */
 static bool                      ready;
 
 static bool set_up(void)
 {
+    lock = xSemaphoreCreateMutex();
+    if (lock == NULL) {
+        ESP_LOGE(TAG, "battery sense: no memory for the lock");
+        return false;
+    }
     adc_unit_t unit_id;
     esp_err_t  err = adc_oneshot_io_to_channel(BATTERY_SENSE_PIN, &unit_id, &channel);
     if (err == ESP_OK) {
@@ -41,15 +49,18 @@ static bool set_up(void)
     return true;
 }
 
-uint16_t battery_sense_read_mv(void)
+uint16_t battery_sense_read_mv(bool log)
 {
-    if (!ready) {
+    static bool tried;  /* the first call comes before the console task: no race, and a failed setup is not retried */
+    if (!tried) {
+        tried = true;
         ready = set_up();
-        if (!ready) {
-            return 0;
-        }
+    }
+    if (!ready) {
+        return 0;
     }
     int mv, sum = 0, count = 0;
+    xSemaphoreTake(lock, portMAX_DELAY);
     adc_oneshot_get_calibrated_result(adc_unit, calibration, channel, &mv);  /* first sample discarded */
     for (int i = 0; i < SAMPLES; i++) {
         if (adc_oneshot_get_calibrated_result(adc_unit, calibration, channel, &mv) == ESP_OK) {
@@ -57,11 +68,14 @@ uint16_t battery_sense_read_mv(void)
             count++;
         }
     }
+    xSemaphoreGive(lock);
     if (count == 0) {
         ESP_LOGE(TAG, "battery sense: ADC read failed");
         return 0;
     }
     int pin_mv = sum / count;
-    ESP_LOGI(TAG, "battery sense: pin %d mV, vbat %d mV (%d samples)", pin_mv, pin_mv * DIVIDER_RATIO, count);
+    if (log) {
+        ESP_LOGI(TAG, "battery sense: pin %d mV, vbat %d mV (%d samples)", pin_mv, pin_mv * DIVIDER_RATIO, count);
+    }
     return pin_mv * DIVIDER_RATIO;
 }

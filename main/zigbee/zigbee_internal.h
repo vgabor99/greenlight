@@ -37,6 +37,7 @@
 #define EVENT_LEFT               BIT3
 #define EVENT_GOODBYE_OCCUPANCY  BIT4  /* Z2M confirmed the goodbye's occupancy report */
 #define EVENT_GOODBYE_AWAKE      BIT5  /* ... and its awake report */
+#define EVENT_BATTERY_LOW        BIT6  /* Z2M confirmed the low-battery alarm report */
 
 typedef struct {
     EventGroupHandle_t events;

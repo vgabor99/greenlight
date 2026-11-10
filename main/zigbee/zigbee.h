@@ -108,6 +108,9 @@ void zigbee_report_awake(bool awake);    /* 0xFC8A awake */
 void zigbee_report_occupancy(bool occupied);
 /* Power Configuration (charge from mv, alarm bit 0 = low) and 0xFC8A battery_mv */
 void zigbee_report_battery(uint16_t mv, bool low);
+/* The low-battery farewell: the battery reports with low set, batteryAlarmState asking Z2M for a default response,
+ * resent every second until it is confirmed or timeout_ms is over. True when confirmed. */
+bool zigbee_report_battery_low(uint16_t mv, uint32_t timeout_ms);
 /* SHUTDOWN: occupancy 0 and awake false, each asking Z2M for a default response, resent every second until both
  * are confirmed or timeout_ms is over. True when both were confirmed. */
 bool zigbee_report_goodbye(uint32_t timeout_ms);

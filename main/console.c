@@ -20,8 +20,8 @@ static void handle_command(const char *line)
     int value;
     if (line[0] == '\r' || line[0] == '\n') {
         return;
-    } else if (strncmp(line, "vbat", 4) == 0) {  /* measure again: only logged, the boot measurement stays */
-        battery_sense_read_mv();
+    } else if (strncmp(line, "vbat", 4) == 0) {  /* measure and log; the battery checks measure on their own */
+        battery_sense_read_mv(true);
         return;
     } else if (sscanf(line, "bat %d", &value) == 1) {
         if (value != 0 && (value < SIMULATED_MV_MIN || value > SIMULATED_MV_MAX)) {

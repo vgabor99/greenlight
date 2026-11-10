@@ -31,6 +31,7 @@ static const char *TAG = "greenlight";
 #define VIEW_WAIT_MS           45000   /* ACTIVE: stay awake this long for the wake's view, so HA's resend can land (docs/behaviour.md#timeouts) */
 #define GOODBYE_TIMEOUT_MS     5000    /* SHUTDOWN: wait this long for Z2M to confirm occupancy 0 and awake false */
 #define BATTERY_CHECK_MS       1000    /* mid-wake battery check period */
+#define BATTERY_REPORT_TIMEOUT_MS 10000 /* SHUTDOWN: resend the low-battery report this long until Z2M confirms it */
 
 static const char *const state_names[] = {
     "BOOT", "UNPAIRED", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
@@ -57,6 +58,7 @@ static bool battery_ran_low(void)
         return false;
     }
     last_check = xTaskGetTickCount();
+    battery_measure();
     if (!battery_is_low()) {
         return false;
     }
@@ -101,12 +103,8 @@ static device_state_t check_battery_at_boot(void)
         ESP_LOGI(TAG, "boot: battery recovered (%u mV%s)", battery_voltage_mv(), battery_on_usb_power() ? ", USB" : "");
         battery_set_low_latched(false);
     } else if (battery_is_low()) {
-        ESP_LOGW(TAG, "boot: battery low (%u mV)", battery_voltage_mv());
-        if (epaper_init() != ESP_OK) {
-            ESP_LOGE(TAG, "e-paper init failed");
-        }
-        display_set_failure(RENDER_BATTERY);
-        return STATE_SHUTDOWN;  /* the stack is not started: no reports */
+        /* Not latched yet: boot on, so the first mid-wake check ends the wake with the battery_low report */
+        ESP_LOGW(TAG, "boot: battery low (%u mV): reporting it, then shutting down", battery_voltage_mv());
     }
     return STATE_BOOT;
 }
@@ -248,7 +246,8 @@ static device_state_t run_rejoin(void)
         display_wait_ms(20);
     }
     ESP_LOGW(TAG, "rejoin failed");
-    display_set_failure(RENDER_JOIN_FAILED);
+    battery_measure();
+    display_set_failure(battery_is_low() ? RENDER_BATTERY : RENDER_JOIN_FAILED);  /* not latched: retried next wake */
     return STATE_SHUTDOWN;
 }
 
@@ -337,21 +336,25 @@ static device_state_t run_erase_network(void)
 static device_state_t run_shutdown(void)
 {
     bool low_battery = display_failure() == RENDER_BATTERY;
-    if (low_battery) {
-        battery_set_low_latched(true);
-    }
+    bool latch = false;
     if (zigbee_is_joined()) {
+        /* HA learns why the device went quiet. Only a confirmed report latches; else the next wake tries again. */
         if (low_battery) {
-            zigbee_report_battery(battery_voltage_mv(), true);  /* HA learns why the device went quiet */
+            latch = zigbee_report_battery_low(battery_voltage_mv(), BATTERY_REPORT_TIMEOUT_MS);
         }
         zigbee_report_goodbye(GOODBYE_TIMEOUT_MS);  /* not joined (failed rejoin, unpaired, stack down): nothing to send */
+    }
+    if (latch) {
+        battery_set_low_latched(true);
+    } else if (low_battery) {
+        ESP_LOGW(TAG, "battery low not reported: not latched, the next wake tries again");
     }
     /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
     if (panel_clear("shutdown") != ESP_OK) {
         ESP_LOGE(TAG, "e-paper final clear failed");
     }
-    device_state_t next = low_battery ? STATE_LOW_BATTERY : STATE_SLEEP;
-    display_show_state(next);
+    device_state_t next = latch ? STATE_LOW_BATTERY : STATE_SLEEP;
+    display_show_state(next);  /* the failure screen (Battery dead) is drawn either way */
     display_redraw();
     ESP_LOGI(TAG, "final refresh done");
     TickType_t start = xTaskGetTickCount();

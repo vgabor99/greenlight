@@ -57,7 +57,9 @@ generated bitmaps instead of u8g2 fonts.
 - 2026-11-04: the sources were split into one file per purpose and grouped into folders; `INTERVIEW_MS` got the
   full minute.
 - 2026-11-10: the battery voltage is measured on D2 instead of simulated; `bat <mV>` stays as an override (the
-  old default 4100 mV is gone, a stored `sim_mv` still wins until `bat 0`).
+  old default 4100 mV is gone, a stored `sim_mv` still wins until `bat 0`). A low battery found at boot is now
+  reported (it used to keep the radio off, so with a real cell, which drains during the sleep, HA never learnt
+  of it), and the latch is set only once Z2M confirms the report.
 
 ## Rejected options
 

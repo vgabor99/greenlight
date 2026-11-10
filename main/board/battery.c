@@ -7,10 +7,10 @@
 
 static const char *TAG = "greenlight";
 
-/* The voltage is measured once at boot (at rest, before the radio and the panel start); the console can override
- * it (0 = measured). USB power is still simulated. Both console values are kept in NVS. The latch makes the exit
+/* The voltage is measured at boot (at rest, before the radio and the panel start) and again at each mid-wake
+ * check (battery_measure()); the console can override it (0 = measured). USB power is still simulated. Both console values are kept in NVS. The latch makes the exit
  * threshold apply (hysteresis). USB power overrides a low battery: the device then runs from USB. */
-static uint16_t          measured_mv;
+static volatile uint16_t measured_mv;
 static volatile uint16_t simulated_mv;  /* 0: the measured voltage applies */
 static volatile bool     simulated_usb_power;
 static volatile bool     low_latched;
@@ -24,7 +24,7 @@ static void log_status(void)
 
 void battery_init(void)
 {
-    measured_mv = battery_sense_read_mv();
+    measured_mv = battery_sense_read_mv(true);
     uint16_t mv;
     if (persistent_store_get_u16(STORE_KEY_SIMULATED_MV, &mv)) {
         simulated_mv = mv;
@@ -32,6 +32,11 @@ void battery_init(void)
     simulated_usb_power = persistent_store_get_u8(STORE_KEY_SIMULATED_USB);
     low_latched         = persistent_store_get_u8(STORE_KEY_LOW_BATTERY);
     log_status();
+}
+
+void battery_measure(void)
+{
+    measured_mv = battery_sense_read_mv(false);
 }
 
 uint16_t battery_voltage_mv(void)

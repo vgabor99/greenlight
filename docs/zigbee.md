@@ -75,9 +75,11 @@ There is nothing periodic while asleep.
   view; `dataset_hash` after each accepted dataset and after an out-of-sync view; `occupancy` when it changes
   (on when the PIR is active, off `OCCUPANCY_HOLD_MS` after it was last active); the battery when it changes
   over the console.
-- **At SHUTDOWN**, if joined (also after a low battery, after its battery report): `occupancy` = 0 and
-  `awake` = false, the only reports that ask for a default response; the unconfirmed one is resent every
-  second, for up to `GOODBYE_TIMEOUT_MS` (`zigbee_report_goodbye()`).
+- **At SHUTDOWN**, if joined: after a low battery first its battery reports, `batteryAlarmState` asking for a
+  default response and resent every second until confirmed, for up to `BATTERY_REPORT_TIMEOUT_MS`
+  (`zigbee_report_battery_low()`; [behaviour.md](behaviour.md#low-battery)); then `occupancy` = 0 and
+  `awake` = false, also asking for a default response, the unconfirmed one resent every second, for up to
+  `GOODBYE_TIMEOUT_MS` (`zigbee_report_goodbye()`). No other report asks for one.
 
 **Why a counter triggers the push, not `awake`.** `awake = false` is sent just before the radio goes off and
 can be lost. Then Z2M keeps `awake = true` cached, the next wake's `true` is no change in HA, and a trigger on
@@ -191,7 +193,7 @@ Configuration attributes are set from the start: `batterySize` 0x0031 = 2 (Other
 - `voltage` comes from `battery_mv` because the standard attribute has only 100 mV resolution (too coarse for a
   LiPo: 3.0-4.2 V is 12 steps): `battery()` with `voltage: false`, plus a numeric expose in the converter.
 
-The voltage is measured once per boot ([firmware.md](firmware.md#simulated-parts)); the behaviour on a low
+The voltage is measured on D2 ([firmware.md](firmware.md#simulated-parts)); the behaviour on a low
 battery is in [behaviour.md](behaviour.md#low-battery).
 
 ## External converter

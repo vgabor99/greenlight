@@ -11,6 +11,8 @@
 /* Measure the voltage; load the console's values and the low-battery latch. */
 void battery_init(void);
 
+/* Measure the voltage again (the mid-wake check); battery_voltage_mv() returns the last measurement. */
+void     battery_measure(void);
 uint16_t battery_voltage_mv(void);
 bool     battery_on_usb_power(void);
 

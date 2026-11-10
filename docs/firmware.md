@@ -96,9 +96,9 @@ CMake caches them; pass `=0` to switch back.
 
 ## Simulated parts
 
-- **The battery voltage** is measured on D2 once per boot, before the radio and the panel start (`battery sense:
-  pin ... mV, vbat ... mV`), and that value is used for the whole wake. The `vbat` console command measures
-  again but only logs. On USB without a cell the reading means nothing (the charger's output is not a battery
+- **The battery voltage** is measured on D2 at boot, before the radio and the panel start (logged as `battery
+  sense: pin ... mV, vbat ... mV`), and again, unlogged, at every mid-wake battery check
+  ([behaviour.md](behaviour.md#low-battery)). The `vbat` console command measures and logs. On USB without a cell the reading means nothing (the charger's output is not a battery
   voltage), and without the USB sense the device cannot tell.
 - **The voltage override and USB power** are set over the USB-Serial-JTAG console (the primary console, so it
   takes input): `bat <mV>` (2500-4500; `bat 0` = measured again), `usb 0|1`; `bat` / `usb` alone print them.

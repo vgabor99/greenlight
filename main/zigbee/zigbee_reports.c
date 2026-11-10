@@ -13,7 +13,7 @@ static const char *TAG = "zb";
 
 /* Battery (docs/zigbee.md#battery): batteryAlarmState bit 0 (BatteryMinThreshold) = low, Z2M's battery_low */
 #define BATTERY_ALARM_LOW 0x00000001u
-#define GOODBYE_RETRY_MS  1000  /* zigbee_report_goodbye(): resend an unconfirmed report this often */
+#define GOODBYE_RETRY_MS  1000  /* zigbee_report_goodbye(), zigbee_report_battery_low(): resend this often */
 
 /* ---- Helpers (lock held) ---- */
 
@@ -126,7 +126,8 @@ void zigbee_report_occupancy(bool occupied)
     esp_zigbee_lock_release();
 }
 
-void zigbee_report_battery(uint16_t mv, bool low)
+/* confirm: batteryAlarmState asks for a default response (only the low-battery farewell does) */
+static void send_battery_reports(uint16_t mv, bool low, bool confirm)
 {
     uint8_t  voltage_100mv = mv / 100, half_percent = zigbee_battery_half_percent(mv);
     uint32_t alarm_state = low ? BATTERY_ALARM_LOW : 0;
@@ -135,9 +136,32 @@ void zigbee_report_battery(uint16_t mv, bool low)
     zigbee_set_attribute(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, &voltage_100mv);
     set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
                    &half_percent);
-    set_and_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID, &alarm_state);
+    zigbee_set_attribute(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID, &alarm_state);
+    zigbee_send_report(EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID, confirm);
     set_and_report(CUSTOM_CLUSTER_ID, ATTR_BATTERY_MV, &mv);  /* the exact voltage: 0x0020 has 100 mV steps */
     esp_zigbee_lock_release();
+}
+
+void zigbee_report_battery(uint16_t mv, bool low)
+{
+    send_battery_reports(mv, low, false);
+}
+
+bool zigbee_report_battery_low(uint16_t mv, uint32_t timeout_ms)
+{
+    TickType_t start = xTaskGetTickCount();
+    bool       confirmed = false;
+    int        sends = 0;
+    xEventGroupClearBits(zigbee_context.events, EVENT_BATTERY_LOW);
+    while (!confirmed && elapsed_ms(start) < timeout_ms) {
+        send_battery_reports(mv, true, true);
+        sends++;
+        confirmed = xEventGroupWaitBits(zigbee_context.events, EVENT_BATTERY_LOW, pdFALSE, pdTRUE,
+                                        pdMS_TO_TICKS(GOODBYE_RETRY_MS)) & EVENT_BATTERY_LOW;
+    }
+    ESP_LOGI(TAG, "battery low report %s: %d send(s), %lu ms", confirmed ? "confirmed" : "timed out", sends,
+             (unsigned long)elapsed_ms(start));
+    return confirmed;
 }
 
 /* Resend whichever of the two goodbye reports Z2M has not confirmed yet. */

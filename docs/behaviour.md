@@ -33,6 +33,7 @@ network (paired). The PIR's own hold time is ignored.
 | `GOODBYE_TIMEOUT_MS` | 5 s | SHUTDOWN waits up to this long for Z2M to confirm `occupancy` = 0 and `awake` = false. |
 | `VIEW_VALID_MS` | 8 s | a received view is fresh this long ([data-model.md](data-model.md#staleness-flag)): HA's 5 s push period while awake plus 3 s for the push to arrive (normally 0.1-1.3 s). |
 | `BATTERY_CHECK_MS` | 1 s | mid-wake battery check period ([Low battery](#low-battery)). |
+| `BATTERY_REPORT_TIMEOUT_MS` | 10 s | SHUTDOWN resends the low-battery report up to this long until Z2M confirms it ([Low battery](#low-battery)). |
 
 ## State machine
 
@@ -87,7 +88,7 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: latch `bat_low`, report the battery (`battery_low`) before the goodbye, draw the *Battery dead* screen, -> LOW_BATTERY |
+| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), draw the *Battery dead* screen; confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
 | **LOW_BATTERY** | the *Battery dead* screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
@@ -149,11 +150,17 @@ the battery:
 
 ## Low battery
 
-Below `BATTERY_LOW_ENTER_MV` (3.5 V) the wake ends. BOOT checks first, before the radio, the panel and any NVS
-write; ACTIVE, UNPAIRED and PAIRING check every `BATTERY_CHECK_MS` (1 s) and go to SHUTDOWN with the
-*Battery dead* screen (one final refresh, the farewell `battery_low` report when joined). INTERVIEW and REJOIN
-(bounded) and ERASE_NETWORK are not interrupted. SHUTDOWN sets the NVS latch `bat_low` and goes to
-LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power does**.
+Below `BATTERY_LOW_ENTER_MV` (3.5 V) the wake ends. ACTIVE, UNPAIRED and PAIRING measure and check every
+`BATTERY_CHECK_MS` (1 s) and go to SHUTDOWN with the *Battery dead* screen (one final refresh, the farewell
+`battery_low` report when joined). INTERVIEW and REJOIN (bounded) and ERASE_NETWORK are not interrupted; a
+rejoin that fails on a low battery also ends with the *Battery dead* screen.
+
+**The latch waits for HA.** SHUTDOWN resends the `battery_low` report, asking Z2M for a default response, every
+second for up to `BATTERY_REPORT_TIMEOUT_MS` (10 s). Only once Z2M confirms it does SHUTDOWN set the NVS latch
+`bat_low` and go to LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power
+does**. Unconfirmed, or not joined (failed rejoin, unpaired, stack down), the device shows *Battery dead* but
+sleeps as usual, so the next wake finds the battery low at boot and tries again: HA must not be left thinking
+the device is fine while it no longer wakes.
 
 - While latched, the exit threshold `BATTERY_LOW_EXIT_MV` (3.7 V) applies. The entry voltage may be read
   under load while the exit check runs at rest, and a nearly empty LiPo recovers tens of mV just by resting,
@@ -161,7 +168,10 @@ LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only
 - **USB power overrides a low battery** (the device then runs from USB, and a device that slept while already
   on USB would never see a wake edge), so a USB wake clears the latch; unplugging with the cell still low ends
   the next wake the same way.
-- A low battery found at boot does not start the radio, so HA keeps the last wake's report.
+- **A low battery found at boot is reported.** The cell drains during the sleep, so a wake usually finds it
+  already low. Not latched yet, the wake boots on and rejoins, and the first check in ACTIVE ends it with the
+  `battery_low` report, so HA learns it; 3.5 V leaves plenty for a few rejoins. Latched, BOOT checks before the
+  radio, the panel and any NVS write, and a battery still low goes straight back to LOW_BATTERY.
 - The battery voltage is measured, USB power is still simulated
   ([firmware.md](firmware.md#simulated-parts)), and LOW_BATTERY waits for the simulated `usb 1`, then restarts. The real one will be deep sleep with a timer
   wake that checks USB sense ([hardware.md](hardware.md#power-and-battery)).
