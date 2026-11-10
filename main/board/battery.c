@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "board/battery.h"
 #include "board/battery_sense.h"
+#include "board/usb_sense.h"
 #include "persistent_store.h"
 
 static const char *TAG = "greenlight";
@@ -18,12 +19,13 @@ static volatile bool     simulation_changed;  /* the console changed the simulat
 
 static void log_status(void)
 {
-    ESP_LOGI(TAG, "battery: %u mV (%s), usb %d (simulated), latched %d", battery_voltage_mv(),
-             simulated_mv ? "simulated" : "measured", simulated_usb_power, low_latched);
+    ESP_LOGI(TAG, "battery: %u mV (%s), usb %d (simulated; D7 %d), latched %d", battery_voltage_mv(),
+             simulated_mv ? "simulated" : "measured", simulated_usb_power, usb_sense_read(), low_latched);
 }
 
 void battery_init(void)
 {
+    usb_sense_init();
     measured_mv = battery_sense_read_mv(true);
     uint16_t mv;
     if (persistent_store_get_u16(STORE_KEY_SIMULATED_MV, &mv)) {

@@ -23,6 +23,9 @@
 /* Battery measurement: VBAT through two equal resistors (100 nF at the pin), ADC1 (battery_sense.c) */
 #define BATTERY_SENSE_PIN 2  /* D2 */
 
+/* USB sense: the 5V pin through a divider (about 3 V on USB, 0 on battery), digital input, no pulls (usb_sense.c) */
+#define VBUS_SENSE_PIN 17  /* D7 */
+
 /* Antenna switch: RF_SWITCH_ENABLE_PIN low enables it, RF_ANTENNA_SELECT_PIN low selects the onboard ceramic
  * antenna. */
 #define RF_SWITCH_ENABLE_PIN  3

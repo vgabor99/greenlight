@@ -16,6 +16,7 @@ Every file under `main/` has one purpose and is named after it.
 | `board/inputs.c` | PIR and pair button: polling, debounce, occupancy hold |
 | `board/battery.c` | battery voltage (measured or overridden), simulated USB power, low-battery latch |
 | `board/battery_sense.c` | battery measurement on D2 (ADC) |
+| `board/usb_sense.c` | USB sense on D7: logged only |
 | `board/sleep.c` | deep sleep (or the simulated sleep) |
 | `board/wake_reason.c` | the wake cause, logged at boot |
 | `display/display.c` | screen per state (`choose_screen()`), redraw, `display_wait_ms()` |
@@ -103,6 +104,7 @@ CMake caches them; pass `=0` to switch back.
 - **The voltage override and USB power** are set over the USB-Serial-JTAG console (the primary console, so it
   takes input): `bat <mV>` (2500-4500; `bat 0` = measured again), `usb 0|1`; `bat` / `usb` alone print them.
   They are kept in NVS (`sim_mv`, default 0 = measured; `sim_usb`, default 0 = on battery), so they survive the
-  sleep, a power cycle and a reflash. Usage with `tools/console.py`: the `bench-test` skill.
+  sleep, a power cycle and a reflash. Usage with `tools/console.py`: the `bench-test` skill. The status line
+  also shows the real USB sense (`usb 0 (simulated; D7 1)`), which does not feed the battery logic yet.
 - **LOW_BATTERY** waits for `usb 1`, then calls `esp_restart()`: the real USB sense is not wired,
   and the simulated `usb 1` cannot reach a sleeping chip.

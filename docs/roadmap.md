@@ -9,8 +9,8 @@ As of 2026-11-10, working end to end on the bench, with the device in the lobby:
   the HA templates and push automation, and the battery measurement on D2 with the confirmed low-battery report
   (tested by pulling the divider during a wake and before one).
 - **Simulated**: USB power (set over the console), and with it LOW_BATTERY's wake
-  ([firmware.md](firmware.md#simulated-parts)). The USB sense on D7 waits for the PCB: the breadboard has no
-  jumper wires left for it.
+  ([firmware.md](firmware.md#simulated-parts)). The USB sense on D7 is wired (82k/140k on the breadboard) and
+  read correctly, but only logged: using it, with LOW_BATTERY's timer wake, is the next step.
 - **Breadboard**: the display GND contact still causes occasional BUSY hangs
   ([hardware.md](hardware.md#busy-hang)); the battery divider is 681k/681k with 100 nF, not the PCB's 1M/1M.
 
@@ -42,9 +42,17 @@ As of 2026-11-10, working end to end on the bench, with the device in the lobby:
 
 **Hardware**: the PCB, whose soldered display GND fixes the BUSY hang ([hardware.md](hardware.md#busy-hang)); the
 sleep current measured on the battery, including whether the panel module's LDO (about 90 uA if it stays on) is
-off while RST is held low; the battery
-divider on the PCB and USB sense on D7 ([hardware.md](hardware.md#power-and-battery)), which turn the simulated USB
-power and LOW_BATTERY into real ones.
+off while RST is held low; the dividers
+on the PCB ([hardware.md](hardware.md#power-and-battery)).
+
+**USB sense divider values** (decide after the sleep current is measured): on battery the XIAO's 5V pin sits at
+about 0.33 V from a stiff leak (about 20k behind it), so the USB sense divider draws about 1.2 uA in deep sleep
+with 100k/150k. 1M/1.5M would cut that to about 0.14 uA and still read a clean low (about 0.2 V on D7); the
+cost is a USB reading that lingers a few seconds after unplugging. Worth it only if the measured sleep current
+is in the single-digit uA.
+
+**USB power**: use the D7 reading instead of the console's simulation, and make LOW_BATTERY deep sleep with a
+timer wake that checks it.
 
 **Reserved attributes** (0xFC8A; append-only ids, so they can be added without a re-pair; each also needs a line
 in the converter):

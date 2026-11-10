@@ -1,5 +1,5 @@
 idf_component_register(SRCS "main.c" "state_machine.c" "console.c" "persistent_store.c"
-                            "board/board.c" "board/inputs.c" "board/battery.c" "board/battery_sense.c" "board/sleep.c" "board/wake_reason.c"
+                            "board/board.c" "board/inputs.c" "board/battery.c" "board/battery_sense.c" "board/usb_sense.c" "board/sleep.c" "board/wake_reason.c"
                             "display/display.c" "display/display_model.c" "display/view_freshness.c" "display/panel.c"
                             "display/frame_dump.c" "display/framebuffer.c" "display/epaper.c"
                             "screen/render.c" "screen/status_screen.c" "screen/debug_screen.c" "screen/view_layout.c"

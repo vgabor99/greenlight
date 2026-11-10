@@ -31,7 +31,7 @@ after these defines (the planned ones after the defines they will get).
 | D3 (GPIO21) | panel BUSY. Must be wired: the internal-pull "is it connected" test is unreliable because the module drives BUSY weakly. |
 | D4 (GPIO22) | panel DC |
 | D5 (GPIO23) | panel RST |
-| D7 (GPIO17) | planned: **USB sense** (VBUS_SENSE_PIN); not a wake pin ([Power and battery](#power-and-battery)) |
+| D7 (GPIO17) | **USB sense** (`VBUS_SENSE_PIN`), digital input with no pulls; read and logged only; not a wake pin ([Power and battery](#power-and-battery)) |
 | D8, D9, D10 | panel SCK, CS, MOSI |
 
 The panel pins are held low before power-off; that works on any GPIO. D6 is free. With USB sense on D7 (UART0 RX)
@@ -142,9 +142,13 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
   second while awake ([firmware.md](firmware.md#simulated-parts)). Any two equal resistors keep the ratio; a meter
   with a 1 MΩ input reads the divider's halves low, the ADC does not. On the breadboard (681k/681k, 100 nF) the ADC
   read 3872 mV against 3880 mV on the meter, without a correction factor; check again on the PCB.
-- USB sense (planned): the 5V pin through 100k/150k (about 3 V) to D7. The 5V pin carries no voltage on
-  battery. D7 cannot wake the chip, so the real LOW_BATTERY will be `esp_deep_sleep_start()` with a timer wake
-  (interval to be decided) that checks USB sense and sleeps again. The protection circuit is the last cutoff.
+- USB sense: the 5V pin through 100k/150k (about 3 V) to D7. The 5V pin carries no voltage on battery (D7
+  measured 0.19 V there, awake and asleep, on the breadboard's 82k/140k; 2.92 V on USB). GPIO17 is UART0 RX
+  and comes out of reset with its pull-up on, which would pull D7 to about 1.8 V on battery and cost about
+  18 uA: the firmware turns both pulls off at boot, and they stay off in deep sleep. The battery logic still
+  uses the simulated USB power ([firmware.md](firmware.md#simulated-parts)). D7 cannot wake the chip, so the
+  real LOW_BATTERY will be `esp_deep_sleep_start()` with a timer wake (interval to be decided) that checks USB
+  sense and sleeps again. The protection circuit is the last cutoff.
 - On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
 
 ## USB console and deep sleep
