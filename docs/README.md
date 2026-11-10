@@ -32,7 +32,7 @@ as well:
 
 | Skill | For |
 |---|---|
-| [bench-test](../.claude/skills/bench-test/SKILL.md) | serial console, simulated battery, Zigbee write tests, factory reset |
+| [bench-test](../.claude/skills/bench-test/SKILL.md) | serial console, battery override and simulated USB, Zigbee write tests, factory reset |
 | [deploy-ha](../.claude/skills/deploy-ha/SKILL.md) | deploying `ha/` and `z2m/` changes to Home Assistant and Zigbee2MQTT |
 | [docs-check](../.claude/skills/docs-check/SKILL.md) | checking the docs: links, anchors, contradictions, drift from the code (`tools/check_docs.py`) |
 | [panel-troubleshoot](../.claude/skills/panel-troubleshoot/SKILL.md) | reading the `panel:` log, BUSY hangs |

@@ -2,15 +2,17 @@
 
 ## Status
 
-As of 2026-11-05, working end to end on the bench, with the device in the lobby:
+As of 2026-11-10, working end to end on the bench, with the device in the lobby:
 
 - **Real**: the e-paper driver and the designed screens, the PIR and the pair button, the state machine, deep
   sleep with wake on D0 / D1, Zigbee (pairing, rejoin, reports, view and dataset writes), the Z2M converter,
-  and the HA templates and push automation.
+  the HA templates and push automation, and the battery measurement on D2 with the confirmed low-battery report
+  (tested by pulling the divider during a wake and before one).
 - **Simulated**: USB power (set over the console), and with it LOW_BATTERY's wake
-  ([firmware.md](firmware.md#simulated-parts)). The battery voltage is measured on D2 (breadboard divider).
+  ([firmware.md](firmware.md#simulated-parts)). The USB sense on D7 waits for the PCB: the breadboard has no
+  jumper wires left for it.
 - **Breadboard**: the display GND contact still causes occasional BUSY hangs
-  ([hardware.md](hardware.md#busy-hang)).
+  ([hardware.md](hardware.md#busy-hang)); the battery divider is 681k/681k with 100 nF, not the PCB's 1M/1M.
 
 ## Open questions
 

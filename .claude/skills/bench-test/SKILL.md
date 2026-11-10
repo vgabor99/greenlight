@@ -34,8 +34,11 @@ python tools/console.py --send "bat 3450" --send "20:usb 1" --for 40
 - `--send "SECONDS:CMD"` sends CMD that many seconds after the start; plain `--send "CMD"` right away.
 - Console commands: `bat <mV>` (2500-4500) overrides the measured battery voltage, `bat 0` goes back to the
   measurement; `usb 0|1` sets the simulated USB power; `bat` / `usb` alone print them. Both persist in NVS: set
-  `bat 0` after a test. `vbat` measures again and logs (D2: pin and VBAT mV); the boot measurement stays. Low battery is below 3500 mV; while latched it
-  needs 3700 mV or `usb 1` (docs/behaviour.md#low-battery).
+  `bat 0` after a test. `vbat` measures and logs (D2: pin and VBAT mV). Low battery is below 3500 mV; while
+  latched it needs 3700 mV or `usb 1` (docs/behaviour.md#low-battery).
+- Low-battery test without the console: pull the BAT side of the divider, not the D2 wire (a floating pin reads
+  anything). The latch is set only once Z2M confirms the report; check
+  `binary_sensor.gf_lobby_greenlight_battery_low` in HA. To recover, reconnect it and reset. A meter with a 1 MΩ input reads the divider's halves low.
 
 ## Writes through Zigbee2MQTT
 

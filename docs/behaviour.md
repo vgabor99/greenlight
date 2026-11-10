@@ -69,10 +69,10 @@ stateDiagram-v2
     INTERVIEW --> ACTIVE: INTERVIEW_MS over
     PAIRING --> SHUTDOWN: battery low
     UNPAIRED --> SHUTDOWN: IDLE_TIMEOUT_MS expired or battery low
-    BOOT --> SHUTDOWN: battery low or stack did not start
+    BOOT --> SHUTDOWN: stack did not start
     BOOT --> LOW_BATTERY: battery still low (latched)
-    SHUTDOWN --> LOW_BATTERY: battery low, panel off
-    SHUTDOWN --> SLEEP: panel off
+    SHUTDOWN --> LOW_BATTERY: battery low reported, panel off
+    SHUTDOWN --> SLEEP: panel off (also a low battery not reported)
     LOW_BATTERY --> BOOT: USB power only
 ```
 
@@ -81,7 +81,7 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | deep sleep, nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low -> SHUTDOWN (*Battery dead* screen); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (*Unknown error* screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
+| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low, not latched: boot on, so ACTIVE reports it ([Low battery](#low-battery)); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (*Unknown error* screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
 | **UNPAIRED** | shows the *Pairing* screen (how to pair); `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> UNPAIRED; battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
@@ -172,9 +172,9 @@ the device is fine while it no longer wakes.
   already low. Not latched yet, the wake boots on and rejoins, and the first check in ACTIVE ends it with the
   `battery_low` report, so HA learns it; 3.5 V leaves plenty for a few rejoins. Latched, BOOT checks before the
   radio, the panel and any NVS write, and a battery still low goes straight back to LOW_BATTERY.
-- The battery voltage is measured, USB power is still simulated
-  ([firmware.md](firmware.md#simulated-parts)), and LOW_BATTERY waits for the simulated `usb 1`, then restarts. The real one will be deep sleep with a timer
-  wake that checks USB sense ([hardware.md](hardware.md#power-and-battery)).
+- The battery voltage is measured, USB power is still simulated ([firmware.md](firmware.md#simulated-parts)),
+  and LOW_BATTERY waits awake for the simulated `usb 1`, then restarts. The real one will be deep sleep with a
+  timer wake that checks USB sense ([hardware.md](hardware.md#power-and-battery)).
 - How the battery is reported over Zigbee: [zigbee.md](zigbee.md#battery).
 
 ## Failure modes
@@ -192,6 +192,6 @@ the device is fine while it no longer wakes.
 | Pairing fails | Back to UNPAIRED with the *Pairing* screen; still factory new. |
 | Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it (to verify, [roadmap.md](roadmap.md)). |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
-| Battery low | *Battery dead* screen, `battery_low` reported when joined, LOW_BATTERY until USB power. |
+| Battery low | *Battery dead* screen, `battery_low` reported when joined; once Z2M confirms it, LOW_BATTERY until USB power, else the next wake reports again. |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale. Seen once in 39 wakes. Next wake is normal. |
 | Panel BUSY hang | A refresh never finishes and the controller stays stuck until a hardware reset ([hardware.md](hardware.md#busy-hang)). **No recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epaper_init()` resets the panel. Automatic recovery is a later option ([roadmap.md](roadmap.md#future-work)). |
