@@ -1,6 +1,6 @@
 ---
 name: bench-test
-description: "Test the greenlight board on the bench - read its serial log, drive the simulated battery/USB over the console, reset it, send view/dataset writes through Zigbee2MQTT, run tools/paced_write_test.py, or make it factory new. Use whenever a task needs the device's serial output, a test on the real hardware, or writes sent to the device."
+description: "Test the greenlight board on the bench - read its serial log, override the battery voltage / simulate USB over the console, reset it, send view/dataset writes through Zigbee2MQTT, run tools/paced_write_test.py, or make it factory new. Use whenever a task needs the device's serial output, a test on the real hardware, or writes sent to the device."
 ---
 
 # Bench testing
@@ -32,8 +32,9 @@ python tools/console.py --send "bat 3450" --send "20:usb 1" --for 40
 
 - `--reset`: reset the board first (RTS, like esptool): a wake without pressing a button. Only on an awake board.
 - `--send "SECONDS:CMD"` sends CMD that many seconds after the start; plain `--send "CMD"` right away.
-- Console commands: `bat <mV>` (2500-4500) sets the simulated battery voltage, `usb 0|1` the simulated USB
-  power; `bat` / `usb` alone print them. Both persist in NVS. Low battery is below 3500 mV; while latched it
+- Console commands: `bat <mV>` (2500-4500) overrides the measured battery voltage, `bat 0` goes back to the
+  measurement; `usb 0|1` sets the simulated USB power; `bat` / `usb` alone print them. Both persist in NVS: set
+  `bat 0` after a test. `vbat` measures again and logs (D2: pin and VBAT mV); the boot measurement stays. Low battery is below 3500 mV; while latched it
   needs 3700 mV or `usb 1` (docs/behaviour.md#low-battery).
 
 ## Writes through Zigbee2MQTT
@@ -70,5 +71,5 @@ Record notable results in docs/research/wake-delivery-bench.md.
 python -m esptool --chip esp32c6 -p COM5 erase-region 0x9000 0x6000
 ```
 
-Erases NVS: the network, dataset, view, wake counter and simulated battery. Remove the device in Z2M too
+Erases NVS: the network, dataset, view, wake counter and battery override. Remove the device in Z2M too
 before re-pairing for a clean start.

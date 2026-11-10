@@ -10,11 +10,12 @@ Every file under `main/` has one purpose and is named after it.
 |---|---|
 | `main.c` | start-up order: sets up the parts, then runs the state machine |
 | `state_machine.c` | the states and timeouts ([behaviour.md](behaviour.md)) |
-| `console.c` | USB console commands (`bat`, `usb`) |
+| `console.c` | USB console commands (`bat`, `usb`, `vbat`) |
 | `persistent_store.c` | NVS keys and access ([Persistent state](#persistent-state)) |
 | `board/board.c` | pin map (`board.h`), RF switch |
 | `board/inputs.c` | PIR and pair button: polling, debounce, occupancy hold |
-| `board/battery.c` | simulated battery, low-battery latch |
+| `board/battery.c` | battery voltage (measured or overridden), simulated USB power, low-battery latch |
+| `board/battery_sense.c` | battery measurement on D2 (ADC) |
 | `board/sleep.c` | deep sleep (or the simulated sleep) |
 | `board/wake_reason.c` | the wake cause, logged at boot |
 | `display/display.c` | screen per state (`choose_screen()`), redraw, `display_wait_ms()` |
@@ -74,7 +75,7 @@ strings address state on devices, never change them). The Zigbee stack keeps the
 | `wake_n` | the wake counter |
 | `ds` | the dataset |
 | `view` | the shown view with its laid-out rows |
-| `sim_mv`, `sim_usb` | the simulated battery voltage and USB power |
+| `sim_mv`, `sim_usb` | the battery voltage override (0 = measured) and the simulated USB power |
 | `bat_low` | the low-battery latch |
 
 The staleness deadline lives in RTC memory (`RTC_NOINIT_ATTR`): it survives a restart and deep sleep, and is
@@ -95,9 +96,13 @@ CMake caches them; pass `=0` to switch back.
 
 ## Simulated parts
 
-- **Battery voltage and USB power** are set over the USB-Serial-JTAG console (the primary console, so it takes
-  input): `bat <mV>` (2500-4500), `usb 0|1`; `bat` / `usb` alone print them. They are kept in NVS (`sim_mv`,
-  default 4100; `sim_usb`, default 0 = on battery), so they survive the sleep, a power cycle and a reflash like
-  a real battery's charge. Usage with `tools/console.py`: the `bench-test` skill.
+- **The battery voltage** is measured on D2 once per boot, before the radio and the panel start (`battery sense:
+  pin ... mV, vbat ... mV`), and that value is used for the whole wake. The `vbat` console command measures
+  again but only logs. On USB without a cell the reading means nothing (the charger's output is not a battery
+  voltage), and without the USB sense the device cannot tell.
+- **The voltage override and USB power** are set over the USB-Serial-JTAG console (the primary console, so it
+  takes input): `bat <mV>` (2500-4500; `bat 0` = measured again), `usb 0|1`; `bat` / `usb` alone print them.
+  They are kept in NVS (`sim_mv`, default 0 = measured; `sim_usb`, default 0 = on battery), so they survive the
+  sleep, a power cycle and a reflash. Usage with `tools/console.py`: the `bench-test` skill.
 - **LOW_BATTERY** waits for `usb 1`, then calls `esp_restart()`: the real USB sense is not wired,
   and the simulated `usb 1` cannot reach a sleeping chip.

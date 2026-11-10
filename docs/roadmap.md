@@ -7,8 +7,8 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 - **Real**: the e-paper driver and the designed screens, the PIR and the pair button, the state machine, deep
   sleep with wake on D0 / D1, Zigbee (pairing, rejoin, reports, view and dataset writes), the Z2M converter,
   and the HA templates and push automation.
-- **Simulated**: the battery voltage and USB power (set over the console), and with them LOW_BATTERY's wake
-  ([firmware.md](firmware.md#simulated-parts)).
+- **Simulated**: USB power (set over the console), and with it LOW_BATTERY's wake
+  ([firmware.md](firmware.md#simulated-parts)). The battery voltage is measured on D2 (breadboard divider).
 - **Breadboard**: the display GND contact still causes occasional BUSY hangs
   ([hardware.md](hardware.md#busy-hang)).
 
@@ -40,9 +40,9 @@ As of 2026-11-05, working end to end on the bench, with the device in the lobby:
 
 **Hardware**: the PCB, whose soldered display GND fixes the BUSY hang ([hardware.md](hardware.md#busy-hang)); the
 sleep current measured on the battery, including whether the panel module's LDO (about 90 uA if it stays on) is
-off while RST is held low; the battery, its
-measurement on D2 and USB sense on D7 ([hardware.md](hardware.md#power-and-battery)), which turn the simulated battery
-and LOW_BATTERY into real ones.
+off while RST is held low; the battery
+divider on the PCB and USB sense on D7 ([hardware.md](hardware.md#power-and-battery)), which turn the simulated USB
+power and LOW_BATTERY into real ones.
 
 **Reserved attributes** (0xFC8A; append-only ids, so they can be added without a re-pair; each also needs a line
 in the converter):

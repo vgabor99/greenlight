@@ -20,6 +20,9 @@
 #define PAIR_BUTTON_PIN          1  /* D1 */
 #define PAIR_BUTTON_ACTIVE_LEVEL 0
 
+/* Battery measurement: VBAT through two equal resistors (100 nF at the pin), ADC1 (battery_sense.c) */
+#define BATTERY_SENSE_PIN 2  /* D2 */
+
 /* Antenna switch: RF_SWITCH_ENABLE_PIN low enables it, RF_ANTENNA_SELECT_PIN low selects the onboard ceramic
  * antenna. */
 #define RF_SWITCH_ENABLE_PIN  3

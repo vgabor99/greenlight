@@ -191,7 +191,7 @@ Configuration attributes are set from the start: `batterySize` 0x0031 = 2 (Other
 - `voltage` comes from `battery_mv` because the standard attribute has only 100 mV resolution (too coarse for a
   LiPo: 3.0-4.2 V is 12 steps): `battery()` with `voltage: false`, plus a numeric expose in the converter.
 
-The voltage itself is simulated for now ([firmware.md](firmware.md#simulated-parts)); the behaviour on a low
+The voltage is measured once per boot ([firmware.md](firmware.md#simulated-parts)); the behaviour on a low
 battery is in [behaviour.md](behaviour.md#low-battery).
 
 ## External converter

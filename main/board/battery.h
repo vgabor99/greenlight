@@ -3,11 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Battery (docs/behaviour.md#low-battery): simulated until the hardware is there. */
+/* Battery (docs/behaviour.md#low-battery): the voltage measured at boot (or the console's override); USB power is
+ * simulated until the USB sense is wired. */
 #define BATTERY_LOW_ENTER_MV 3500  /* below this the wake ends in LOW_BATTERY */
 #define BATTERY_LOW_EXIT_MV  3700  /* LOW_BATTERY is left only at or above this, or on USB power */
 
-/* Load the simulated values and the low-battery latch. */
+/* Measure the voltage; load the console's values and the low-battery latch. */
 void battery_init(void);
 
 uint16_t battery_voltage_mv(void);
@@ -21,7 +22,8 @@ bool battery_low_latched(void);
 void battery_set_low_latched(bool latched);
 
 /* The console's battery simulation: set the values (kept through the sleep, a power cycle and a reflash, like a
- * real battery's charge), then announce them, which logs them and flags them for a report. */
+ * real battery's charge; voltage 0 = the measured one), then announce them, which logs them and flags them for a
+ * report. */
 void battery_simulate_voltage(uint16_t mv);
 void battery_simulate_usb_power(bool on);
 void battery_announce_simulation(void);

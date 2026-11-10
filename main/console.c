@@ -6,12 +6,13 @@
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_log.h"
 #include "board/battery.h"
+#include "board/battery_sense.h"
 #include "console.h"
 #include "display/display_model.h"
 
 static const char *TAG = "greenlight";
 
-#define SIMULATED_MV_MIN 2500
+#define SIMULATED_MV_MIN 2500  /* bat 0 switches back to the measured voltage */
 #define SIMULATED_MV_MAX 4500
 
 static void handle_command(const char *line)
@@ -19,16 +20,19 @@ static void handle_command(const char *line)
     int value;
     if (line[0] == '\r' || line[0] == '\n') {
         return;
+    } else if (strncmp(line, "vbat", 4) == 0) {  /* measure again: only logged, the boot measurement stays */
+        battery_sense_read_mv();
+        return;
     } else if (sscanf(line, "bat %d", &value) == 1) {
-        if (value < SIMULATED_MV_MIN || value > SIMULATED_MV_MAX) {
-            ESP_LOGW(TAG, "console: bat %d out of range (%d-%d)", value, SIMULATED_MV_MIN, SIMULATED_MV_MAX);
+        if (value != 0 && (value < SIMULATED_MV_MIN || value > SIMULATED_MV_MAX)) {
+            ESP_LOGW(TAG, "console: bat %d out of range (0 or %d-%d)", value, SIMULATED_MV_MIN, SIMULATED_MV_MAX);
             return;
         }
         battery_simulate_voltage(value);
     } else if (sscanf(line, "usb %d", &value) == 1) {
         battery_simulate_usb_power(value != 0);
     } else if (strncmp(line, "bat", 3) != 0 && strncmp(line, "usb", 3) != 0) {
-        ESP_LOGW(TAG, "console: unknown command (bat <mV>, usb 0|1)");
+        ESP_LOGW(TAG, "console: unknown command (bat <mV>|0, usb 0|1, vbat)");
         return;
     }
     battery_announce_simulation();

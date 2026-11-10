@@ -1,12 +1,12 @@
 idf_component_register(SRCS "main.c" "state_machine.c" "console.c" "persistent_store.c"
-                            "board/board.c" "board/inputs.c" "board/battery.c" "board/sleep.c" "board/wake_reason.c"
+                            "board/board.c" "board/inputs.c" "board/battery.c" "board/battery_sense.c" "board/sleep.c" "board/wake_reason.c"
                             "display/display.c" "display/display_model.c" "display/view_freshness.c" "display/panel.c"
                             "display/frame_dump.c" "display/framebuffer.c" "display/epaper.c"
                             "screen/render.c" "screen/status_screen.c" "screen/debug_screen.c" "screen/view_layout.c"
                             "screen/bitmap_text.c" "screen/bitmaps.c"
                             "util/utf8.c"
                             "zigbee/zigbee.c" "zigbee/zigbee_device.c" "zigbee/zigbee_display_input.c" "zigbee/zigbee_reports.c"
-                       PRIV_REQUIRES esp_driver_spi esp_driver_gpio esp_driver_usb_serial_jtag nvs_flash esp_timer esp_app_format u8g2
+                       PRIV_REQUIRES esp_adc esp_driver_spi esp_driver_gpio esp_driver_usb_serial_jtag nvs_flash esp_timer esp_app_format u8g2
                        INCLUDE_DIRS ".")
 
 # Build switches (CMake caches them: pass =0 to switch back):

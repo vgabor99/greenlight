@@ -56,6 +56,8 @@ generated bitmaps instead of u8g2 fonts.
   39 wakes, brings `awake` to HA 1 s sooner); UNPAIRED shows how to pair instead of the *Join failed* screen.
 - 2026-11-04: the sources were split into one file per purpose and grouped into folders; `INTERVIEW_MS` got the
   full minute.
+- 2026-11-10: the battery voltage is measured on D2 instead of simulated; `bat <mV>` stays as an override (the
+  old default 4100 mV is gone, a stored `sim_mv` still wins until `bat 0`).
 
 ## Rejected options
 

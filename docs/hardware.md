@@ -13,7 +13,8 @@ The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) 
 | **Resistor**          | 100k                                                                                                 | External pull-down resistor for the PIR output<br>Resistance is chosen to keep the sensor's output current within spec, under 100 uA                    |
 | **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
 
-The battery voltage and USB power are simulated for now ([firmware.md](firmware.md#simulated-parts)).
+The battery voltage is measured (on the breadboard); USB power is simulated for now
+([firmware.md](firmware.md#simulated-parts)).
 
 ## Pins
 
@@ -26,7 +27,7 @@ after these defines (the planned ones after the defines they will get).
 |---|---|
 | D0 (GPIO0) | **PIR output** (`PIR_PIN`), active high (`PIR_ACTIVE_LEVEL` 1), external 100k pull-down to GND, no internal pull (keeps the sensor's output current under 100 uA); wake pin. `PIR_ACTIVE_LEVEL` 0 = a test button to GND with the internal pull-up. |
 | D1 (GPIO1) | **pair button** (`PAIR_BUTTON_PIN`), to GND, internal pull-up; wake pin |
-| D2 (GPIO2) | planned: **battery sense** (BATTERY_SENSE_PIN), ADC ([Power and battery](#power-and-battery)) |
+| D2 (GPIO2) | **battery sense** (`BATTERY_SENSE_PIN`), ADC; measured and logged only ([Power and battery](#power-and-battery)) |
 | D3 (GPIO21) | panel BUSY. Must be wired: the internal-pull "is it connected" test is unreliable because the module drives BUSY weakly. |
 | D4 (GPIO22) | panel DC |
 | D5 (GPIO23) | panel RST |
@@ -136,9 +137,11 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
 - The battery (planned) is soldered to the XIAO's BAT pads on its underside, not to the PCB: the XIAO sits on
   header pins, so those pads do not reach the board. A thin wire from the BAT+ pad to a PCB pad (J1 in the
   schematic) feeds the battery measurement.
-- Battery measurement (planned): the XIAO ESP32-C6 has no battery sense path of its own. VBAT goes through a
-  1M/1M divider (about 2 uA) with 100 nF at the pin to D2. Measured once per wake before the radio and the panel
-  start.
+- Battery measurement: the XIAO ESP32-C6 has no battery sense path of its own. VBAT goes through a 1M/1M divider
+  (about 2 uA) with 100 nF at the pin to D2. Measured once per wake before the radio and the panel start
+  ([firmware.md](firmware.md#simulated-parts)). Any two equal resistors keep the ratio; a meter with a 1 MΩ
+  input reads the divider's halves low, the ADC does not. On the breadboard (681k/681k, 100 nF) the ADC read
+  3872 mV against 3880 mV on the meter, without a correction factor; check again on the PCB.
 - USB sense (planned): the 5V pin through 100k/150k (about 3 V) to D7. The 5V pin carries no voltage on
   battery. D7 cannot wake the chip, so the real LOW_BATTERY will be `esp_deep_sleep_start()` with a timer wake
   (interval to be decided) that checks USB sense and sleeps again. The protection circuit is the last cutoff.

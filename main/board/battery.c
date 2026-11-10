@@ -2,26 +2,29 @@
 #include <stdint.h>
 #include "esp_log.h"
 #include "board/battery.h"
+#include "board/battery_sense.h"
 #include "persistent_store.h"
 
 static const char *TAG = "greenlight";
 
-#define SIMULATED_MV_DEFAULT 4100  /* simulated voltage until the console sets one */
-
-/* The voltage and USB power are set over the console and kept in NVS. The latch makes the exit threshold apply
- * (hysteresis). USB power overrides a low battery: the device then runs from USB. */
-static volatile uint16_t simulated_mv = SIMULATED_MV_DEFAULT;
+/* The voltage is measured once at boot (at rest, before the radio and the panel start); the console can override
+ * it (0 = measured). USB power is still simulated. Both console values are kept in NVS. The latch makes the exit
+ * threshold apply (hysteresis). USB power overrides a low battery: the device then runs from USB. */
+static uint16_t          measured_mv;
+static volatile uint16_t simulated_mv;  /* 0: the measured voltage applies */
 static volatile bool     simulated_usb_power;
 static volatile bool     low_latched;
 static volatile bool     simulation_changed;  /* the console changed the simulation: report it */
 
 static void log_status(void)
 {
-    ESP_LOGI(TAG, "battery: %u mV (simulated), usb %d, latched %d", simulated_mv, simulated_usb_power, low_latched);
+    ESP_LOGI(TAG, "battery: %u mV (%s), usb %d (simulated), latched %d", battery_voltage_mv(),
+             simulated_mv ? "simulated" : "measured", simulated_usb_power, low_latched);
 }
 
 void battery_init(void)
 {
+    measured_mv = battery_sense_read_mv();
     uint16_t mv;
     if (persistent_store_get_u16(STORE_KEY_SIMULATED_MV, &mv)) {
         simulated_mv = mv;
@@ -33,7 +36,7 @@ void battery_init(void)
 
 uint16_t battery_voltage_mv(void)
 {
-    return simulated_mv;  /* later the ADC, sampled at rest and averaged */
+    return simulated_mv ? simulated_mv : measured_mv;
 }
 
 bool battery_on_usb_power(void)
