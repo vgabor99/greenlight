@@ -11,10 +11,9 @@ In what it shows, it is close to a Home Assistant dashboard. The difference is t
 target of one charge a year or less, so both the hardware and the software are designed around power use:
 
 - **Hardware:** an e-paper panel keeps its image without power, so a screen costs nothing to keep showing.
-- **Software:** a screen nobody is looking at doesn't need to be up to date. Greenlight is a sleepy Zigbee end
-  device that spends most of its life in deep sleep. A low-power PIR sensor wakes it when someone steps in front
-  of it. It then rejoins the network and gets the latest state from Home Assistant. It stays live while someone
-  is there and goes back to sleep afterwards.
+- **Software:** a screen nobody is looking at doesn't need to be up to date. Greenlight spends most of its life in
+  deep sleep and is awake only for the short periods when someone is in sight of it. As soon as nobody is
+  watching, it goes back to sleep.
 
 ## Parts
 
@@ -32,11 +31,12 @@ designed but not built yet. Details: [docs/roadmap.md](docs/roadmap.md).
 
 ```
 main/        firmware, grouped by part: board/, display/, screen/, zigbee/, util/
+hardware/    KiCad 10 schematic and PCB, project libraries (lib/), board outline DXF (mechanical/)
 tools/       bitmap and mockup generators, serial console, framebuffer dump, Zigbee bench test, docs checker
 z2m/         Zigbee2MQTT external converter
 ha/          Home Assistant templates and package
-docs/        design, history, roadmap and research notes (start at docs/README.md)
-.claude/     Claude Code skills: bench testing, HA deploy, panel troubleshooting, bitmaps, docs check
+docs/        design, history, roadmap and research notes, UI spec and mockups (start at docs/README.md)
+.claude/     Claude Code skills: bench testing, HA deploy, panel troubleshooting, bitmaps, docs check, KiCad
 CLAUDE.md    build environment and conventions
 ```
 
