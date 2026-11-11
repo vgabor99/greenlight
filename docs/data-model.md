@@ -25,9 +25,9 @@ How they travel over Zigbee is in [zigbee.md](zigbee.md#input-ha-to-device); how
 }
 ```
 
-- `lines`: **at most 32** entries (`ZIGBEE_DATASET_MAX_LINES`); the position is the line's **index** (0-31),
+- `lines`: **at most 32** entries (`DATASET_MAX_LINES`); the position is the line's **index** (0-31),
   which is its bit in the view. The order is the display order, so HA puts the most important lines first.
-  Text is **UTF-8**, **at most 64 bytes** (`ZIGBEE_LINE_MAX_BYTES`): HA cuts it at a character boundary. A
+  Text is **UTF-8**, **at most 64 bytes** (`LINE_MAX_BYTES`): HA cuts it at a character boundary. A
   Hungarian accented letter takes 2 bytes, so a line holds 32 to 64 characters. On the wire a line longer than
   26 bytes comes in up to 3 parts. The device replaces invalid UTF-8 and control characters with `?`.
 - `hash`: **24-bit**, chosen by HA, identifying the ordered list. **0 is reserved** for "no dataset" and never

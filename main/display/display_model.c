@@ -11,11 +11,11 @@
 static const char *TAG = "greenlight";
 
 /* The dataset is stored in NVS as is (STORE_KEY_DATASET): its layout must not change. */
-_Static_assert(sizeof(zigbee_dataset_t) == 2088, "the stored dataset's layout");
+_Static_assert(sizeof(dataset_t) == 2088, "the stored dataset's layout");
 
 static SemaphoreHandle_t lock;
 static volatile bool     changed;
-static zigbee_dataset_t      dataset;
+static dataset_t      dataset;
 static shown_view_t    shown;
 static bool              out_of_sync;    /* the last view received was for another dataset (not stored) */
 static bool              syncing;        /* dataset entries arrived and their commit has not */
@@ -95,7 +95,7 @@ static void log_shown_view(void)
     }
 }
 
-void display_model_on_view(const zigbee_view_t *view, zigbee_view_result_t result)
+void display_model_on_view(const view_t *view, zigbee_view_result_t result)
 {
     bool accepted = result == ZIGBEE_VIEW_NEW || result == ZIGBEE_VIEW_TIME_ONLY;
     xSemaphoreTake(lock, portMAX_DELAY);
@@ -119,7 +119,7 @@ void display_model_on_view(const zigbee_view_t *view, zigbee_view_result_t resul
     }
 }
 
-void display_model_on_dataset(const zigbee_dataset_t *new_dataset)
+void display_model_on_dataset(const dataset_t *new_dataset)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
     dataset = *new_dataset;

@@ -3,29 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Zigbee side of the device (docs/zigbee.md): the data model, the reports and the display input.
- * The stack runs in its own task; every function here is safe to call from the application task. */
+#include "data_model.h"
 
-#define ZIGBEE_DATASET_MAX_LINES 32  /* dataset lines, one bit each in the view (docs/data-model.md#dataset) */
-#define ZIGBEE_LINE_MAX_BYTES    64  /* longest dataset line text, UTF-8 bytes (32 accented letters) */
-#define ZIGBEE_LINE_MAX_PARTS    3   /* a line comes in up to this many ds_entry writes */
-#define ZIGBEE_PART_MAX_BYTES    26  /* longest text of one ds_entry write */
+/* Zigbee side of the device (docs/zigbee.md): the transport of the data model (data_model.h), the reports and the
+ * display input. The stack runs in its own task; every function here is safe to call from the application task. */
 
-/* The dataset (docs/data-model.md#dataset): every line the screen can show; the index is the line's bit in the view. Stored
- * in NVS as is: keep the layout. */
-typedef struct {
-    uint32_t hash;   /* 24-bit hash chosen by HA, 0 = no dataset */
-    uint8_t  count;  /* lines 0 .. count-1 */
-    char     text[ZIGBEE_DATASET_MAX_LINES][ZIGBEE_LINE_MAX_BYTES + 1];
-} zigbee_dataset_t;
-
-/* A view (docs/data-model.md#view): the four view_* attributes of one write. Stored in NVS as is: keep the layout. */
-typedef struct {
-    uint32_t bits;          /* bit i = dataset line i active */
-    uint32_t dataset_hash;  /* the dataset the bits refer to */
-    uint32_t time;          /* local wall-clock seconds since 1970, 0 = unknown */
-    uint32_t id;            /* 24-bit id chosen by HA, not 0 */
-} zigbee_view_t;
+#define ZIGBEE_LINE_MAX_PARTS 3   /* a line comes in up to this many ds_entry writes */
+#define ZIGBEE_PART_MAX_BYTES 26  /* longest text of one ds_entry write */
 
 typedef enum {
     ZIGBEE_VIEW_NEW,          /* new content: draw it */
@@ -37,7 +21,7 @@ typedef enum {
 typedef enum {
     ZIGBEE_COMMIT_STORED,
     ZIGBEE_COMMIT_ALREADY_STORED,  /* the stored dataset already has this hash */
-    ZIGBEE_COMMIT_BAD_COUNT,       /* count > ZIGBEE_DATASET_MAX_LINES or hash 0 */
+    ZIGBEE_COMMIT_BAD_COUNT,       /* count > DATASET_MAX_LINES or hash 0 */
     ZIGBEE_COMMIT_REJECTED,        /* an entry is missing or tagged with another hash */
 } zigbee_commit_result_t;
 
@@ -48,7 +32,7 @@ typedef struct {
     zigbee_write_kind_t kind;
     union {
         struct {
-            zigbee_view_t        view;
+            view_t               view;
             zigbee_view_result_t result;
             uint8_t              received_mask;  /* INCOMPLETE: which attributes arrived (bit 0 = view_bits) */
         } view;
@@ -72,9 +56,9 @@ typedef struct {
 typedef struct {
     /* A view was received and checked (every result but INCOMPLETE). For NEW and TIME_ONLY, the device reports
      * shown_view_id after this returns, so the view must be stored by then. */
-    void (*on_view)(const zigbee_view_t *view, zigbee_view_result_t result);
+    void (*on_view)(const view_t *view, zigbee_view_result_t result);
     /* A valid dataset commit: store the dataset. dataset_hash is reported after this returns. */
-    void (*on_dataset)(const zigbee_dataset_t *dataset);
+    void (*on_dataset)(const dataset_t *dataset);
     /* HA is working with the device (dataset write, out-of-sync view): stay awake. */
     void (*on_activity)(void);
     /* Any write to the display input and its outcome, for the debug screen. */

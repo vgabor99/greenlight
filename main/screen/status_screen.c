@@ -1,11 +1,11 @@
 #include <stdbool.h>
 #include <string.h>
+#include "data_model.h"
 #include "display/epaper.h"
 #include "display/framebuffer.h"
 #include "screen/bitmap_text.h"
 #include "screen/bitmaps.h"
 #include "screen/status_screen.h"
-#include "util/hex.h"
 
 /* Layout, measured from the accepted mockups (docs/uispec/ui-spec.md).
  * Text is placed by its baseline, icons by their centre. */
@@ -38,32 +38,18 @@
 
 /* ---- House screens ---- */
 
-/* A dataset line, "II|name|state" (docs/data-model.md#line-format): icon id in hex, name, state (may be empty). */
-typedef struct {
-    const bitmap_icon_t *icon;
-    const char      *name;
-    int              name_length;
-    const char      *state;
-} dataset_line_t;
-
 /* Anything not in the line format is drawn as "??? ???" with the fallback icon; an unknown icon id only gets
  * the fallback icon. */
-static dataset_line_t parse_dataset_line(const char *text)
+static line_t parse_line(const char *text)
 {
-    dataset_line_t line = {&bitmap_line_icons[BITMAP_LINE_ICON_ALERT_CIRCLE], "???", 3, "???"};
-    int            high = hex_digit_value(text[0]), low = high < 0 ? -1 : hex_digit_value(text[1]);
-    const char    *name_end = low < 0 || text[2] != '|' ? NULL : strchr(text + 3, '|');
-    if (!name_end || name_end == text + 3) {
-        return line;
-    }
-    int icon_id = high * 16 + low;
-    if (icon_id < BITMAP_LINE_ICON_COUNT) {
-        line.icon = &bitmap_line_icons[icon_id];
-    }
-    line.name        = text + 3;
-    line.name_length = name_end - line.name;
-    line.state       = name_end + 1;
+    line_t line = {BITMAP_LINE_ICON_ALERT_CIRCLE, "???", 3, "???"};
+    data_model_parse_line(text, &line);
     return line;
+}
+
+static const bitmap_icon_t *line_icon(uint8_t icon_id)
+{
+    return &bitmap_line_icons[icon_id < BITMAP_LINE_ICON_COUNT ? icon_id : BITMAP_LINE_ICON_ALERT_CIRCLE];
 }
 
 static void draw_separator(int y)
@@ -78,9 +64,9 @@ static void draw_separator(int y)
 /* Icon, bold name, state at the right; the name is cut to leave room for the state. */
 static void draw_problem_row(int top, const char *text)
 {
-    dataset_line_t line = parse_dataset_line(text);
-    int            baseline = top + ROW_BASELINE_DY;
-    bitmap_draw_icon(line.icon, ROW_ICON_X, top + ROW_ICON_CENTER_DY);
+    line_t line = parse_line(text);
+    int    baseline = top + ROW_BASELINE_DY;
+    bitmap_draw_icon(line_icon(line.icon_id), ROW_ICON_X, top + ROW_ICON_CENTER_DY);
     int state_width, state_length = strlen(line.state);
     bitmap_text_fit(&bitmap_font_state, line.state, state_length, STATE_MAX_WIDTH, &state_width);
     bitmap_text_draw_fitted(&bitmap_font_state, ROW_RIGHT_X - state_width, baseline, line.state, state_length,

@@ -26,6 +26,6 @@ bool display_model_has_changed(void);
 void display_model_snapshot(render_content_t *content, bool *syncing);
 
 /* Zigbee callbacks (zigbee_callbacks_t), called in the Zigbee task */
-void display_model_on_view(const zigbee_view_t *view, zigbee_view_result_t result);
-void display_model_on_dataset(const zigbee_dataset_t *dataset);
+void display_model_on_view(const view_t *view, zigbee_view_result_t result);
+void display_model_on_dataset(const dataset_t *dataset);
 void display_model_on_received_write(const zigbee_received_write_t *write);

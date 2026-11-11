@@ -13,7 +13,7 @@ static const char *TAG = "zb";
 
 #define VIEW_ATTRIBUTES_ALL 0x0F  /* all four view_* attributes received */
 
-static zigbee_view_t pending_view;       /* view_* values received since the last apply */
+static view_t pending_view;       /* view_* values received since the last apply */
 static uint8_t       pending_view_mask;  /* which of them (bit 0 = view_bits) */
 static bool          apply_view_queued;
 
@@ -24,7 +24,7 @@ typedef struct {
     char    text[ZIGBEE_PART_MAX_BYTES + 1];
 } staged_part_t;
 
-static staged_part_t staged_parts[ZIGBEE_DATASET_MAX_LINES][ZIGBEE_LINE_MAX_PARTS];
+static staged_part_t staged_parts[DATASET_MAX_LINES][ZIGBEE_LINE_MAX_PARTS];
 
 /* ---- Callbacks ---- */
 
@@ -42,7 +42,7 @@ static void notify_activity(void)
     }
 }
 
-static void notify_view(const zigbee_view_t *view, zigbee_view_result_t result)
+static void notify_view(const view_t *view, zigbee_view_result_t result)
 {
     if (zigbee_context.callbacks.on_view) {
         zigbee_context.callbacks.on_view(view, result);
@@ -60,7 +60,7 @@ static void apply_view(void *unused)
     write.view.received_mask = pending_view_mask;
     apply_view_queued = false;
     pending_view_mask = 0;
-    const zigbee_view_t *view = &write.view.view;
+    const view_t *view = &write.view.view;
 
     if (write.view.received_mask != VIEW_ATTRIBUTES_ALL || view->id == 0) {
         ESP_LOGW(TAG, "view %06lx incomplete: attributes 0x%x", (unsigned long)view->id, write.view.received_mask);
@@ -107,7 +107,7 @@ static void handle_view_write(uint16_t attribute, uint32_t value)
 
 static void clear_staged_parts(void)
 {
-    for (int line = 0; line < ZIGBEE_DATASET_MAX_LINES; line++) {
+    for (int line = 0; line < DATASET_MAX_LINES; line++) {
         for (int part = 0; part < ZIGBEE_LINE_MAX_PARTS; part++) {
             staged_parts[line][part].dataset_hash = -1;
         }
@@ -119,7 +119,7 @@ void zigbee_display_input_init(void)
     clear_staged_parts();
 }
 
-/* Line `line` of the dataset with this hash, its parts joined into out (ZIGBEE_LINE_MAX_BYTES + 1 bytes). False
+/* Line `line` of the dataset with this hash, its parts joined into out (LINE_MAX_BYTES + 1 bytes). False
  * while a part is missing or tagged with another hash. */
 static bool join_staged_line(int line, int32_t dataset_hash, char *out)
 {
@@ -130,9 +130,9 @@ static bool join_staged_line(int line, int32_t dataset_hash, char *out)
             return false;
         }
         size_t part_length = strlen(staged->text);
-        if (length + part_length > ZIGBEE_LINE_MAX_BYTES) {
-            ESP_LOGW(TAG, "ds_commit: line %02d longer than %d bytes, cut", line, ZIGBEE_LINE_MAX_BYTES);
-            part_length = ZIGBEE_LINE_MAX_BYTES - length;
+        if (length + part_length > LINE_MAX_BYTES) {
+            ESP_LOGW(TAG, "ds_commit: line %02d longer than %d bytes, cut", line, LINE_MAX_BYTES);
+            part_length = LINE_MAX_BYTES - length;
         }
         memcpy(&out[length], staged->text, part_length);
         length += part_length;
@@ -216,7 +216,7 @@ static void handle_dataset_entry_write(const uint8_t *s)
 
 /* Join the staged lines of the dataset `hash` into dataset. -1 when every line is there, else the first line that
  * is missing a part or has one for another dataset. */
-static int assemble_dataset(uint32_t hash, uint8_t count, zigbee_dataset_t *dataset)
+static int assemble_dataset(uint32_t hash, uint8_t count, dataset_t *dataset)
 {
     memset(dataset, 0, sizeof(*dataset));
     dataset->hash  = hash;
@@ -238,7 +238,7 @@ static void handle_dataset_commit_write(uint32_t value)
     };
     uint32_t hash  = write.commit.hash;
     uint8_t  count = write.commit.count;
-    if (count > ZIGBEE_DATASET_MAX_LINES || hash == 0) {
+    if (count > DATASET_MAX_LINES || hash == 0) {
         ESP_LOGW(TAG, "ds_commit %06lx: bad count %u", (unsigned long)hash, count);
         write.commit.result = ZIGBEE_COMMIT_BAD_COUNT;
     } else if (hash == zigbee_context.dataset_hash) {
@@ -246,7 +246,7 @@ static void handle_dataset_commit_write(uint32_t value)
         write.commit.result = ZIGBEE_COMMIT_ALREADY_STORED;
         zigbee_report_dataset_hash_lock_held();  /* re-acknowledge */
     } else {
-        static zigbee_dataset_t dataset;
+        static dataset_t dataset;
         int                     first_missing = assemble_dataset(hash, count, &dataset);
         if (first_missing >= 0) {
             ESP_LOGW(TAG, "ds_commit %06lx rejected: entry %02d missing a part or for another dataset",

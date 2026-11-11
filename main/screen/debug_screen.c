@@ -96,7 +96,7 @@ static void draw_received_write(int y, const render_received_write_t *received)
     const zigbee_received_write_t *write = &received->write;
     switch (write->kind) {
     case ZIGBEE_WRITE_VIEW: {
-        const zigbee_view_t *view = &write->view.view;
+        const view_t *view = &write->view.view;
         if (write->view.result == ZIGBEE_VIEW_OUT_OF_SYNC) {
             draw_row(y, "%s V %06lX OOS ds=%06lX", time, (unsigned long)view->id, (unsigned long)view->dataset_hash);
         } else if (write->view.result == ZIGBEE_VIEW_INCOMPLETE) {
