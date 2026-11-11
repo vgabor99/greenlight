@@ -6,8 +6,8 @@ by another task's log output is lost, so that row comes out white. This reads th
 fb_<n>_<state>.png into OUT_DIR (default %TEMP%/gl_test/frames). Other lines are echoed, so it also serves as
 a log monitor. Needs pyserial and Pillow.
 
-At boot a SCREEN_DUMP build also dumps every screen once with sample content (frame_dump_samples() in
-main/display/frame_dump.c); --reset resets the board first (RTS, like esptool) to get them.
+At boot a SCREEN_DUMP build also dumps every screen once with sample content (sample_screens_dump() in
+main/screen/sample_screens.c); --reset resets the board first (RTS, like esptool) to get them.
 
 Usage: python fb_dump.py [--reset] [PORT_OR_LOGFILE] [OUT_DIR]     (default port COM5; Ctrl+C to stop)
 """

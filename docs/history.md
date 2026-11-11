@@ -63,6 +63,11 @@ generated bitmaps instead of u8g2 fonts.
 - 2026-11-11: USB sense moved from D7 to the MTDO pad (GPIO7) on the XIAO's underside, a deep-sleep wake pin, so
   LOW_BATTERY sleeps until USB power arrives. This replaces the planned timer wake that would have checked D7 (a
   boot per check, and recovery up to an interval late). USB power is sensed; the console only overrides it.
+- 2026-11-11: the firmware was regrouped by concern ([firmware.md](firmware.md#source-layout)): the data model,
+  the application state, the UI, the panel. The stored view used to hold its rows as laid out for this panel (at
+  most 6 texts, the sixth possibly "további N"), which put the screen's layout into the data model and into NVS;
+  it now holds every active line, and the screen lays them out. The stored view changed size, so the first wake
+  after that update had none to show.
 
 ## Rejected options
 

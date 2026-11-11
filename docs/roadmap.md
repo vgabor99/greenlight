@@ -71,10 +71,11 @@ in the converter):
 - Skip the final clean refresh at SHUTDOWN when no partial update happened since the last one.
 
 **Screens rendered on the PC.** Build the screen code (`main/screen/`: `status_screen.c`, `render.c`,
-`bitmap_text.c`, `bitmaps.c`; no ESP-IDF dependencies) for the PC, render each [mockup](uispec/ui-spec.md)'s content
+`bitmap_text.c`, `bitmaps.c`, `framebuffer.c`, with `main/app/screen_content.c` and `main/data_model.c`; no ESP-IDF
+dependencies) for the PC, render each [mockup](uispec/ui-spec.md)'s content
 to PNG, and write a mockup | firmware | diff image per screen. A layout change could then be checked without
 flashing, and a new screen designed as a firmware change. Needs a C compiler for the PC (e.g. MinGW-w64); the
-sample content now in `frame_dump_samples()` would move to a file both builds share.
+sample content now in `sample_screens_dump()` would move to a file both builds share.
 
 **Grey levels.** The panel (Waveshare 4.2" V2, SSD1683) has a 4-level grey mode in Waveshare's driver
 (`Init_4Gray` / `display_4Gray`); the firmware and the [UI spec](uispec/ui-spec.md#panel) use 1 bit today. Grey

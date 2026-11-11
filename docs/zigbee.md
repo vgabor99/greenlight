@@ -120,8 +120,8 @@ deferred to the Zigbee task's next turn, after the frame), so the order of the r
   stays awake for the resync.
 - `view_id` == `shown_view_id`: nothing new to draw, but the view is fresh again. Store the time, report
   `shown_view_id` (the acknowledgement).
-- otherwise: build the rows from the dataset and the bits ([layout rule](data-model.md#layout-rule)), store
-  them with the id and the time, redraw, report `shown_view_id`.
+- otherwise: take the text of the active lines from the dataset and the bits, store it with the id and the time,
+  redraw, report `shown_view_id`.
 
 ### Dataset sync
 

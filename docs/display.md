@@ -1,8 +1,9 @@
 # Display
 
 How the screens are built and when each is shown. What they look like and why is the
-[UI spec](uispec/ui-spec.md), with the accepted mockups. The code: `main/display/display.c` picks the screen per state (`choose_screen()`) and
-redraws; `main/screen/status_screen.c` draws the proper screen, `main/screen/debug_screen.c` the debug screen.
+[UI spec](uispec/ui-spec.md), with the accepted mockups. The code: `main/app/screen_content.c` decides from the application state which screen to show
+(`screen_content_of()`), `main/display/display.c` redraws, `main/screen/status_screen.c` draws the proper screen and
+`main/screen/debug_screen.c` the debug screen.
 The panel itself and its quirks are in [hardware.md](hardware.md#e-paper-panel).
 
 ## Refresh policy
@@ -12,10 +13,10 @@ The panel itself and its quirks are in [hardware.md](hardware.md#e-paper-panel).
   refresh.
 - BOOT and SHUTDOWN clear the panel ([behaviour.md](behaviour.md#panel-on-each-wake)); in between every redraw is
   a partial refresh, with a full clear every `PARTIALS_BETWEEN_CLEARS` (50) partials against ghosting
-  (`main/display/panel.c`).
-- The Zigbee callbacks update the display model and mark it changed; the state loops wait with
-  `display_wait_ms()`, which redraws when it has changed, so a burst of writes is drawn as it arrives. Writes
-  during a refresh coalesce into the next one ([firmware.md](firmware.md#tasks-and-data-flow)).
+  (`main/panel/panel.c`).
+- The Zigbee callbacks update the application state; the state loops wait with `display_wait_ms()`, which
+  redraws when the screen would change, so a burst of writes is drawn as it arrives. Writes during a refresh
+  coalesce into the next one ([firmware.md](firmware.md#tasks-and-data-flow)).
 
 ## Fonts and icons
 
@@ -44,7 +45,9 @@ badge's ring is 4.5 px wide for 4.
 The look is in the [UI spec](uispec/ui-spec.md#house-screens); as built:
 
 - **Problems**: 6 rows of 50 px from the top. The name is cut with "…" to leave room for the state (a state wider
-  than 180 px is cut as well). More than 6 active lines: the [layout rule](data-model.md#layout-rule).
+  than 180 px is cut as well). More than 6 active lines: 5 rows and "további N" (N more), as the
+  [UI spec](uispec/ui-spec.md#problems) says. The device stores every active line
+  ([data-model.md](data-model.md#view)), so the row count is the screen's alone (`main/screen/status_screen.c`).
 - **All OK** when no line is active.
 - **Stale badge** when the [staleness flag](data-model.md#staleness-flag) is set: the `sync` arrows on a 34 px
   black disc in a 4.5 px white ring.
@@ -52,7 +55,7 @@ The look is in the [UI spec](uispec/ui-spec.md#house-screens); as built:
 ## Device screens
 
 The look is in the [UI spec](uispec/ui-spec.md#device-screens); the *Pairing* screen's icon is 120 px, its instruction
-lines 22 px. When each is shown (`render_screen_t` in `main/screen/render.h`):
+lines 22 px. When each is shown (`screen_kind_t` in `main/app/screen_content.h`):
 
 | Screen | Shown |
 |---|---|
@@ -78,7 +81,7 @@ ACTIVE          w412 37.2s          state, wake counter, uptime
 DS 499181 n=4  VIEW 969F82          stored dataset (hash, entries) and shown view id
 age 3s / 8s FRESH  2 lines         age of the last view received, its validity, the staleness flag,
                                     active line count ("OUT OF SYNC" if the last view was); age "-" = unknown
-1 02|Teraszajtó|nyitva              ... the shown rows (up to 6; "ALL OK" for none)
+1 02|Teraszajtó|nyitva              ... the shown lines (up to 6; with more, 5 and "+N more"; "ALL OK" for none)
 36.9 V 969F82 b=00000005 OK         last received writes, newest first, uptime stamp:
 36.7 D 499181 n=4 OK                  V = view (OK, TIME, OOS ds=<hash>), E = ds_entry index and text,
 36.5 E 03 0D|Nappali lámpa|be         D = ds_commit (OK, REJ idx=<first missing>, BAD N)
@@ -92,7 +95,7 @@ are visible.
 
 `idf.py -DSCREEN_DUMP=1 build` (`=0` to switch off) prints every frame sent to the panel on the console, and at
 boot every screen once with the mockups' content and a few edge cases (malformed line, unknown icon id, long
-name and state, empty state), without drawing them (`main/display/frame_dump.c`). `tools/fb_dump.py --reset`
+name and state, empty state), without drawing them (`main/screen/sample_screens.c`). `tools/fb_dump.py --reset`
 resets the board and saves the frames as PNGs. It costs about 2 s at boot and a few hundred ms per frame (the
 console is slow, and the Zigbee task logs through it too), so it is off in normal builds. Last checked
 2026-10-31: the ten mockups of the time reproduced, the differences being glyph hinting. The mockups are in

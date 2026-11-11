@@ -1,6 +1,6 @@
 ---
 name: panel-troubleshoot
-description: "Diagnose greenlight's e-paper panel - a grey, garbled, inverted, ghosting or frozen screen, `panel: ... FAILED` or `busy before 1` in the log, BUSY timeouts, or changes to the SSD1683 driver (main/display/epaper.c, panel.c). Use before changing refresh or clear code, or when a panel failure shows up in a test."
+description: "Diagnose greenlight's e-paper panel - a grey, garbled, inverted, ghosting or frozen screen, `panel: ... FAILED` or `busy before 1` in the log, BUSY timeouts, or changes to the SSD1683 driver (main/panel/epaper.c, panel.c). Use before changing refresh or clear code, or when a panel failure shows up in a test."
 ---
 
 # Panel troubleshooting
@@ -10,7 +10,7 @@ without a new reason): docs/history.md#e-paper-driver.
 
 ## Reading the log
 
-Every clear and refresh logs one line (`main/display/panel.c`; don't change the format, tools match log lines):
+Every clear and refresh logs one line (`main/panel/panel.c`; don't change the format, tools match log lines):
 
 ```
 panel: clear (<reason>) <ms> ms, busy before <0|1>[, FAILED]

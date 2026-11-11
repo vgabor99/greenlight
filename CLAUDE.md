@@ -60,8 +60,9 @@ idf.py menuconfig             # then: idf.py save-defconfig (sdkconfig.defaults 
 
 ## Code conventions
 
-- Firmware files live under `main/`, grouped in folders (`board/`, `display/`, `screen/`, `zigbee/`, `util/`),
-  one purpose per file, named after it. File map: [docs/firmware.md](docs/firmware.md#source-layout).
+- Firmware files live under `main/`, grouped in folders by concern (`app/`, `board/`, `display/`, `panel/`, `screen/`, `zigbee/`,
+  `util/`), one purpose per file, named after it. File map and dependency rule:
+  [docs/firmware.md](docs/firmware.md#source-layout).
 - Each module's functions carry its file name as prefix (`inputs_`, `battery_`, `zigbee_`, ...).
 - Includes name the path from `main/` (`#include "zigbee/zigbee.h"`, also within a folder; `INCLUDE_DIRS` is
   only `.`). A new `.c` goes into `SRCS` in `main/CMakeLists.txt`; a new component dependency into its

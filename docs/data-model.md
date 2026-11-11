@@ -92,14 +92,10 @@ No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an 
   device stores it with the view but does not draw it (the [staleness flag](#staleness-flag) shows freshness
   instead). 0 = unknown. Currently unused.
 
-The device stores the rendered rows of the shown view (at most 6 texts, the id and the time), not only the
-bits. A new dataset therefore never changes the screen by itself: the old rows stay until a view for the new
-dataset arrives (HA sends one right after the sync).
-
-### Layout rule
-
-The active lines in dataset order, at most 6 rows. With more than 6 active lines the device shows the first 5
-and "N more" ("további N", dots icon) as the sixth row. Code: `main/screen/view_layout.c`.
+The device stores the text of the shown view's active lines (with the id and the time), not only the bits. A new
+dataset therefore never changes the screen by itself: the old lines stay until a view for the new dataset arrives
+(HA sends one right after the sync). How many of them fit is the screen's business
+([display.md](display.md#house-screens)).
 
 ## Staleness flag
 
@@ -108,7 +104,7 @@ inverted `sync` badge is drawn over the top-right corner while the view is **sta
 ([display.md](display.md#house-screens)).
 
 - Every received view (new content, or the same `id` again) is valid for `VIEW_VALID_MS` (8 s): the device
-  stores the deadline `valid_until_us` = now + 8 s (`main/display/view_freshness.c`). Stale means now > the
+  stores the deadline `valid_until_us` = now + 8 s (`main/app/view_freshness.c`). Stale means now > the
   deadline. An out-of-sync or incomplete view does not count.
 - "Now" is the RTC counter (`esp_rtc_get_time_us()`): monotonic, it keeps counting through deep sleep and a
   software restart. The deadline lives in RTC memory (`RTC_NOINIT_ATTR`), which survives the same, so no flash

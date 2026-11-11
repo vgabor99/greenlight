@@ -9,7 +9,7 @@
 
 /* Layout, measured from the accepted mockups (docs/uispec/ui-spec.md).
  * Text is placed by its baseline, icons by their centre. */
-#define ROWS               6                                /* line rows (docs/display.md#layout-rule) */
+#define ROWS               6                                /* line rows (docs/uispec/ui-spec.md#problems) */
 #define ROW_HEIGHT         (FRAMEBUFFER_HEIGHT / ROWS)      /* ROWS rows of 50 px fill the screen, no header */
 #define ROW_ICON_X         27                               /* line icon centre */
 #define ROW_ICON_CENTER_DY 25                               /* line icon centre below the row top */
@@ -79,7 +79,7 @@ static void draw_problem_row(int row, line_t line)
                             ROW_RIGHT_X - state_width - ROW_GAP - ROW_NAME_X);
 }
 
-/* The layout rule (docs/display.md#layout-rule): the lines from the top in dataset order; with more than ROWS of
+/* The layout rule (docs/uispec/ui-spec.md#problems): the lines from the top in dataset order; with more than ROWS of
  * them, the first ROWS - 1 and "további N" with the dots icon. */
 static void draw_problem_rows(const shown_view_t *shown)
 {
