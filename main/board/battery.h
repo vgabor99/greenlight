@@ -24,8 +24,7 @@ bool battery_low_latched(void);
 void battery_set_low_latched(bool latched);
 
 /* The console's battery simulation: set the values (kept through the sleep, a power cycle and a reflash, like a
- * real battery's charge; voltage 0 = the measured one), then announce them, which logs them and flags them for a
- * report. */
+ * real battery's charge; voltage 0 = the measured one), then announce them, which logs them and counts the change. */
 void battery_simulate_voltage(uint16_t mv);
 #define BATTERY_USB_SENSED 0  /* the USB sense pin decides */
 #define BATTERY_USB_ON     1
@@ -33,5 +32,5 @@ void battery_simulate_voltage(uint16_t mv);
 void battery_simulate_usb_power(uint8_t usb);
 void battery_announce_simulation(void);
 
-/* True once after each announced change of the simulation. */
-bool battery_take_simulation_change(void);
+/* Announced changes of the simulation since boot: whoever shows or reports the battery acts when this moves. */
+uint32_t battery_simulation_changes(void);

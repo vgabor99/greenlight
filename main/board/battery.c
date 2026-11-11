@@ -16,7 +16,7 @@ static volatile uint16_t measured_mv;
 static volatile uint16_t simulated_mv;  /* 0: the measured voltage applies */
 static volatile uint8_t  usb_override;  /* BATTERY_USB_SENSED, _ON or _OFF */
 static volatile bool     low_latched;
-static volatile bool     simulation_changed;  /* the console changed the simulation: report it */
+static volatile uint32_t simulation_changes;  /* announced by the console */
 
 static void log_status(void)
 {
@@ -92,14 +92,10 @@ void battery_simulate_usb_power(uint8_t usb)
 void battery_announce_simulation(void)
 {
     log_status();
-    simulation_changed = true;
+    simulation_changes++;
 }
 
-bool battery_take_simulation_change(void)
+uint32_t battery_simulation_changes(void)
 {
-    if (!simulation_changed) {
-        return false;
-    }
-    simulation_changed = false;
-    return true;
+    return simulation_changes;
 }

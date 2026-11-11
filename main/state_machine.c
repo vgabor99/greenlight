@@ -40,6 +40,7 @@ _Static_assert(sizeof(state_names) / sizeof(state_names[0]) == STATE_LOW_BATTERY
 static TickType_t boot_tick;
 static uint32_t   wake_number;
 static bool       wake_reports_pending;  /* ACTIVE: report_wake_state() still to do */
+static uint32_t   reported_simulation_changes;  /* battery_simulation_changes() when the battery was last reported */
 
 const char *device_state_name(device_state_t state)
 {
@@ -302,7 +303,8 @@ static device_state_t run_active(void)
         if (battery_ran_low()) {
             return STATE_SHUTDOWN;
         }
-        if (!wake_reports_pending && battery_take_simulation_change()) {  /* the console changed the simulation */
+        if (!wake_reports_pending && battery_simulation_changes() != reported_simulation_changes) {  /* the console */
+            reported_simulation_changes = battery_simulation_changes();
             zigbee_report_battery(battery_voltage_mv(), battery_is_low());
         }
         if (elapsed_ms(last_heartbeat) >= HEARTBEAT_MS) {
