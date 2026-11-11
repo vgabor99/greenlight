@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "app/device_state.h"
 #include "data_model.h"
-#include "screen/view_layout.h"
 #include "zigbee/zigbee.h"
 
 /* The application state (docs/firmware.md#tasks-and-data-flow): the device state, the stored dataset, the view on
@@ -13,6 +12,14 @@
  * the sleep. */
 
 #define APP_STATE_RECEIVED_WRITES 8  /* received writes kept for the debug screen */
+
+/* The view on the panel with the text of each of its active lines, taken from the dataset it was for, so a new
+ * dataset never changes it (docs/data-model.md#view). Stored in NVS as is (STORE_KEY_SHOWN_VIEW): keep the layout. */
+typedef struct {
+    view_t  view;        /* view.id 0 = nothing shown */
+    uint8_t line_count;  /* active lines; 0 = All OK */
+    char    lines[DATASET_MAX_LINES][LINE_MAX_BYTES + 1];  /* in dataset order, "II|name|state" */
+} shown_view_t;
 
 typedef struct {
     uint32_t                uptime_ms;  /* when it arrived */

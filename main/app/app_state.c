@@ -13,6 +13,8 @@ static const char *TAG = "greenlight";
 
 /* The dataset is stored in NVS as is (STORE_KEY_DATASET): its layout must not change. */
 _Static_assert(sizeof(dataset_t) == 2088, "the stored dataset's layout");
+/* So is the shown view (STORE_KEY_SHOWN_VIEW). */
+_Static_assert(sizeof(shown_view_t) == 2100, "the stored view's layout");
 
 static SemaphoreHandle_t          lock;
 static device_state_t             device_state;
@@ -114,12 +116,24 @@ void app_state_snapshot(app_state_t *state)
     state->battery_simulation_changes = battery_simulation_changes();
 }
 
+/* Show the view: take the text of its active lines from the dataset. */
+static void show_view(const view_t *view)
+{
+    memset(&shown, 0, sizeof(shown));
+    shown.view = *view;
+    for (int line = 0; line < dataset.count; line++) {
+        if (data_model_line_active(view, line)) {
+            memcpy(shown.lines[shown.line_count++], dataset.text[line], sizeof(shown.lines[0]));
+        }
+    }
+}
+
 static void log_shown_view(void)
 {
-    ESP_LOGI(TAG, "view %06lx: %u active lines%s", (unsigned long)shown.view.id, shown.active_lines,
-             shown.active_lines ? "" : " (All OK)");
-    for (int i = 0; i < shown.row_count; i++) {
-        ESP_LOGI(TAG, "  %d: %s", i + 1, shown.rows[i]);
+    ESP_LOGI(TAG, "view %06lx: %u active lines%s", (unsigned long)shown.view.id, shown.line_count,
+             shown.line_count ? "" : " (All OK)");
+    for (int i = 0; i < shown.line_count; i++) {
+        ESP_LOGI(TAG, "  %d: %s", i + 1, shown.lines[i]);
     }
 }
 
@@ -133,7 +147,7 @@ void app_state_on_view(const view_t *view, zigbee_view_result_t result)
         view_freshness_renew();
     }
     if (result == ZIGBEE_VIEW_NEW) {
-        view_layout_build(&shown, &dataset, view);
+        show_view(view);
     } else if (result == ZIGBEE_VIEW_TIME_ONLY) {
         shown.view.time = view->time;
     }

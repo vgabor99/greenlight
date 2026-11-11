@@ -3,7 +3,7 @@ idf_component_register(SRCS "main.c" "state_machine.c" "console.c" "persistent_s
                             "app/app_state.c" "app/device_state.c" "app/screen_content.c" "app/view_freshness.c"
                             "display/display.c"
                             "panel/epaper.c" "panel/panel.c" "panel/frame_dump.c"
-                            "screen/render.c" "screen/status_screen.c" "screen/debug_screen.c" "screen/view_layout.c"
+                            "screen/render.c" "screen/status_screen.c" "screen/debug_screen.c"
                             "screen/bitmap_text.c" "screen/bitmaps.c" "screen/framebuffer.c" "screen/sample_screens.c"
                             "util/utf8.c"
                             "zigbee/zigbee.c" "zigbee/zigbee_device.c" "zigbee/zigbee_display_input.c" "zigbee/zigbee_reports.c"

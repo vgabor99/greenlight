@@ -7,15 +7,18 @@
 #include "screen/render.h"
 #include "screen/sample_screens.h"
 
+#define SAMPLE_MAX_LINES 9
+
 /* The content of the UI spec's mockups and a few edge cases: to compare with the mockups without having to provoke
  * each state. */
 void sample_screens_dump(void)
 {
-    static const char *const sample_rows[][VIEW_LAYOUT_ROWS] = {
+    static const char *const sample_lines[][SAMPLE_MAX_LINES] = {
         {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "2E|Hűtő|túl meleg",
          "2F|Fagyasztó|túl meleg", "27|Mosogató|nedves"},
         {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva", "0D|Nappali lámpa|be", "2E|Hűtő|túl meleg",
-         "2F|Fagyasztó|túl meleg", "01|további 4|"},
+         "2F|Fagyasztó|túl meleg", "27|Mosogató|nedves", "02|Bejárati ajtó|nyitva", "04|Fürdő ablak|nyitva",
+         "0D|Kerti lámpa|be"},  /* more than fit: the proper screen shows 5 and "további 4" */
         {"02|Teraszajtó|nyitva", "04|Háló ablak|nyitva"},
         {"Teraszajtó nyitva", "7F|Ismeretlen ikon|nyitva", "02|Nagyon hosszú nevű ajtó a pincelépcső alatt|nyitva",
          "0D|Lámpa|nagyon hosszú állapot szöveg, ami nem fér el", "13|Árvíztűrő tükörfúrógép|"},
@@ -27,14 +30,13 @@ void sample_screens_dump(void)
     static const char *const sample_names[] = {"problems", "overflow", "two", "edge", "ok", "problems_stale", "ok_stale"};
     static app_state_t state;
     vTaskDelay(pdMS_TO_TICKS(2000));  /* the USB console drops output until the host has reopened the port */
-    for (int sample = 0; sample < sizeof(sample_rows) / sizeof(sample_rows[0]); sample++) {
+    for (int sample = 0; sample < sizeof(sample_lines) / sizeof(sample_lines[0]); sample++) {
         memset(&state, 0, sizeof(state));
         state.state      = STATE_ACTIVE;
         state.shown.view = (view_t){.id = 1, .time = 1793472360};  /* Sat 2026-10-31 18:46 */
-        for (int i = 0; i < VIEW_LAYOUT_ROWS && sample_rows[sample][i]; i++) {
-            strlcpy(state.shown.rows[state.shown.row_count++], sample_rows[sample][i], sizeof(state.shown.rows[0]));
+        for (int i = 0; i < SAMPLE_MAX_LINES && sample_lines[sample][i]; i++) {
+            strlcpy(state.shown.lines[state.shown.line_count++], sample_lines[sample][i], sizeof(state.shown.lines[0]));
         }
-        state.shown.active_lines = sample == 1 ? 9 : state.shown.row_count;
         state.stale = sample >= 5;  /* the sync badge */
         frame_dump_print(render_frame(&state), sample_names[sample]);
     }

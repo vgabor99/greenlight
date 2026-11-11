@@ -17,7 +17,8 @@
 /* Layout (y of each block) */
 #define Y_HEADER          2
 #define Y_RULE1           19
-#define Y_SHOWN           22   /* dataset + view row, time row, 6 line rows: 8 rows */
+#define Y_SHOWN           22   /* dataset + view row, time row, SHOWN_ROWS line rows: 8 rows */
+#define SHOWN_ROWS        6
 #define Y_RULE2           151
 #define Y_RECEIVED_WRITES 156  /* APP_STATE_RECEIVED_WRITES rows */
 
@@ -162,11 +163,14 @@ static void draw_shown_view(const app_state_t *state)
     char age[AGE_LEN];
     format_age(age, state->age_ms);
     draw_row(Y_SHOWN + ROW_PITCH, "age %s / %lus %s  %u lines%s", age, (unsigned long)(state->valid_ms / 1000),
-             state->stale ? "STALE" : "FRESH", shown->active_lines, state->out_of_sync ? "  OUT OF SYNC" : "");
-    for (int i = 0; i < VIEW_LAYOUT_ROWS; i++) {
+             state->stale ? "STALE" : "FRESH", shown->line_count, state->out_of_sync ? "  OUT OF SYNC" : "");
+    int lines_drawn = shown->line_count > SHOWN_ROWS ? SHOWN_ROWS - 1 : shown->line_count;
+    for (int i = 0; i < SHOWN_ROWS; i++) {
         int y = Y_SHOWN + (i + 2) * ROW_PITCH;
-        if (i < shown->row_count) {
-            draw_row(y, "%d %s", i + 1, shown->rows[i]);
+        if (i < lines_drawn) {
+            draw_row(y, "%d %s", i + 1, shown->lines[i]);
+        } else if (i == lines_drawn && shown->line_count > lines_drawn) {
+            draw_row(y, "  +%d more", shown->line_count - lines_drawn);
         } else if (i == 0 && shown->view.id != 0) {
             draw_row(y, "  ALL OK");
         } else {

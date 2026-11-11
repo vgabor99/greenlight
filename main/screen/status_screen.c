@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 #include "data_model.h"
 #include "screen/framebuffer.h"
@@ -8,7 +9,8 @@
 
 /* Layout, measured from the accepted mockups (docs/uispec/ui-spec.md).
  * Text is placed by its baseline, icons by their centre. */
-#define ROW_HEIGHT         (FRAMEBUFFER_HEIGHT / VIEW_LAYOUT_ROWS)  /* VIEW_LAYOUT_ROWS rows of 50 px fill the screen, no header */
+#define ROWS               6                                /* line rows (docs/display.md#layout-rule) */
+#define ROW_HEIGHT         (FRAMEBUFFER_HEIGHT / ROWS)      /* ROWS rows of 50 px fill the screen, no header */
 #define ROW_ICON_X         27                               /* line icon centre */
 #define ROW_ICON_CENTER_DY 25                               /* line icon centre below the row top */
 #define ROW_BASELINE_DY    33                               /* baseline below the row top */
@@ -60,11 +62,14 @@ static void draw_separator(int y)
     }
 }
 
-/* Icon, bold name, state at the right; the name is cut to leave room for the state. */
-static void draw_problem_row(int top, const char *text)
+/* Icon, bold name, state at the right; the name is cut to leave room for the state. A dotted separator above
+ * every row but the first. */
+static void draw_problem_row(int row, line_t line)
 {
-    line_t line = parse_line(text);
-    int    baseline = top + ROW_BASELINE_DY;
+    int top = row * ROW_HEIGHT, baseline = top + ROW_BASELINE_DY;
+    if (row > 0) {
+        draw_separator(top - 1);
+    }
     bitmap_draw_icon(line_icon(line.icon_id), ROW_ICON_X, top + ROW_ICON_CENTER_DY);
     int state_width, state_length = strlen(line.state);
     bitmap_text_fit(&bitmap_font_state, line.state, state_length, STATE_MAX_WIDTH, &state_width);
@@ -74,15 +79,18 @@ static void draw_problem_row(int top, const char *text)
                             ROW_RIGHT_X - state_width - ROW_GAP - ROW_NAME_X);
 }
 
-/* The problem lines from the top, dotted separators between them. */
+/* The layout rule (docs/display.md#layout-rule): the lines from the top in dataset order; with more than ROWS of
+ * them, the first ROWS - 1 and "további N" with the dots icon. */
 static void draw_problem_rows(const shown_view_t *shown)
 {
-    for (int i = 0; i < shown->row_count; i++) {
-        int top = i * ROW_HEIGHT;
-        if (i > 0) {
-            draw_separator(top - 1);
-        }
-        draw_problem_row(top, shown->rows[i]);
+    int rows = shown->line_count > ROWS ? ROWS - 1 : shown->line_count;
+    for (int i = 0; i < rows; i++) {
+        draw_problem_row(i, parse_line(shown->lines[i]));
+    }
+    if (shown->line_count > rows) {
+        char more[24];
+        snprintf(more, sizeof(more), "további %d", shown->line_count - rows);
+        draw_problem_row(rows, (line_t){BITMAP_LINE_ICON_DOTS_HORIZONTAL, more, strlen(more), ""});
     }
 }
 
@@ -116,7 +124,7 @@ static void draw_stale_badge(void)
 
 static void draw_house(const screen_content_t *content)
 {
-    if (content->shown->row_count) {
+    if (content->shown->line_count) {
         draw_problem_rows(content->shown);
     } else {
         draw_all_ok();

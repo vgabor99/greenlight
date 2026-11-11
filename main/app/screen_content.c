@@ -45,11 +45,11 @@ bool screen_content_equal(const screen_content_t *a, const screen_content_t *b)
     if (a->kind != SCREEN_HOUSE) {
         return true;
     }
-    if (a->shown->active_lines != b->shown->active_lines || a->shown->row_count != b->shown->row_count) {
+    if (a->shown->line_count != b->shown->line_count) {
         return false;
     }
-    for (int i = 0; i < a->shown->row_count; i++) {
-        if (strcmp(a->shown->rows[i], b->shown->rows[i]) != 0) {
+    for (int i = 0; i < a->shown->line_count; i++) {
+        if (strcmp(a->shown->lines[i], b->shown->lines[i]) != 0) {
             return false;
         }
     }
