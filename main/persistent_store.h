@@ -9,7 +9,7 @@
 #define STORE_KEY_PAIR_ON_BOOT      "pair_now"  /* u8: start pairing right after the next boot (ERASE_NETWORK) */
 #define STORE_KEY_WAKE_COUNT        "wake_n"    /* u32: the wake counter (docs/zigbee.md#state-device-to-ha) */
 #define STORE_KEY_DATASET           "ds"        /* blob: the dataset (docs/data-model.md#dataset) */
-#define STORE_KEY_SHOWN_VIEW        "view"      /* blob: the view on the panel with its rows; its id is shown_view_id */
+#define STORE_KEY_SHOWN_VIEW        "view"      /* blob: the view on the panel with its active lines; its id is shown_view_id */
 #define STORE_KEY_SIMULATED_MV      "sim_mv"    /* u16: the battery voltage override, 0 = measured (docs/firmware.md#battery-and-usb-power) */
 #define STORE_KEY_SIMULATED_USB     "sim_usb"   /* u8: the USB power override: 0 sensed, 1 USB, 2 battery */
 #define STORE_KEY_LOW_BATTERY       "bat_low"   /* u8: the LOW_BATTERY latch */
@@ -24,6 +24,8 @@ void    persistent_store_set_u16(const char *key, uint16_t value);
 
 /* Fills data with zeros when the blob is missing or has another size. */
 void persistent_store_load_blob(const char *key, void *data, size_t size);
+/* A blob of up to max_size bytes, the rest of data filled with zeros. Returns its size, 0 when missing or larger. */
+size_t persistent_store_load_blob_prefix(const char *key, void *data, size_t max_size);
 void persistent_store_save_blob(const char *key, const void *data, size_t size);
 void persistent_store_erase(const char *key);
 

@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -13,8 +14,15 @@ static const char *TAG = "greenlight";
 
 /* The dataset is stored in NVS as is (STORE_KEY_DATASET): its layout must not change. */
 _Static_assert(sizeof(dataset_t) == 2088, "the stored dataset's layout");
-/* So is the shown view (STORE_KEY_SHOWN_VIEW). */
-_Static_assert(sizeof(shown_view_t) == 2100, "the stored view's layout");
+/* The shown view is stored as far as its lines go (STORE_KEY_SHOWN_VIEW): the header and line_count lines, so a
+ * write costs flash in proportion to what is shown (a time-only view rewrites it every few seconds while awake). */
+#define SHOWN_VIEW_HEADER_BYTES offsetof(shown_view_t, lines)
+_Static_assert(SHOWN_VIEW_HEADER_BYTES == 17 && sizeof(((shown_view_t *)0)->lines[0]) == 65, "the stored view's layout");
+
+static size_t shown_view_stored_size(const shown_view_t *view)
+{
+    return SHOWN_VIEW_HEADER_BYTES + view->line_count * sizeof(view->lines[0]);
+}
 
 static SemaphoreHandle_t          lock;
 static device_state_t             device_state;
@@ -37,7 +45,11 @@ void app_state_init(void)
 void app_state_load(void)
 {
     persistent_store_load_blob(STORE_KEY_DATASET, &dataset, sizeof(dataset));
-    persistent_store_load_blob(STORE_KEY_SHOWN_VIEW, &shown, sizeof(shown));
+    /* A blob whose size does not fit its line count (another layout, such as the old laid-out rows) is no view. */
+    size_t stored_size = persistent_store_load_blob_prefix(STORE_KEY_SHOWN_VIEW, &shown, sizeof(shown));
+    if (stored_size != shown_view_stored_size(&shown) || shown.line_count > DATASET_MAX_LINES) {
+        memset(&shown, 0, sizeof(shown));
+    }
 }
 
 /* Nothing is known about the panel any more. */
@@ -154,7 +166,7 @@ void app_state_on_view(const view_t *view, zigbee_view_result_t result)
     changes++;
     xSemaphoreGive(lock);
     if (accepted) {
-        persistent_store_save_blob(STORE_KEY_SHOWN_VIEW, &shown, sizeof(shown));
+        persistent_store_save_blob(STORE_KEY_SHOWN_VIEW, &shown, shown_view_stored_size(&shown));
     }
     if (result == ZIGBEE_VIEW_NEW) {
         log_shown_view();

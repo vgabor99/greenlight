@@ -47,6 +47,18 @@ void persistent_store_load_blob(const char *key, void *data, size_t size)
     }
 }
 
+size_t persistent_store_load_blob_prefix(const char *key, void *data, size_t max_size)
+{
+    size_t stored_size = 0;
+    memset(data, 0, max_size);
+    if (nvs_get_blob(store, key, NULL, &stored_size) != ESP_OK || stored_size > max_size ||
+        nvs_get_blob(store, key, data, &stored_size) != ESP_OK) {
+        memset(data, 0, max_size);
+        return 0;
+    }
+    return stored_size;
+}
+
 void persistent_store_save_blob(const char *key, const void *data, size_t size)
 {
     nvs_set_blob(store, key, data, size);
