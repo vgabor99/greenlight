@@ -10,8 +10,8 @@
 #define STORE_KEY_WAKE_COUNT        "wake_n"    /* u32: the wake counter (docs/zigbee.md#state-device-to-ha) */
 #define STORE_KEY_DATASET           "ds"        /* blob: the dataset (docs/data-model.md#dataset) */
 #define STORE_KEY_SHOWN_VIEW        "view"      /* blob: the view on the panel with its rows; its id is shown_view_id */
-#define STORE_KEY_SIMULATED_MV      "sim_mv"    /* u16: the battery voltage override, 0 = measured (docs/firmware.md#simulated-parts) */
-#define STORE_KEY_SIMULATED_USB     "sim_usb"   /* u8: the simulated USB power */
+#define STORE_KEY_SIMULATED_MV      "sim_mv"    /* u16: the battery voltage override, 0 = measured (docs/firmware.md#battery-and-usb-power) */
+#define STORE_KEY_SIMULATED_USB     "sim_usb"   /* u8: the USB power override: 0 sensed, 1 USB, 2 battery */
 #define STORE_KEY_LOW_BATTERY       "bat_low"   /* u8: the LOW_BATTERY latch */
 #define STORE_KEY_RETIRED_SNAPSHOT  "snap"      /* rev 5 snapshot, no longer used: erased at boot */
 

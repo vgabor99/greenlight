@@ -1,10 +1,11 @@
-"""Serial log monitor that also sends console commands to the device (the battery simulation, docs/firmware.md#simulated-parts).
+"""Serial log monitor that also sends console commands to the device (the battery and USB overrides,
+docs/firmware.md#battery-and-usb-power).
 
 The firmware reads lines on its USB-Serial-JTAG console: "bat <mV>" overrides the measured battery voltage ("bat 0"
-measures again), "usb 0|1" sets the simulated USB power, "bat" or "usb" alone print them, "vbat" logs a new
-measurement (D2). COM5 can only be opened once, so the log reader and the sender have to be the same process:
-this one prints (and optionally logs) everything the device writes, sends the --send commands, and forwards every
-line typed on stdin. It reconnects when the board restarts.
+measures again), "usb 0|1" overrides the sensed USB power ("usb auto" senses again), "bat" or "usb" alone print
+them, "vbat" logs a new measurement (D2). COM5 can only be opened once, so the log reader and the sender have to
+be the same process: this one prints (and optionally logs) everything the device writes, sends the --send
+commands, and forwards every line typed on stdin. It reconnects when the board restarts.
 
 --send "CMD" sends CMD right after the port opens; --send "SECONDS:CMD" sends it that many seconds after the start.
 --for SECONDS stops after that long (default: run until Ctrl+C). --log FILE appends the output to FILE.

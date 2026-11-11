@@ -24,7 +24,7 @@
 #define BATTERY_SENSE_PIN 2  /* D2 */
 
 /* USB sense: the 5V pin through a divider (about 3 V on USB, 0 on battery), digital input, no pulls (usb_sense.c) */
-#define VBUS_SENSE_PIN 17  /* D7 */
+#define VBUS_SENSE_PIN 7  /* MTDO pad on the XIAO's underside */
 
 /* Antenna switch: RF_SWITCH_ENABLE_PIN low enables it, RF_ANTENNA_SELECT_PIN low selects the onboard ceramic
  * antenna. */

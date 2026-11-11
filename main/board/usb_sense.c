@@ -16,7 +16,7 @@ void usb_sense_init(void)
     };
     esp_err_t err = gpio_config(&config);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "usb sense: D7 setup failed (%s)", esp_err_to_name(err));
+        ESP_LOGE(TAG, "usb sense: pin setup failed (%s)", esp_err_to_name(err));
     }
 }
 

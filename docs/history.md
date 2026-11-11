@@ -60,6 +60,9 @@ generated bitmaps instead of u8g2 fonts.
   old default 4100 mV is gone, a stored `sim_mv` still wins until `bat 0`). A low battery found at boot is now
   reported (it used to keep the radio off, so with a real cell, which drains during the sleep, HA never learnt
   of it), and the latch is set only once Z2M confirms the report.
+- 2026-11-11: USB sense moved from D7 to the MTDO pad (GPIO7) on the XIAO's underside, a deep-sleep wake pin, so
+  LOW_BATTERY sleeps until USB power arrives. This replaces the planned timer wake that would have checked D7 (a
+  boot per check, and recovery up to an interval late). USB power is sensed; the console only overrides it.
 
 ## Rejected options
 

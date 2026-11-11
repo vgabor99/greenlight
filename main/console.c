@@ -29,10 +29,12 @@ static void handle_command(const char *line)
             return;
         }
         battery_simulate_voltage(value);
+    } else if (strncmp(line, "usb auto", 8) == 0) {
+        battery_simulate_usb_power(BATTERY_USB_SENSED);
     } else if (sscanf(line, "usb %d", &value) == 1) {
-        battery_simulate_usb_power(value != 0);
+        battery_simulate_usb_power(value ? BATTERY_USB_ON : BATTERY_USB_OFF);
     } else if (strncmp(line, "bat", 3) != 0 && strncmp(line, "usb", 3) != 0) {
-        ESP_LOGW(TAG, "console: unknown command (bat <mV>|0, usb 0|1, vbat)");
+        ESP_LOGW(TAG, "console: unknown command (bat <mV>|0, usb 0|1|auto, vbat)");
         return;
     }
     battery_announce_simulation();

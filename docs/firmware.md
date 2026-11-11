@@ -14,9 +14,9 @@ Every file under `main/` has one purpose and is named after it.
 | `persistent_store.c` | NVS keys and access ([Persistent state](#persistent-state)) |
 | `board/board.c` | pin map (`board.h`), RF switch |
 | `board/inputs.c` | PIR and pair button: polling, debounce, occupancy hold |
-| `board/battery.c` | battery voltage (measured or overridden), simulated USB power, low-battery latch |
+| `board/battery.c` | battery voltage and USB power (measured, or the console's overrides), low-battery latch |
 | `board/battery_sense.c` | battery measurement on D2 (ADC) |
-| `board/usb_sense.c` | USB sense on D7: logged only |
+| `board/usb_sense.c` | USB sense on GPIO7 (the MTDO pad) |
 | `board/sleep.c` | deep sleep (or the simulated sleep) |
 | `board/wake_reason.c` | the wake cause, logged at boot |
 | `display/display.c` | screen per state (`choose_screen()`), redraw, `display_wait_ms()` |
@@ -76,7 +76,7 @@ strings address state on devices, never change them). The Zigbee stack keeps the
 | `wake_n` | the wake counter |
 | `ds` | the dataset |
 | `view` | the shown view with its laid-out rows |
-| `sim_mv`, `sim_usb` | the battery voltage override (0 = measured) and the simulated USB power |
+| `sim_mv`, `sim_usb` | the console's overrides: battery voltage (0 = measured), USB power (0 = sensed, 1 = USB, 2 = battery) |
 | `bat_low` | the low-battery latch |
 
 The staleness deadline lives in RTC memory (`RTC_NOINIT_ATTR`): it survives a restart and deep sleep, and is
@@ -95,16 +95,19 @@ CMake caches them; pass `=0` to switch back.
 | `-DSLEEP_TIMER_S=N` | a timer also ends deep sleep after N s (bench tests) |
 | `-DSIM_SLEEP=1` | simulated sleep: wait for D0 or D1, then `esp_restart()`. USB, the log, the console and resets over USB keep working, so use it for autonomous testing. |
 
-## Simulated parts
+## Battery and USB power
 
 - **The battery voltage** is measured on D2 at boot, before the radio and the panel start (logged as `battery
   sense: pin ... mV, vbat ... mV`), and again, unlogged, at every mid-wake battery check
-  ([behaviour.md](behaviour.md#low-battery)). The `vbat` console command measures and logs. On USB without a cell the reading means nothing (the charger's output is not a battery
-  voltage), and without the USB sense the device cannot tell.
-- **The voltage override and USB power** are set over the USB-Serial-JTAG console (the primary console, so it
-  takes input): `bat <mV>` (2500-4500; `bat 0` = measured again), `usb 0|1`; `bat` / `usb` alone print them.
-  They are kept in NVS (`sim_mv`, default 0 = measured; `sim_usb`, default 0 = on battery), so they survive the
-  sleep, a power cycle and a reflash. Usage with `tools/console.py`: the `bench-test` skill. The status line
-  also shows the real USB sense (`usb 0 (simulated; D7 1)`), which does not feed the battery logic yet.
-- **LOW_BATTERY** waits for `usb 1`, then calls `esp_restart()`: the real USB sense is not wired,
-  and the simulated `usb 1` cannot reach a sleeping chip.
+  ([behaviour.md](behaviour.md#low-battery)). The `vbat` console command measures and logs.
+- **USB power** is read from GPIO7 (the MTDO pad, `usb_sense_read()`). With USB in, a low battery never counts
+  (USB power overrides it), and the serial log only works with USB in: so bench tests of the low battery use the
+  overrides.
+- **The overrides** are set over the USB-Serial-JTAG console (the primary console, so it takes input): `bat <mV>`
+  (2500-4500; `bat 0` = measured again), `usb 0|1` (battery / USB; `usb auto` = sensed again); `bat` / `usb`
+  alone print them, as `battery: 3864 mV (measured), usb 1 (sensed; sense 1), latched 0`. They are kept in NVS
+  (`sim_mv`, `sim_usb`; default measured and sensed), so they survive the sleep, a power cycle and a reflash:
+  clear them after a test. Usage with `tools/console.py`: the `bench-test` skill.
+- **LOW_BATTERY** deep-sleeps with GPIO7 going high as its only wake (`sleep_until_usb_power()`). If USB is
+  already on the pin there (`usb 0` with the cable in), a sleep would end at once, so it waits awake for the
+  console (`usb 1` or `usb auto`) and then restarts.

@@ -4,6 +4,6 @@
  * does not return: only NVS and RTC memory carry over. */
 void sleep_until_input(void);
 
-/* Low battery (docs/behaviour.md#low-battery): sleep until USB power arrives; the PIR and the pair button are ignored. Does not
- * return. */
+/* Low battery (docs/behaviour.md#low-battery): sleep until USB power arrives (the USB sense pin); the PIR and the
+ * pair button are ignored. Does not return. */
 void sleep_until_usb_power(void);

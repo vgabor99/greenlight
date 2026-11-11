@@ -1705,8 +1705,7 @@
 	)
 	(wire (pts (xy 124.46 101.6) (xy 119.38 101.6)) (stroke (width 0) (type default)) (uuid "3ff620cd-a043-47e2-af43-5dfb71326708"))
 	(label "BATTERY_SENSE_PIN" (at 119.38 101.6 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "9e18ba7c-b338-41eb-a021-9fb09aa33133"))
-	(wire (pts (xy 170.18 116.84) (xy 175.26 116.84)) (stroke (width 0) (type default)) (uuid "d6175b39-792e-45dd-ace6-5723fcc0f91f"))
-	(label "VBUS_SENSE_PIN" (at 175.26 116.84 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "4bdfad3c-cfbd-462c-b135-384eaca69b78"))
+	(no_connect (at 170.18 116.84) (uuid "38c5084a-09ac-4087-ab2c-29c63e8a71d2"))
 	(wire (pts (xy 170.18 93.98) (xy 175.26 93.98)) (stroke (width 0) (type default)) (uuid "17ee9037-c507-4c24-af23-5a2357b30e6d"))
 	(label "VBUS" (at 175.26 93.98 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "c22de675-fad5-4c29-969d-e8e079885359"))
 	(no_connect (at 124.46 116.84) (uuid "4a6dbfa1-2317-4976-a2a9-e6eca0a116c2"))
@@ -2387,6 +2386,44 @@
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x01")
+		(at 200.66 129.54 0)
+		(unit 1)
+		(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+		(uuid "c7228c47-bb17-4aed-9cb8-09e689819f8e")
+		(property "Reference" "J2" (at 203.2 128.27 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(property "Value" "MTDO wire" (at 203.2 130.81 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(property "Footprint" "TestPoint:TestPoint_THTPad_D2.0mm_Drill1.0mm" (at 200.66 129.54 0) (hide yes) (effects
+				(font
+					(size 1.27 1.27)
+				)
+			))
+		(property "Datasheet" "" (at 200.66 129.54 0) (hide yes) (effects
+				(font
+					(size 1.27 1.27)
+				)
+			))
+		(property "Description" "Generic connector, single row, 01x01, script generated (kicad-library-utils/schlib/autogen/connector/)" (at 200.66 129.54 0) (hide yes) (effects
+				(font
+					(size 1.27 1.27)
+				)
+			))
+		(property "ki_keywords" "connector" (at 200.66 129.54 0) (hide yes) (effects
+				(font
+					(size 1.27 1.27)
+				)
+			))
+		(property "ki_fp_filters" "Connector*:*_1x??_*" (at 200.66 129.54 0) (hide yes) (effects
+				(font
+					(size 1.27 1.27)
+				)
+			))
+		(pin "1" (uuid "248b84a3-06f7-4070-82e6-f716d0a77fe5"))
+		(instances (project "greenlight" (path "/3d0b2fcc-90bb-41cd-8ef9-05277aff7ad7" (reference "J2") (unit 1))))
+	)
+	(wire (pts (xy 195.58 129.54) (xy 190.5 129.54)) (stroke (width 0) (type default)) (uuid "1458aed6-6d52-42c8-9e90-25389ed5523c"))
+	(label "VBUS_SENSE_PIN" (at 190.5 129.54 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "87cd975b-88a5-4995-8b51-fb931746d402"))
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x01")
 		(at 200.66 134.62 0)
 		(unit 1)
 		(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
@@ -2423,7 +2460,7 @@
 	)
 	(wire (pts (xy 195.58 134.62) (xy 190.5 134.62)) (stroke (width 0) (type default)) (uuid "82d5f9a4-23a3-4888-8c88-e680d44aba96"))
 	(label "VBAT" (at 190.5 134.62 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "cd382d79-49b5-458f-8b18-8609e9ad34b0"))
-	(text "Planned: the battery is soldered to the XIAO's bottom pads VBAT and GND,\nnot to the PCB. J1: PCB pad for a wire from the XIAO's VBAT pad, for the battery sense." (exclude_from_sim no) (at 152.4 152.4 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "47ca97ac-fe5a-4604-9cdb-7300e731e742"))
+	(text "Planned: the battery is soldered to the XIAO's bottom pads VBAT and GND,\nnot to the PCB. J1: PCB pad for a wire from the XIAO's VBAT pad, for the battery sense.\nJ2: PCB pad for a wire from the XIAO's MTDO pad (GPIO7), for the USB sense (a deep-sleep wake pin)." (exclude_from_sim no) (at 152.4 152.4 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "47ca97ac-fe5a-4604-9cdb-7300e731e742"))
 	(symbol
 		(lib_id "Device:R")
 		(at 50.8 147.32 0)
@@ -2747,7 +2784,7 @@
 		(pin "1" (uuid "2c327165-64f1-44aa-870c-d4a88f9bc15e"))
 		(instances (project "greenlight" (path "/3d0b2fcc-90bb-41cd-8ef9-05277aff7ad7" (reference "#PWR16") (unit 1))))
 	)
-	(text "Planned: battery sense (VBAT / 2 on D2, ADC) and USB sense\n(5 V -> 3 V on D7; no voltage on the 5V pin on battery)." (exclude_from_sim no) (at 40.64 167.64 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "8901b64d-331a-4d82-a668-bc21bcc69098"))
+	(text "Battery sense (VBAT / 2 on D2, ADC) and USB sense\n(5 V -> 3 V on the MTDO pad via J2; about 0.3 V on the 5V pin on battery)." (exclude_from_sim no) (at 40.64 167.64 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "8901b64d-331a-4d82-a668-bc21bcc69098"))
 	(symbol
 		(lib_id "power:+3V3")
 		(at 101.6 45.72 0)

@@ -3,8 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Battery (docs/behaviour.md#low-battery): the voltage measured at boot (or the console's override); USB power is
- * simulated until the USB sense is wired. */
+/* Battery (docs/behaviour.md#low-battery): the measured voltage and the sensed USB power, each with a console
+ * override. */
 #define BATTERY_LOW_ENTER_MV 3500  /* below this the wake ends in LOW_BATTERY */
 #define BATTERY_LOW_EXIT_MV  3700  /* LOW_BATTERY is left only at or above this, or on USB power */
 
@@ -27,7 +27,10 @@ void battery_set_low_latched(bool latched);
  * real battery's charge; voltage 0 = the measured one), then announce them, which logs them and flags them for a
  * report. */
 void battery_simulate_voltage(uint16_t mv);
-void battery_simulate_usb_power(bool on);
+#define BATTERY_USB_SENSED 0  /* the USB sense pin decides */
+#define BATTERY_USB_ON     1
+#define BATTERY_USB_OFF    2
+void battery_simulate_usb_power(uint8_t usb);
 void battery_announce_simulation(void);
 
 /* True once after each announced change of the simulation. */

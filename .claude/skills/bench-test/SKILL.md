@@ -1,6 +1,6 @@
 ---
 name: bench-test
-description: "Test the greenlight board on the bench - read its serial log, override the battery voltage / simulate USB over the console, reset it, send view/dataset writes through Zigbee2MQTT, run tools/paced_write_test.py, or make it factory new. Use whenever a task needs the device's serial output, a test on the real hardware, or writes sent to the device."
+description: "Test the greenlight board on the bench - read its serial log, override the battery voltage / USB power over the console, reset it, send view/dataset writes through Zigbee2MQTT, run tools/paced_write_test.py, or make it factory new. Use whenever a task needs the device's serial output, a test on the real hardware, or writes sent to the device."
 ---
 
 # Bench testing
@@ -33,12 +33,14 @@ python tools/console.py --send "bat 3450" --send "20:usb 1" --for 40
 - `--reset`: reset the board first (RTS, like esptool): a wake without pressing a button. Only on an awake board.
 - `--send "SECONDS:CMD"` sends CMD that many seconds after the start; plain `--send "CMD"` right away.
 - Console commands: `bat <mV>` (2500-4500) overrides the measured battery voltage, `bat 0` goes back to the
-  measurement; `usb 0|1` sets the simulated USB power; `bat` / `usb` alone print them. Both persist in NVS: set
-  `bat 0` after a test. `vbat` measures and logs (D2: pin and VBAT mV). Low battery is below 3500 mV; while
+  measurement; `usb 0|1` overrides the sensed USB power, `usb auto` senses again; `bat` / `usb` alone print
+  them. Both persist in NVS: set `bat 0` and `usb auto` after a test. With the cable in, USB is sensed and a
+  low battery never counts: use `usb 0` for low-battery tests with the log. `vbat` measures and logs (D2: pin and VBAT mV). Low battery is below 3500 mV; while
   latched it needs 3700 mV or `usb 1` (docs/behaviour.md#low-battery).
 - Low-battery test without the console: pull the BAT side of the divider, not the D2 wire (a floating pin reads
   anything). The latch is set only once Z2M confirms the report; check
-  `binary_sensor.gf_lobby_greenlight_battery_low` in HA. To recover, reconnect it and reset. A meter with a 1 MΩ input reads the divider's halves low.
+  `binary_sensor.gf_lobby_greenlight_battery_low` in HA. Or with no wiring at all: `bat 3400` with the cable
+  in, then unplug: LOW_BATTERY deep-sleeps, and plugging the cable in again wakes it (`wake_count` in HA). To recover, reconnect it and reset. A meter with a 1 MΩ input reads the divider's halves low.
 
 ## Writes through Zigbee2MQTT
 

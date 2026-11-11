@@ -8,6 +8,7 @@
 #include "board/battery.h"
 #include "board/board.h"
 #include "board/inputs.h"
+#include "board/usb_sense.h"
 #include "board/sleep.h"
 
 static const char *TAG = "greenlight";
@@ -59,11 +60,22 @@ void sleep_until_input(void)
 #endif
 }
 
-/* Simulated like SLEEP; the final firmware replaces this with esp_deep_sleep_start() with VBUS as the only wake
- * source. The boot then finds the battery recovered. */
+/* Deep sleep with the USB sense pin as the only wake source; the boot then finds the battery recovered (USB power
+ * overrides a low battery). With USB already on the pin (the console overrides it to battery) or the simulated
+ * sleep, wait awake for the console instead: a sleep would end at once. */
 void sleep_until_usb_power(void)
 {
-    ESP_LOGI(TAG, "low battery: waiting for USB power");
+#ifndef SIM_SLEEP
+    if (!usb_sense_read()) {
+        ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup_io(1ULL << VBUS_SENSE_PIN, ESP_EXT1_WAKEUP_ANY_HIGH));
+        rtc_gpio_pullup_dis(VBUS_SENSE_PIN);  /* the divider sets the level */
+        rtc_gpio_pulldown_dis(VBUS_SENSE_PIN);
+        ESP_LOGI(TAG, "low battery: deep sleep until USB power");
+        vTaskDelay(pdMS_TO_TICKS(100));
+        esp_deep_sleep_start();
+    }
+#endif
+    ESP_LOGI(TAG, "low battery: waiting for USB power (console)");
     while (!battery_on_usb_power()) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }

@@ -9,18 +9,21 @@
 static const char *TAG = "greenlight";
 
 /* The voltage is measured at boot (at rest, before the radio and the panel start) and again at each mid-wake
- * check (battery_measure()); the console can override it (0 = measured). USB power is still simulated. Both console values are kept in NVS. The latch makes the exit
+ * check (battery_measure()); USB power is read from the USB sense pin. The console can override both (bench tests
+ * with the USB cable in); the overrides are kept in NVS. The latch makes the exit
  * threshold apply (hysteresis). USB power overrides a low battery: the device then runs from USB. */
 static volatile uint16_t measured_mv;
 static volatile uint16_t simulated_mv;  /* 0: the measured voltage applies */
-static volatile bool     simulated_usb_power;
+static volatile uint8_t  usb_override;  /* BATTERY_USB_SENSED, _ON or _OFF */
 static volatile bool     low_latched;
 static volatile bool     simulation_changed;  /* the console changed the simulation: report it */
 
 static void log_status(void)
 {
-    ESP_LOGI(TAG, "battery: %u mV (%s), usb %d (simulated; D7 %d), latched %d", battery_voltage_mv(),
-             simulated_mv ? "simulated" : "measured", simulated_usb_power, usb_sense_read(), low_latched);
+    static const char *const usb_source[] = {"sensed", "override", "override"};
+    ESP_LOGI(TAG, "battery: %u mV (%s), usb %d (%s; sense %d), latched %d", battery_voltage_mv(),
+             simulated_mv ? "simulated" : "measured", battery_on_usb_power(), usb_source[usb_override],
+             usb_sense_read(), low_latched);
 }
 
 void battery_init(void)
@@ -31,7 +34,10 @@ void battery_init(void)
     if (persistent_store_get_u16(STORE_KEY_SIMULATED_MV, &mv)) {
         simulated_mv = mv;
     }
-    simulated_usb_power = persistent_store_get_u8(STORE_KEY_SIMULATED_USB);
+    usb_override = persistent_store_get_u8(STORE_KEY_SIMULATED_USB);
+    if (usb_override > BATTERY_USB_OFF) {
+        usb_override = BATTERY_USB_SENSED;
+    }
     low_latched         = persistent_store_get_u8(STORE_KEY_LOW_BATTERY);
     log_status();
 }
@@ -48,7 +54,11 @@ uint16_t battery_voltage_mv(void)
 
 bool battery_on_usb_power(void)
 {
-    return simulated_usb_power;  /* later the VBUS sense pin */
+    switch (usb_override) {
+    case BATTERY_USB_ON:  return true;
+    case BATTERY_USB_OFF: return false;
+    default:              return usb_sense_read();
+    }
 }
 
 bool battery_is_low(void)
@@ -73,10 +83,10 @@ void battery_simulate_voltage(uint16_t mv)
     persistent_store_set_u16(STORE_KEY_SIMULATED_MV, mv);
 }
 
-void battery_simulate_usb_power(bool on)
+void battery_simulate_usb_power(uint8_t usb)
 {
-    simulated_usb_power = on;
-    persistent_store_set_u8(STORE_KEY_SIMULATED_USB, on);
+    usb_override = usb;
+    persistent_store_set_u8(STORE_KEY_SIMULATED_USB, usb);
 }
 
 void battery_announce_simulation(void)

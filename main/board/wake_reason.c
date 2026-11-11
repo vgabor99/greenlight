@@ -17,8 +17,8 @@ void wake_reason_init(void)
     uint32_t causes = esp_sleep_get_wakeup_causes();
     if (causes & BIT(ESP_SLEEP_WAKEUP_EXT1)) {
         uint64_t pins = esp_sleep_get_ext1_wakeup_status();
-        snprintf(wake_reason, sizeof wake_reason, "%s%s", pins & (1ULL << PIR_PIN) ? "PIR " : "",
-                 pins & (1ULL << PAIR_BUTTON_PIN) ? "pair button" : "");
+        snprintf(wake_reason, sizeof wake_reason, "%s%s%s", pins & (1ULL << PIR_PIN) ? "PIR " : "",
+                 pins & (1ULL << PAIR_BUTTON_PIN) ? "pair button " : "", pins & (1ULL << VBUS_SENSE_PIN) ? "USB" : "");
     } else if (causes & BIT(ESP_SLEEP_WAKEUP_TIMER)) {
         snprintf(wake_reason, sizeof wake_reason, "timer");
     } else {

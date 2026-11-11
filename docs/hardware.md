@@ -14,29 +14,30 @@ The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) 
 | **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
 
 The battery voltage is measured (on the breadboard); USB power is simulated for now
-([firmware.md](firmware.md#simulated-parts)).
+([firmware.md](firmware.md#battery-and-usb-power)).
 
 ## Pins
 
-Both wake inputs must be deep-sleep wake pins, which on the ESP32-C6 are GPIO0-7 (on the XIAO header: D0, D1,
-D2). So the panel's DC and RST lines are on D4/D5, not D1/D2. The ADC also reaches only GPIO0-6 (D0-D2 on the
-header), so D2 goes to the battery measurement. Pin map in `main/board/board.h`; the schematic names its nets
+The wake inputs must be deep-sleep wake pins, which on the ESP32-C6 are GPIO0-7 (on the XIAO header: D0, D1, D2; on
+its underside the JTAG pads MTMS, MTDI, MTCK, MTDO = GPIO4-7). So the panel's DC and RST lines are on D4/D5, not
+D1/D2. The ADC also reaches only GPIO0-6 (D0-D2 on the header), so D2 goes to the battery measurement, and USB
+sense, LOW_BATTERY's wake, goes to the MTDO pad. Pin map in `main/board/board.h`; the schematic names its nets
 after these defines (the planned ones after the defines they will get).
 
 | Pin | Use |
 |---|---|
 | D0 (GPIO0) | **PIR output** (`PIR_PIN`), active high (`PIR_ACTIVE_LEVEL` 1), external 100k pull-down to GND, no internal pull (keeps the sensor's output current under 100 uA); wake pin. `PIR_ACTIVE_LEVEL` 0 = a test button to GND with the internal pull-up. |
 | D1 (GPIO1) | **pair button** (`PAIR_BUTTON_PIN`), to GND, internal pull-up; wake pin |
-| D2 (GPIO2) | **battery sense** (`BATTERY_SENSE_PIN`), ADC; measured and logged only ([Power and battery](#power-and-battery)) |
+| D2 (GPIO2) | **battery sense** (`BATTERY_SENSE_PIN`), ADC ([Power and battery](#power-and-battery)) |
 | D3 (GPIO21) | panel BUSY. Must be wired: the internal-pull "is it connected" test is unreliable because the module drives BUSY weakly. |
 | D4 (GPIO22) | panel DC |
 | D5 (GPIO23) | panel RST |
-| D7 (GPIO17) | **USB sense** (`VBUS_SENSE_PIN`), digital input with no pulls; read and logged only; not a wake pin ([Power and battery](#power-and-battery)) |
 | D8, D9, D10 | panel SCK, CS, MOSI |
+| MTDO pad (GPIO7), underside | **USB sense** (`VBUS_SENSE_PIN`), digital input with no pulls; LOW_BATTERY's wake pin ([Power and battery](#power-and-battery)) |
 
-The panel pins are held low before power-off; that works on any GPIO. D6 is free. With USB sense on D7 (UART0 RX)
-the console cannot move to UART0. A button wired straight to GND (or any load on D1/D2) shows up as `inputs at boot: ... =0` in the
-log.
+The panel pins are held low before power-off; that works on any GPIO. D6 and D7 are free. MTMS and MTDI (GPIO4/5)
+are strapping pins, read at reset: not for a signal that may be high at power-on. A button wired straight to GND
+(or any load on D1/D2) shows up as `inputs at boot: ... =0` in the log.
 
 ## Board
 
@@ -139,16 +140,15 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
   schematic) feeds the battery measurement.
 - Battery measurement: the XIAO ESP32-C6 has no battery sense path of its own. VBAT goes through a 1M/1M divider
   (about 2 uA) with 100 nF at the pin to D2. Measured at boot, before the radio and the panel start, and every
-  second while awake ([firmware.md](firmware.md#simulated-parts)). Any two equal resistors keep the ratio; a meter
+  second while awake ([firmware.md](firmware.md#battery-and-usb-power)). Any two equal resistors keep the ratio; a meter
   with a 1 MΩ input reads the divider's halves low, the ADC does not. On the breadboard (681k/681k, 100 nF) the ADC
   read 3872 mV against 3880 mV on the meter, without a correction factor; check again on the PCB.
-- USB sense: the 5V pin through 100k/150k (about 3 V) to D7. The 5V pin carries no voltage on battery (D7
-  measured 0.19 V there, awake and asleep, on the breadboard's 82k/140k; 2.92 V on USB). GPIO17 is UART0 RX
-  and comes out of reset with its pull-up on, which would pull D7 to about 1.8 V on battery and cost about
-  18 uA: the firmware turns both pulls off at boot, and they stay off in deep sleep. The battery logic still
-  uses the simulated USB power ([firmware.md](firmware.md#simulated-parts)). D7 cannot wake the chip, so the
-  real LOW_BATTERY will be `esp_deep_sleep_start()` with a timer wake (interval to be decided) that checks USB
-  sense and sleeps again. The protection circuit is the last cutoff.
+- USB sense: the 5V pin through 100k/150k (about 3 V) to the XIAO's MTDO pad (GPIO7), by a thin wire from the pad
+  to a PCB pad (J2), like the battery's (J1). The firmware reads it without pulls, and LOW_BATTERY deep-sleeps
+  until it goes high ([firmware.md](firmware.md#battery-and-usb-power)). On the breadboard (82k/140k) it read 0.2 V
+  on battery, awake and asleep, and high on USB, and a USB plug-in woke LOW_BATTERY. The 5V pin is not quite 0 V on
+  battery: about 0.33 V from a leak, so the divider draws about 1.2 uA ([roadmap.md](roadmap.md#future-work)). The
+  protection circuit is the last cutoff.
 - On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
 
 ## USB console and deep sleep

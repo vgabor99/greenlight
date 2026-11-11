@@ -172,9 +172,8 @@ the device is fine while it no longer wakes.
   already low. Not latched yet, the wake boots on and rejoins, and the first check in ACTIVE ends it with the
   `battery_low` report, so HA learns it; 3.5 V leaves plenty for a few rejoins. Latched, BOOT checks before the
   radio, the panel and any NVS write, and a battery still low goes straight back to LOW_BATTERY.
-- The battery voltage is measured, USB power is still simulated ([firmware.md](firmware.md#simulated-parts)),
-  and LOW_BATTERY waits awake for the simulated `usb 1`, then restarts. The real one will be deep sleep with a
-  timer wake that checks USB sense ([hardware.md](hardware.md#power-and-battery)).
+- LOW_BATTERY is deep sleep with USB sense (GPIO7) as its only wake. How the voltage and USB power are read,
+  and the console's overrides for bench tests: [firmware.md](firmware.md#battery-and-usb-power).
 - How the battery is reported over Zigbee: [zigbee.md](zigbee.md#battery).
 
 ## Failure modes
