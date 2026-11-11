@@ -14,7 +14,7 @@ static const char *TAG = "greenlight";
  * threshold apply (hysteresis). USB power overrides a low battery: the device then runs from USB. */
 static volatile uint16_t measured_mv;
 static volatile uint16_t simulated_mv;  /* 0: the measured voltage applies */
-static volatile uint8_t  usb_override;  /* BATTERY_USB_SENSED, _ON or _OFF */
+static volatile battery_usb_override_t usb_override;
 static volatile bool     low_latched;
 static volatile uint32_t simulation_changes;  /* announced by the console */
 
@@ -34,10 +34,8 @@ void battery_init(void)
     if (persistent_store_get_u16(STORE_KEY_SIMULATED_MV, &mv)) {
         simulated_mv = mv;
     }
-    usb_override = persistent_store_get_u8(STORE_KEY_SIMULATED_USB);
-    if (usb_override > BATTERY_USB_OFF) {
-        usb_override = BATTERY_USB_SENSED;
-    }
+    uint8_t usb = persistent_store_get_u8(STORE_KEY_SIMULATED_USB);
+    usb_override = usb > BATTERY_USB_OFF ? BATTERY_USB_SENSED : (battery_usb_override_t)usb;
     low_latched         = persistent_store_get_u8(STORE_KEY_LOW_BATTERY);
     log_status();
 }
@@ -83,7 +81,7 @@ void battery_simulate_voltage(uint16_t mv)
     persistent_store_set_u16(STORE_KEY_SIMULATED_MV, mv);
 }
 
-void battery_simulate_usb_power(uint8_t usb)
+void battery_simulate_usb_power(battery_usb_override_t usb)
 {
     usb_override = usb;
     persistent_store_set_u8(STORE_KEY_SIMULATED_USB, usb);
