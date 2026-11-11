@@ -1,8 +1,8 @@
 {# config/custom_templates/greenlight.jinja (source: greenlight repo, ha/custom_templates/) #}
 {# Dataset and view for the Greenlight e-paper display (docs/data-model.md, docs/home-assistant.md). The rules mirror the
    "Bezárva?" dashboard (dashboard-away): every watched entity is one dataset line, whatever its
-   current state, so the dataset only changes when entities are added, removed or renamed. Nothing
-   is listed by hand: entities are found by domain / device class, and the label
+   current state, so the dataset only changes when entities are added, removed, renamed or get another
+   icon. Nothing is listed by hand: entities are found by domain / device class, and the label
    `exclude_from_alerts` keeps one out. Order: rule priority, then entity_id.
 
    Use with `as_function`, e.g. `{% set items = (greenlight_dataset_items | as_function)() %}`.
@@ -10,19 +10,49 @@
    A UTF-8 byte count appears twice below: `char | urlencode` turns each byte of a non-ASCII character into
    `%XX`, so the bytes of `text` are `(text | urlencode | length) - 2 * (number of '%')`. #}
 
+{# The line icon id (two hex digits) of an entity: its own `mdi:` icon when the firmware has that icon, else
+   `fallback` (an `-alert` variant counts as its base icon). The table is a copy of the append-only LINE_ICONS
+   in tools/gen_bitmaps.py (index = id); a name missing here only falls back, so a new line icon is added here
+   too. Only an icon set on the entity (by the user or the integration) is visible; a default icon from the
+   device class is not. #}
+{% macro greenlight_line_icon(entity, fallback, returns=none) %}
+  {%- set ids = {
+    'alert-circle': '00', 'dots-horizontal': '01', 'door-open': '02', 'door-sliding-open': '03',
+    'window-open': '04', 'window-shutter-open': '05', 'garage-open-variant': '06', 'gate-open': '07',
+    'lock-open-variant': '08', 'shield-off': '09', 'shield-home': '0A', 'motion-sensor': '0B', 'cctv': '0C',
+    'lightbulb-on': '0D', 'ceiling-light': '0E', 'lamp': '0F', 'led-strip-variant': '10', 'power-plug': '11',
+    'television': '12', 'remote': '13', 'speaker': '14', 'fan': '15', 'air-conditioner': '16',
+    'air-humidifier': '17', 'radiator': '18', 'heat-pump': '19', 'fireplace': '1A', 'stove': '1B', 'iron': '1C',
+    'coffee-maker': '1D', 'kettle': '1E', 'printer': '1F', 'washing-machine': '20', 'tumble-dryer': '21',
+    'dishwasher': '22', 'robot-vacuum': '23', 'robot-mower': '24', 'ev-station': '25', 'car': '26', 'water': '27',
+    'faucet': '28', 'valve': '29', 'water-pump': '2A', 'water-boiler': '2B', 'sprinkler-variant': '2C',
+    'pool': '2D', 'fridge': '2E', 'snowflake': '2F', 'thermometer': '30', 'water-percent': '31',
+    'weather-pouring': '32', 'weather-windy': '33', 'smoke-detector-variant': '34', 'fire': '35',
+    'molecule-co': '36', 'molecule-co2': '37', 'gas-burner': '38', 'trash-can': '39', 'mailbox': '3A',
+    'battery-low': '3B', 'wifi-off': '3C', 'television-ambient-light': '3D', 'floor-lamp': '3E'} -%}
+  {%- set icon = entity.attributes.icon | default('', true) | string -%}
+  {%- set name = icon[4:] if icon.startswith('mdi:') else '' -%}
+  {#- no -alert variants in the firmware (docs/data-model.md#line-icons): thermometer-alert shows thermometer -#}
+  {% do returns(ids.get(name, ids.get(name | regex_replace('-alert$', ''), fallback))) %}
+{% endmacro %}
+
 {# The watched entities as dataset items: [{'text': text, 'members': [[entity_id, kind], ...]}, ...].
-   The text is `II|name|state` (docs/data-model.md#line-format): II is the line icon's id in hex (the append-only
-   table in tools/gen_bitmaps.py: 00 alert-circle, 01 dots-horizontal, 02 door-open, 04 window-open,
-   08 lock-open-variant, 09 shield-off, 0D lightbulb-on, 13 remote, 27 water), then the name and a
-   one- or two-word state. More than max_lines items: the first max_lines - 1 stay and the last line is
-   a fixed catch-all whose members are all the others. The name is cut so the text fits 64 UTF-8 bytes. #}
+   The text is `II|name|state` (docs/data-model.md#line-format): II is the line icon's id in hex, the entity's
+   own icon when the firmware has it (greenlight_line_icon), else the rule's (00 alert-circle, 01
+   dots-horizontal, 02 door-open, 04 window-open, 08 lock-open-variant, 09 shield-off, 0D lightbulb-on,
+   13 remote, 27 water), then the name and a one- or two-word state. More than max_lines items: the first
+   max_lines - 1 stay and the last line is a fixed catch-all whose members are all the others. The name is cut
+   so the text fits 64 UTF-8 bytes. #}
 {% macro greenlight_dataset_items(max_lines=32, returns=none) %}
+  {%- set line_icon = greenlight_line_icon | as_function -%}
   {%- set excluded = label_entities('exclude_from_alerts') -%}
   {%- set found = namespace(items=[]) -%}
   {%- for alarm in states.alarm_control_panel | rejectattr('entity_id', 'in', excluded) | sort(attribute='entity_id') -%}
     {%- set found.items = found.items + [
-          {'icon': '09', 'name': alarm.name, 'state': 'kikapcsolva', 'members': [[alarm.entity_id, 'disarmed']]},
-          {'icon': '09', 'name': alarm.name, 'state': 'ismeretlen', 'members': [[alarm.entity_id, 'alarm_unknown']]}] -%}
+          {'icon': line_icon(alarm, '09'), 'name': alarm.name, 'state': 'kikapcsolva',
+           'members': [[alarm.entity_id, 'disarmed']]},
+          {'icon': line_icon(alarm, '09'), 'name': alarm.name, 'state': 'ismeretlen',
+           'members': [[alarm.entity_id, 'alarm_unknown']]}] -%}
   {%- endfor -%}
   {%- set binary_sensors = states.binary_sensor | rejectattr('entity_id', 'in', excluded)
                            | selectattr('attributes.device_class', 'defined') | sort(attribute='entity_id') | list -%}
@@ -30,18 +60,18 @@
                                                 ('lock', '08', 'nyitva'), ('door', '02', 'nyitva'),
                                                 ('window', '04', 'nyitva')] -%}
     {%- for sensor in binary_sensors | selectattr('attributes.device_class', 'eq', device_class) -%}
-      {%- set found.items = found.items + [{'icon': icon, 'name': sensor.name, 'state': problem_state,
-                                            'members': [[sensor.entity_id, 'on']]}] -%}
+      {%- set found.items = found.items + [{'icon': line_icon(sensor, icon), 'name': sensor.name,
+                                            'state': problem_state, 'members': [[sensor.entity_id, 'on']]}] -%}
     {%- endfor -%}
   {%- endfor -%}
   {#- light groups carry an entity_id attribute; their members are listed anyway -#}
   {%- for light in states.light | rejectattr('entity_id', 'in', excluded) | rejectattr('attributes.entity_id', 'defined')
                    | sort(attribute='entity_id') -%}
-    {%- set found.items = found.items + [{'icon': '0D', 'name': light.name, 'state': 'be',
+    {%- set found.items = found.items + [{'icon': line_icon(light, '0D'), 'name': light.name, 'state': 'be',
                                           'members': [[light.entity_id, 'on']]}] -%}
   {%- endfor -%}
   {%- for remote in states.remote | rejectattr('entity_id', 'in', excluded) | sort(attribute='entity_id') -%}
-    {%- set found.items = found.items + [{'icon': '13', 'name': remote.name, 'state': 'be',
+    {%- set found.items = found.items + [{'icon': line_icon(remote, '13'), 'name': remote.name, 'state': 'be',
                                           'members': [[remote.entity_id, 'not_off']]}] -%}
   {%- endfor -%}
 

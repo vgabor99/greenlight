@@ -14,10 +14,10 @@ the device (for battery devices it only trips after hours, so it says nothing us
 ## Dataset
 
 Built automatically with the rules of the `dashboard-away` ("Bezárva?") dashboard: one line per watched entity
-**whatever its state**, so the dataset only changes when entities are added, removed or renamed. Nothing is
-listed by hand; the label `exclude_from_alerts` keeps an entity out.
+**whatever its state**, so the dataset only changes when entities are added, removed, renamed or get another
+icon. Nothing is listed by hand; the label `exclude_from_alerts` keeps an entity out.
 
-| Prio | Match | Icon | State word | Active when |
+| Prio | Match | Fallback icon | State word | Active when |
 |---|---|---|---|---|
 | 1 | `alarm_control_panel.*` (two lines) | 09 | off (`kikapcsolva`) / unknown (`ismeretlen`) | `disarmed` / neither `disarmed` nor `armed_*` |
 | 2 | binary_sensor `moisture` | 27 | wet (`nedves`) | `on` |
@@ -28,6 +28,10 @@ listed by hand; the label `exclude_from_alerts` keeps an entity out.
 
 - Each line is `II|<entity name>|<state word>` ([line format](data-model.md#line-format)); the name is cut so
   the line fits 64 UTF-8 bytes.
+- The icon is the entity's own `mdi:` icon when it is one of the [line icons](data-model.md#line-icons) (an
+  `-alert` variant counts as its base icon: `thermometer-alert` shows `thermometer`), else the rule's fallback
+  (`greenlight_line_icon`). Templates only see an icon set on the entity, by the user or the integration, not
+  the default one HA derives from the device class.
 - Order: priority, then `entity_id`. Sorted rather than "append new entities at the end": an added entity
   changes the hash and resyncs anyway, and priority order is the better display order.
 - More than 32 entities: the first 31 stay and line 31 is the fixed catch-all "…and more"

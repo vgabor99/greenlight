@@ -29,8 +29,9 @@ variants), regenerate, and:
 
 1. add the id to the table in docs/data-model.md#line-icons;
 2. add the icon with an example row to `DATA` in docs/uispec/mockups/icons.html;
-3. if HA should use it, add it to the rules in `ha/custom_templates/greenlight.jinja` (and the id list in its
-   comment), then deploy with the `deploy-ha` skill.
+3. add it to the name → id table in `greenlight_line_icon` in `ha/custom_templates/greenlight.jinja` (entities
+   with that icon then get it), and if a rule should fall back to it, to the rules (and the id list in the
+   comment); flash the firmware first, then deploy with the `deploy-ha` skill.
 
 ## Check against the mockups
 
