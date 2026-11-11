@@ -13,7 +13,6 @@
 #define STORE_KEY_SIMULATED_MV      "sim_mv"    /* u16: the battery voltage override, 0 = measured (docs/firmware.md#battery-and-usb-power) */
 #define STORE_KEY_SIMULATED_USB     "sim_usb"   /* u8: the USB power override: 0 sensed, 1 USB, 2 battery */
 #define STORE_KEY_LOW_BATTERY       "bat_low"   /* u8: the LOW_BATTERY latch */
-#define STORE_KEY_RETIRED_SNAPSHOT  "snap"      /* rev 5 snapshot, no longer used: erased at boot */
 
 /* Open the namespace; an NVS partition that is full or from a newer format is erased first. */
 void persistent_store_open(void);

@@ -29,7 +29,6 @@ void display_model_load(void)
 {
     persistent_store_load_blob(STORE_KEY_DATASET, &dataset, sizeof(dataset));
     persistent_store_load_blob(STORE_KEY_SHOWN_VIEW, &shown, sizeof(shown));
-    persistent_store_erase(STORE_KEY_RETIRED_SNAPSHOT);
 }
 
 /* Nothing is known about the panel any more. */
