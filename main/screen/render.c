@@ -1,4 +1,4 @@
-#include "display/framebuffer.h"
+#include "screen/framebuffer.h"
 #include "screen/debug_screen.h"
 #include "screen/render.h"
 #include "screen/status_screen.h"

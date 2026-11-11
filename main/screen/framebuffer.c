@@ -1,5 +1,5 @@
 #include <string.h>
-#include "display/framebuffer.h"
+#include "screen/framebuffer.h"
 
 static uint8_t framebuffer[FRAMEBUFFER_SIZE];
 
@@ -10,10 +10,10 @@ void framebuffer_clear(void)
 
 void framebuffer_set_pixel(int x, int y, bool black)
 {
-    if (x < 0 || x >= EPAPER_WIDTH || y < 0 || y >= EPAPER_HEIGHT) {
+    if (x < 0 || x >= FRAMEBUFFER_WIDTH || y < 0 || y >= FRAMEBUFFER_HEIGHT) {
         return;
     }
-    uint8_t *byte = &framebuffer[y * EPAPER_ROW_BYTES + x / 8];
+    uint8_t *byte = &framebuffer[y * FRAMEBUFFER_ROW_BYTES + x / 8];
     uint8_t  mask = 0x80 >> (x & 7);
     *byte = black ? *byte & ~mask : *byte | mask;
 }

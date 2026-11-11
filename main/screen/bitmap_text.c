@@ -1,6 +1,5 @@
 #include <string.h>
-#include "panel/epaper.h"
-#include "display/framebuffer.h"
+#include "screen/framebuffer.h"
 #include "screen/bitmap_text.h"
 #include "util/utf8.h"
 
@@ -56,7 +55,7 @@ int bitmap_text_draw(const bitmap_font_t *font, int x, int baseline, const char 
 void bitmap_text_draw_centered(const bitmap_font_t *font, int baseline, const char *text)
 {
     int length = strlen(text);
-    bitmap_text_draw(font, (EPAPER_WIDTH - bitmap_text_width(font, text, length)) / 2, baseline, text, length);
+    bitmap_text_draw(font, (FRAMEBUFFER_WIDTH - bitmap_text_width(font, text, length)) / 2, baseline, text, length);
 }
 
 int bitmap_text_fit(const bitmap_font_t *font, const char *text, int length, int max_width, int *width)
