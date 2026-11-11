@@ -19,7 +19,7 @@
 #define Y_RULE1           19
 #define Y_SHOWN           22   /* dataset + view row, time row, 6 line rows: 8 rows */
 #define Y_RULE2           151
-#define Y_RECEIVED_WRITES 156  /* RENDER_RECEIVED_WRITES rows */
+#define Y_RECEIVED_WRITES 156  /* APP_STATE_RECEIVED_WRITES rows */
 
 /* u8g2 is used only for its fonts and text drawing: it draws through draw_line() into the framebuffer and never
  * talks to the panel, so it has no buffer of its own (never call u8g2_ClearBuffer / u8g2_SendBuffer). */
@@ -83,7 +83,7 @@ static void draw_row(int y, const char *format, ...)
     draw_text(LEFT_MARGIN, y, text);
 }
 
-static void draw_received_write(int y, const render_received_write_t *received)
+static void draw_received_write(int y, const app_state_received_write_t *received)
 {
     static const char *const view_results[]   = {"OK", "TIME", "OOS", "PART"};
     static const char *const commit_results[] = {"OK", "SAME", "BAD N", "REJ"};
@@ -125,42 +125,44 @@ static void draw_received_write(int y, const render_received_write_t *received)
     }
 }
 
-void debug_screen_format_age(char out[DEBUG_SCREEN_AGE_LEN], int64_t age_ms)
+/* The age as shown: "12s", "5m", "3h", "-" when unknown. */
+#define AGE_LEN 12
+static void format_age(char out[AGE_LEN], int64_t age_ms)
 {
     int64_t seconds = age_ms < 0 ? 0 : age_ms / 1000;
     if (age_ms < 0) {
-        strlcpy(out, "-", DEBUG_SCREEN_AGE_LEN);
+        strlcpy(out, "-", AGE_LEN);
     } else if (seconds < 60) {
-        snprintf(out, DEBUG_SCREEN_AGE_LEN, "%ds", (int)seconds);
+        snprintf(out, AGE_LEN, "%ds", (int)seconds);
     } else if (seconds < 3600) {
-        snprintf(out, DEBUG_SCREEN_AGE_LEN, "%dm", (int)(seconds / 60));
+        snprintf(out, AGE_LEN, "%dm", (int)(seconds / 60));
     } else {
-        snprintf(out, DEBUG_SCREEN_AGE_LEN, "%dh", (int)(seconds / 3600));
+        snprintf(out, AGE_LEN, "%dh", (int)(seconds / 3600));
     }
 }
 
 /* State left; battery, wake counter and uptime right */
-static void draw_header(const render_content_t *content)
+static void draw_header(const app_state_t *state)
 {
     char right[40];
-    snprintf(right, sizeof(right), "%u.%02uV%s w%lu %lu.%lus", content->battery_mv / 1000,
-             content->battery_mv % 1000 / 10, content->on_usb_power ? " USB" : content->battery_low ? " LOW" : "",
-             (unsigned long)content->wake_number, (unsigned long)(content->uptime_ms / 1000),
-             (unsigned long)(content->uptime_ms % 1000 / 100));
-    draw_row(Y_HEADER, "%s", content->state_name);
+    snprintf(right, sizeof(right), "%u.%02uV%s w%lu %lu.%lus", state->battery_mv / 1000,
+             state->battery_mv % 1000 / 10, state->on_usb_power ? " USB" : state->battery_low ? " LOW" : "",
+             (unsigned long)state->wake_number, (unsigned long)(state->uptime_ms / 1000),
+             (unsigned long)(state->uptime_ms % 1000 / 100));
+    draw_row(Y_HEADER, "%s", device_state_name(state->state));
     draw_text(FRAMEBUFFER_WIDTH - LEFT_MARGIN - u8g2_GetUTF8Width(&u8g2, right), Y_HEADER, right);
 }
 
 /* The dataset and the view on the panel */
-static void draw_shown_view(const render_content_t *content)
+static void draw_shown_view(const app_state_t *state)
 {
-    const shown_view_t *shown = &content->shown;
-    draw_row(Y_SHOWN, "DS %06lX n=%u  VIEW %06lX", (unsigned long)content->dataset_hash, content->dataset_lines,
+    const shown_view_t *shown = &state->shown;
+    draw_row(Y_SHOWN, "DS %06lX n=%u  VIEW %06lX", (unsigned long)state->dataset_hash, state->dataset_lines,
              (unsigned long)shown->view.id);
-    char age[DEBUG_SCREEN_AGE_LEN];
-    debug_screen_format_age(age, content->age_ms);
-    draw_row(Y_SHOWN + ROW_PITCH, "age %s / %lus %s  %u lines%s", age, (unsigned long)(content->valid_ms / 1000),
-             content->stale ? "STALE" : "FRESH", shown->active_lines, content->out_of_sync ? "  OUT OF SYNC" : "");
+    char age[AGE_LEN];
+    format_age(age, state->age_ms);
+    draw_row(Y_SHOWN + ROW_PITCH, "age %s / %lus %s  %u lines%s", age, (unsigned long)(state->valid_ms / 1000),
+             state->stale ? "STALE" : "FRESH", shown->active_lines, state->out_of_sync ? "  OUT OF SYNC" : "");
     for (int i = 0; i < VIEW_LAYOUT_ROWS; i++) {
         int y = Y_SHOWN + (i + 2) * ROW_PITCH;
         if (i < shown->row_count) {
@@ -173,14 +175,23 @@ static void draw_shown_view(const render_content_t *content)
     }
 }
 
-void debug_screen_draw(const render_content_t *content)
+void debug_screen_draw(const app_state_t *state)
 {
     init_text_drawing();
-    draw_header(content);
+    draw_header(state);
     framebuffer_fill_rect(0, Y_RULE1, FRAMEBUFFER_WIDTH, 2, true);
-    draw_shown_view(content);
+    draw_shown_view(state);
     framebuffer_fill_rect(0, Y_RULE2, FRAMEBUFFER_WIDTH, 2, true);
-    for (int i = 0; i < content->received_write_count && i < RENDER_RECEIVED_WRITES; i++) {  /* newest first */
-        draw_received_write(Y_RECEIVED_WRITES + i * ROW_PITCH, &content->received_writes[i]);
+    for (int i = 0; i < state->received_write_count && i < APP_STATE_RECEIVED_WRITES; i++) {  /* newest first */
+        draw_received_write(Y_RECEIVED_WRITES + i * ROW_PITCH, &state->received_writes[i]);
     }
+}
+
+bool debug_screen_is_outdated(const app_state_t *drawn, const app_state_t *now)
+{
+    char drawn_age[AGE_LEN], now_age[AGE_LEN];
+    format_age(drawn_age, drawn->age_ms);
+    format_age(now_age, now->age_ms);
+    return drawn->changes != now->changes || drawn->stale != now->stale ||
+           drawn->battery_simulation_changes != now->battery_simulation_changes || strcmp(drawn_age, now_age) != 0;
 }

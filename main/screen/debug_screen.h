@@ -1,11 +1,12 @@
 #pragma once
 
-#include <stdint.h>
-#include "screen/render.h"
+#include <stdbool.h>
+#include "app/app_state.h"
 
-/* The RnD debug screen (docs/display.md#debug-screen): draw the content into the framebuffer, which the caller has cleared. */
-void debug_screen_draw(const render_content_t *content);
+/* The RnD debug screen (docs/display.md#debug-screen): draw the state into the framebuffer, which the caller has
+ * cleared. */
+void debug_screen_draw(const app_state_t *state);
 
-/* The age as the debug screen shows it: "12s", "5m", "3h", "-" when unknown. */
-#define DEBUG_SCREEN_AGE_LEN 12
-void debug_screen_format_age(char out[DEBUG_SCREEN_AGE_LEN], int64_t age_ms);
+/* The debug screen drawn from `drawn` would differ from one drawn from `now`: the model changed, or the age as
+ * printed, the staleness or the battery simulation did. */
+bool debug_screen_is_outdated(const app_state_t *drawn, const app_state_t *now);

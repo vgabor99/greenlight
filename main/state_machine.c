@@ -7,8 +7,8 @@
 #include "board/inputs.h"
 #include "board/sleep.h"
 #include "board/wake_reason.h"
+#include "app/app_state.h"
 #include "display/display.h"
-#include "display/display_model.h"
 #include "persistent_store.h"
 #include "screen/sample_screens.h"
 #include "state_machine.h"
@@ -31,21 +31,10 @@ static const char *TAG = "greenlight";
 #define BATTERY_CHECK_MS       1000    /* mid-wake battery check period */
 #define BATTERY_REPORT_TIMEOUT_MS 10000 /* SHUTDOWN: resend the low-battery report this long until Z2M confirms it */
 
-static const char *const state_names[] = {
-    "BOOT", "UNPAIRED", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
-    "LOW_BATTERY",
-};
-_Static_assert(sizeof(state_names) / sizeof(state_names[0]) == STATE_LOW_BATTERY + 1, "a name for every state");
-
 static TickType_t boot_tick;
 static uint32_t   wake_number;
 static bool       wake_reports_pending;  /* ACTIVE: report_wake_state() still to do */
 static uint32_t   reported_simulation_changes;  /* battery_simulation_changes() when the battery was last reported */
-
-const char *device_state_name(device_state_t state)
-{
-    return state_names[state];
-}
 
 /* ---- Checks shared by the states ---- */
 
@@ -63,7 +52,7 @@ static bool battery_ran_low(void)
         return false;
     }
     ESP_LOGW(TAG, "battery low (%u mV): shutting down", battery_voltage_mv());
-    display_set_failure(RENDER_BATTERY);
+    app_state_set_wake_failure(WAKE_FAILURE_LOW_BATTERY);
     return true;
 }
 
@@ -114,12 +103,12 @@ static void start_stack_and_panel(void)
 {
     boot_tick = xTaskGetTickCount();
     zigbee_callbacks_t callbacks = {
-        .on_view           = display_model_on_view,
-        .on_dataset        = display_model_on_dataset,
+        .on_view           = app_state_on_view,
+        .on_dataset        = app_state_on_dataset,
         .on_activity       = inputs_note_activity,
-        .on_received_write = display_model_on_received_write,
+        .on_received_write = app_state_on_received_write,
     };
-    zigbee_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
+    zigbee_start(&callbacks, app_state_dataset_hash(), app_state_shown_view_id(), wake_number,
              battery_voltage_mv());
 
     /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. A
@@ -128,7 +117,7 @@ static void start_stack_and_panel(void)
         ESP_LOGE(TAG, "e-paper init failed");
         vTaskDelay(portMAX_DELAY);
     }
-    display_show_state(STATE_BOOT);
+    app_state_set_device_state(STATE_BOOT);
     display_redraw();
 }
 
@@ -140,11 +129,11 @@ static device_state_t run_boot(void)
     }
 
     bool pair_on_boot = persistent_store_get_u8(STORE_KEY_PAIR_ON_BOOT);
-    display_model_load();
+    app_state_load();
     wake_number = persistent_store_next_wake_count();
-    display_set_wake_number(wake_number);
+    app_state_set_wake_number(wake_number);
     ESP_LOGI(TAG, "boot: pair_now=%d dataset=%06lx view=%06lx wake=%lu", pair_on_boot,
-             (unsigned long)display_model_dataset_hash(), (unsigned long)display_model_shown_view_id(),
+             (unsigned long)app_state_dataset_hash(), (unsigned long)app_state_shown_view_id(),
              (unsigned long)wake_number);
 
 #ifdef SCREEN_DUMP
@@ -155,7 +144,7 @@ static device_state_t run_boot(void)
     bool factory_new = false;
     if (!zigbee_wait_started(STACK_START_TIMEOUT_MS, &factory_new)) {
         ESP_LOGE(TAG, "Zigbee stack did not start");
-        display_set_failure(RENDER_ERROR);
+        app_state_set_wake_failure(WAKE_FAILURE_ERROR);
         return STATE_SHUTDOWN;
     }
     ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)elapsed_ms(boot_tick),
@@ -175,7 +164,7 @@ static device_state_t run_boot(void)
 
 static device_state_t run_unpaired(void)
 {
-    display_show_state(STATE_UNPAIRED);
+    app_state_set_device_state(STATE_UNPAIRED);
     inputs_note_activity();
     for (;;) {
         if (pair_button_held_long()) {
@@ -183,7 +172,7 @@ static device_state_t run_unpaired(void)
         }
         if (inputs_idle_ms() >= IDLE_TIMEOUT_MS) {
             ESP_LOGI(TAG, "no activity for %d ms", IDLE_TIMEOUT_MS);
-            display_set_failure(RENDER_UNPAIRED);  /* still not paired: sleep with how to pair */
+            app_state_set_wake_failure(WAKE_FAILURE_UNPAIRED);  /* still not paired: sleep with how to pair */
             return STATE_SHUTDOWN;
         }
         if (battery_ran_low()) {
@@ -195,7 +184,7 @@ static device_state_t run_unpaired(void)
 
 static device_state_t run_pairing(void)
 {
-    display_show_state(STATE_PAIRING);
+    app_state_set_device_state(STATE_PAIRING);
     TickType_t start = xTaskGetTickCount();
     zigbee_start_pairing();
     while (elapsed_ms(start) < PAIRING_WINDOW_MS) {
@@ -217,7 +206,7 @@ static device_state_t run_pairing(void)
 
 static device_state_t run_interview(void)
 {
-    display_show_state(STATE_INTERVIEW);
+    app_state_set_device_state(STATE_INTERVIEW);
     report_wake_state();  /* Z2M has no cached state yet: everything, the wake counter last */
     zigbee_report_wake_count();
     ESP_LOGI(TAG, "staying awake for %d ms", INTERVIEW_MS);
@@ -230,7 +219,7 @@ static device_state_t run_interview(void)
 
 static device_state_t run_rejoin(void)
 {
-    display_show_state(STATE_REJOIN);
+    app_state_set_device_state(STATE_REJOIN);
     TickType_t start = xTaskGetTickCount();
     inputs_note_activity();
     while (elapsed_ms(start) < REJOIN_TIMEOUT_MS) {
@@ -247,7 +236,8 @@ static device_state_t run_rejoin(void)
     }
     ESP_LOGW(TAG, "rejoin failed");
     battery_measure();
-    display_set_failure(battery_is_low() ? RENDER_BATTERY : RENDER_JOIN_FAILED);  /* not latched: retried next wake */
+    /* Not latched: the next wake tries again. */
+    app_state_set_wake_failure(battery_is_low() ? WAKE_FAILURE_LOW_BATTERY : WAKE_FAILURE_JOIN_FAILED);
     return STATE_SHUTDOWN;
 }
 
@@ -279,20 +269,20 @@ static void report_heartbeat(void)
  * VIEW_WAIT_MS after ACTIVE began). *announced: the wait was logged. */
 static bool keep_waiting_for_view(TickType_t active_since, bool *announced)
 {
-    if (!display_model_view_received() && elapsed_ms(active_since) < VIEW_WAIT_MS) {
+    if (!app_state_view_received() && elapsed_ms(active_since) < VIEW_WAIT_MS) {
         if (!*announced) {
             *announced = true;
             ESP_LOGI(TAG, "no view yet: staying awake up to %d ms", VIEW_WAIT_MS);
         }
         return true;
     }
-    ESP_LOGI(TAG, "no activity for %d ms%s", IDLE_TIMEOUT_MS, display_model_view_received() ? "" : ", and no view");
+    ESP_LOGI(TAG, "no activity for %d ms%s", IDLE_TIMEOUT_MS, app_state_view_received() ? "" : ", and no view");
     return false;
 }
 
 static device_state_t run_active(void)
 {
-    display_show_state(STATE_ACTIVE);
+    app_state_set_device_state(STATE_ACTIVE);
     inputs_note_activity();
     bool       reported_occupancy = inputs_occupied();
     TickType_t last_heartbeat = xTaskGetTickCount();
@@ -325,10 +315,10 @@ static device_state_t run_active(void)
 
 static device_state_t run_erase_network(void)
 {
-    display_show_state(STATE_ERASE_NETWORK);
+    app_state_set_device_state(STATE_ERASE_NETWORK);
     display_redraw();
     persistent_store_set_u8(STORE_KEY_PAIR_ON_BOOT, 1);
-    display_model_erase_stored();
+    app_state_erase_stored();
     ESP_LOGI(TAG, "erasing the network, restarting");
     zigbee_erase_network();  /* does not return */
     return STATE_BOOT;
@@ -336,7 +326,7 @@ static device_state_t run_erase_network(void)
 
 static device_state_t run_shutdown(void)
 {
-    bool low_battery = display_failure() == RENDER_BATTERY;
+    bool low_battery = app_state_wake_failure() == WAKE_FAILURE_LOW_BATTERY;
     bool latch = false;
     if (zigbee_is_joined()) {
         /* HA learns why the device went quiet. Only a confirmed report latches; else the next wake tries again. */
@@ -351,7 +341,8 @@ static device_state_t run_shutdown(void)
         ESP_LOGW(TAG, "battery low not reported: not latched, the next wake tries again");
     }
     device_state_t next = latch ? STATE_LOW_BATTERY : STATE_SLEEP;
-    display_power_off(next);  /* the failure screen (Battery dead) is drawn either way */
+    app_state_set_device_state(next);
+    display_power_off();  /* the failure screen (Battery dead) is drawn either way */
     return next;
 }
 
@@ -385,7 +376,7 @@ void state_machine_run(void)
         case STATE_SLEEP:
         default:                  next = run_sleep(); break;
         }
-        ESP_LOGI(TAG, "%s -> %s", state_names[state], state_names[next]);
+        ESP_LOGI(TAG, "%s -> %s", device_state_name(state), device_state_name(next));
         state = next;
     }
 }

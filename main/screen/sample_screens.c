@@ -25,32 +25,38 @@ void sample_screens_dump(void)
         {0},
     };
     static const char *const sample_names[] = {"problems", "overflow", "two", "edge", "ok", "problems_stale", "ok_stale"};
-    static render_content_t content;
+    static app_state_t state;
     vTaskDelay(pdMS_TO_TICKS(2000));  /* the USB console drops output until the host has reopened the port */
     for (int sample = 0; sample < sizeof(sample_rows) / sizeof(sample_rows[0]); sample++) {
-        memset(&content, 0, sizeof(content));
-        content.screen = RENDER_HOUSE;
-        content.shown.view = (view_t){.id = 1, .time = 1793472360};  /* Sat 2026-10-31 18:46 */
+        memset(&state, 0, sizeof(state));
+        state.state      = STATE_ACTIVE;
+        state.shown.view = (view_t){.id = 1, .time = 1793472360};  /* Sat 2026-10-31 18:46 */
         for (int i = 0; i < VIEW_LAYOUT_ROWS && sample_rows[sample][i]; i++) {
-            strlcpy(content.shown.rows[content.shown.row_count++], sample_rows[sample][i],
-                    sizeof(content.shown.rows[0]));
+            strlcpy(state.shown.rows[state.shown.row_count++], sample_rows[sample][i], sizeof(state.shown.rows[0]));
         }
-        content.shown.active_lines = sample == 1 ? 9 : content.shown.row_count;
-        content.stale = sample >= 5;  /* the sync badge */
-        frame_dump_print(render_frame(&content), sample_names[sample]);
+        state.shown.active_lines = sample == 1 ? 9 : state.shown.row_count;
+        state.stale = sample >= 5;  /* the sync badge */
+        frame_dump_print(render_frame(&state), sample_names[sample]);
     }
+    /* The device screens, each from a state that leads to it (app/screen_content.c) */
     static const struct {
-        render_screen_t screen;
-        const char     *name;
+        device_state_t state;
+        wake_failure_t failure;
+        const char    *name;
     } device_screens[] = {
-        {RENDER_UNPAIRED, "unpaired"},       {RENDER_SEARCHING, "searching"}, {RENDER_JOINING, "joining"},
-        {RENDER_SYNCING, "syncing"},         {RENDER_JOIN_FAILED, "join_failed"},
-        {RENDER_BATTERY, "battery"},         {RENDER_ERROR, "error"},
+        {STATE_UNPAIRED, WAKE_FAILURE_NONE, "unpaired"},
+        {STATE_PAIRING, WAKE_FAILURE_NONE, "searching"},
+        {STATE_INTERVIEW, WAKE_FAILURE_NONE, "joining"},
+        {STATE_ACTIVE, WAKE_FAILURE_NONE, "syncing"},
+        {STATE_SLEEP, WAKE_FAILURE_JOIN_FAILED, "join_failed"},
+        {STATE_LOW_BATTERY, WAKE_FAILURE_LOW_BATTERY, "battery"},
+        {STATE_SLEEP, WAKE_FAILURE_ERROR, "error"},
     };
     for (int i = 0; i < sizeof(device_screens) / sizeof(device_screens[0]); i++) {
-        memset(&content, 0, sizeof(content));
-        content.screen = device_screens[i].screen;
-        frame_dump_print(render_frame(&content), device_screens[i].name);
+        memset(&state, 0, sizeof(state));
+        state.state   = device_screens[i].state;
+        state.failure = device_screens[i].failure;
+        frame_dump_print(render_frame(&state), device_screens[i].name);
     }
 }
 

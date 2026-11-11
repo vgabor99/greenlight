@@ -114,10 +114,10 @@ static void draw_stale_badge(void)
                      icon->height, icon->bits, false);
 }
 
-static void draw_house(const render_content_t *content)
+static void draw_house(const screen_content_t *content)
 {
-    if (content->shown.row_count) {
-        draw_problem_rows(&content->shown);
+    if (content->shown->row_count) {
+        draw_problem_rows(content->shown);
     } else {
         draw_all_ok();
     }
@@ -142,17 +142,17 @@ static void draw_unpaired(void)
     bitmap_text_draw_centered(&bitmap_font_hint, PAIR_LINE2_BASELINE, "Nyomd a gombot 3 mp-ig");
 }
 
-void status_screen_draw(const render_content_t *content)
+void status_screen_draw(const screen_content_t *content)
 {
-    switch (content->screen) {
-    case RENDER_BLANK:       break;
-    case RENDER_HOUSE:       draw_house(content); break;
-    case RENDER_UNPAIRED:    draw_unpaired(); break;
-    case RENDER_SEARCHING:   draw_device_screen(&bitmap_icon_access_point, "Hálózatkeresés"); break;
-    case RENDER_JOINING:     draw_device_screen(&bitmap_icon_access_point, "Csatlakozás"); break;
-    case RENDER_SYNCING:     draw_device_screen(&bitmap_icon_sync, "Szinkronizálás"); break;
-    case RENDER_JOIN_FAILED: draw_device_screen(&bitmap_icon_alert_outline, "Csatlakozási hiba"); break;
-    case RENDER_BATTERY:     draw_device_screen(&bitmap_icon_battery_outline, "Akkumulátor lemerült"); break;
-    case RENDER_ERROR:       draw_device_screen(&bitmap_icon_alert_outline, "Ismeretlen hiba"); break;
+    switch (content->kind) {
+    case SCREEN_BLANK:       break;
+    case SCREEN_HOUSE:       draw_house(content); break;
+    case SCREEN_UNPAIRED:    draw_unpaired(); break;
+    case SCREEN_SEARCHING:   draw_device_screen(&bitmap_icon_access_point, "Hálózatkeresés"); break;
+    case SCREEN_JOINING:     draw_device_screen(&bitmap_icon_access_point, "Csatlakozás"); break;
+    case SCREEN_SYNCING:     draw_device_screen(&bitmap_icon_sync, "Szinkronizálás"); break;
+    case SCREEN_JOIN_FAILED: draw_device_screen(&bitmap_icon_alert_outline, "Csatlakozási hiba"); break;
+    case SCREEN_BATTERY_DEAD: draw_device_screen(&bitmap_icon_battery_outline, "Akkumulátor lemerült"); break;
+    case SCREEN_ERROR:       draw_device_screen(&bitmap_icon_alert_outline, "Ismeretlen hiba"); break;
     }
 }

@@ -8,7 +8,6 @@
 #include "board/battery.h"
 #include "board/battery_sense.h"
 #include "console.h"
-#include "display/display_model.h"
 
 static const char *TAG = "greenlight";
 
@@ -38,7 +37,6 @@ static void handle_command(const char *line)
         return;
     }
     battery_announce_simulation();
-    display_model_mark_changed();
 }
 
 static void console_task(void *arg)

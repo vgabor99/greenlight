@@ -5,7 +5,7 @@
 #include "esp_log.h"
 #include "esp_rtc_time.h"
 #include "esp_system.h"
-#include "display/view_freshness.h"
+#include "app/view_freshness.h"
 
 static const char *TAG = "greenlight";
 
