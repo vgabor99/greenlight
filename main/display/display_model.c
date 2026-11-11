@@ -10,6 +10,9 @@
 
 static const char *TAG = "greenlight";
 
+/* The dataset is stored in NVS as is (STORE_KEY_DATASET): its layout must not change. */
+_Static_assert(sizeof(zigbee_dataset_t) == 2088, "the stored dataset's layout");
+
 static SemaphoreHandle_t lock;
 static volatile bool     changed;
 static zigbee_dataset_t      dataset;

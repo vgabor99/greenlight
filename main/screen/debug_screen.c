@@ -88,6 +88,8 @@ static void draw_received_write(int y, const render_received_write_t *received)
 {
     static const char *const view_results[]   = {"OK", "TIME", "OOS", "PART"};
     static const char *const commit_results[] = {"OK", "SAME", "BAD N", "REJ"};
+    _Static_assert(sizeof(view_results) / sizeof(view_results[0]) == ZIGBEE_VIEW_INCOMPLETE + 1, "view results");
+    _Static_assert(sizeof(commit_results) / sizeof(commit_results[0]) == ZIGBEE_COMMIT_REJECTED + 1, "commit results");
     char time[12];
     snprintf(time, sizeof(time), "%lu.%lu", (unsigned long)(received->uptime_ms / 1000),
              (unsigned long)(received->uptime_ms % 1000 / 100));

@@ -37,6 +37,7 @@ static const char *const state_names[] = {
     "BOOT", "UNPAIRED", "PAIRING", "INTERVIEW", "REJOIN", "ACTIVE", "ERASE_NETWORK", "SHUTDOWN", "SLEEP",
     "LOW_BATTERY",
 };
+_Static_assert(sizeof(state_names) / sizeof(state_names[0]) == STATE_LOW_BATTERY + 1, "a name for every state");
 
 static TickType_t boot_tick;
 static uint32_t   wake_number;
