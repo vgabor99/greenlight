@@ -1,9 +1,10 @@
 idf_component_register(SRCS "main.c" "state_machine.c" "console.c" "persistent_store.c" "data_model.c"
                             "board/board.c" "board/inputs.c" "board/battery.c" "board/battery_sense.c" "board/usb_sense.c" "board/sleep.c" "board/wake_reason.c"
-                            "display/display.c" "display/display_model.c" "display/view_freshness.c" "display/panel.c"
-                            "display/frame_dump.c" "display/framebuffer.c" "display/epaper.c"
+                            "display/display.c" "display/display_model.c" "display/view_freshness.c"
+                            "display/framebuffer.c"
+                            "panel/epaper.c" "panel/panel.c" "panel/frame_dump.c"
                             "screen/render.c" "screen/status_screen.c" "screen/debug_screen.c" "screen/view_layout.c"
-                            "screen/bitmap_text.c" "screen/bitmaps.c"
+                            "screen/bitmap_text.c" "screen/bitmaps.c" "screen/sample_screens.c"
                             "util/utf8.c"
                             "zigbee/zigbee.c" "zigbee/zigbee_device.c" "zigbee/zigbee_display_input.c" "zigbee/zigbee_reports.c"
                        PRIV_REQUIRES esp_adc esp_driver_spi esp_driver_gpio esp_driver_usb_serial_jtag nvs_flash esp_timer esp_app_format u8g2

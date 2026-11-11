@@ -2,25 +2,28 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
 #include "esp_log.h"
-#include "board/board.h"
-#include "display/epaper.h"
-#include "display/frame_dump.h"
-#include "display/framebuffer.h"
-#include "display/panel.h"
+#include "panel/epaper.h"
+#include "panel/frame_dump.h"
+#include "panel/panel.h"
 #include "util/elapsed_time.h"
 
 static const char *TAG = "greenlight";
 
 #define PARTIALS_BETWEEN_CLEARS 50  /* partial refreshes between full clears, against ghosting */
 
-static uint8_t frame_on_panel[FRAMEBUFFER_SIZE];  /* last frame sent; all white after a clear */
+static uint8_t frame_on_panel[PANEL_FRAME_BYTES];  /* last frame sent; all white after a clear */
 static int     partials_since_clear;
+
+esp_err_t panel_power_on(void)
+{
+    esp_err_t err = epaper_init();
+    return err == ESP_OK ? panel_clear("boot") : err;
+}
 
 esp_err_t panel_clear(const char *reason)
 {
-    int        busy_before = gpio_get_level(EPAPER_PIN_BUSY);
+    int        busy_before = epaper_busy_level();
     TickType_t start = xTaskGetTickCount();
     esp_err_t  err = epaper_clear();
     memset(frame_on_panel, 0xFF, sizeof(frame_on_panel));
@@ -55,10 +58,18 @@ esp_err_t panel_refresh(const uint8_t *frame, const char *label)
     int black, changed;
     count_pixels(frame, &black, &changed);
     memcpy(frame_on_panel, frame, sizeof(frame_on_panel));
-    int        busy_before = gpio_get_level(EPAPER_PIN_BUSY);
+    int        busy_before = epaper_busy_level();
     TickType_t start = xTaskGetTickCount();
     esp_err_t  err = epaper_refresh_partial(frame);
     ESP_LOGI(TAG, "panel: refresh #%d (%s) %lu ms, busy before %d, black %d, changed %d%s", partials_since_clear,
              label, (unsigned long)elapsed_ms(start), busy_before, black, changed, err == ESP_OK ? "" : ", FAILED");
     return err;
+}
+
+void panel_power_off(void)
+{
+    TickType_t start = xTaskGetTickCount();
+    epaper_power_off();
+    ESP_LOGI(TAG, "panel: poweroff %lu ms", (unsigned long)elapsed_ms(start));
+    ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
 }

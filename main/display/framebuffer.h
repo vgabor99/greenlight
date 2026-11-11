@@ -2,7 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "display/epaper.h"
+#include "panel/epaper.h"
 
 /* The 1-bit frame both screens draw into: EPAPER_ROW_BYTES * EPAPER_HEIGHT bytes, rows MSB first, 1 = white, 0 = black.
  * Drawing outside the panel is clipped. */

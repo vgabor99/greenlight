@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "data_model.h"
-#include "display/epaper.h"
+#include "panel/epaper.h"
 #include "display/framebuffer.h"
 #include "screen/bitmap_text.h"
 #include "screen/bitmaps.h"

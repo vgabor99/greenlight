@@ -6,7 +6,7 @@
 #include "board/battery.h"
 #include "display/display.h"
 #include "display/display_model.h"
-#include "display/panel.h"
+#include "panel/panel.h"
 #include "display/view_freshness.h"
 #include "screen/debug_screen.h"
 #include "screen/render.h"
@@ -103,4 +103,21 @@ void display_wait_ms(uint32_t ms)
         display_redraw();
     }
     vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+bool display_power_on(void)
+{
+    return panel_power_on() == ESP_OK;
+}
+
+/* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
+void display_power_off(device_state_t final_state)
+{
+    if (panel_clear("shutdown") != ESP_OK) {
+        ESP_LOGE(TAG, "e-paper final clear failed");
+    }
+    display_show_state(final_state);
+    display_redraw();
+    ESP_LOGI(TAG, "final refresh done");
+    panel_power_off();
 }

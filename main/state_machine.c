@@ -9,10 +9,8 @@
 #include "board/wake_reason.h"
 #include "display/display.h"
 #include "display/display_model.h"
-#include "display/epaper.h"
-#include "display/frame_dump.h"
-#include "display/panel.h"
 #include "persistent_store.h"
+#include "screen/sample_screens.h"
 #include "state_machine.h"
 #include "util/elapsed_time.h"
 #include "zigbee/zigbee.h"
@@ -123,9 +121,9 @@ static void start_stack_and_panel(void)
     zigbee_start(&callbacks, display_model_dataset_hash(), display_model_shown_view_id(), wake_number,
              battery_voltage_mv());
 
-    /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. epaper_init() also
-     * releases the pin hold and recreates the SPI bus left by epaper_power_off(). */
-    if (epaper_init() != ESP_OK || panel_clear("boot") != ESP_OK) {
+    /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. A
+     * failed panel stays visible: no recovery (docs/behaviour.md#failure-modes). */
+    if (!display_power_on()) {
         ESP_LOGE(TAG, "e-paper init failed");
         vTaskDelay(portMAX_DELAY);
     }
@@ -149,7 +147,7 @@ static device_state_t run_boot(void)
              (unsigned long)wake_number);
 
 #ifdef SCREEN_DUMP
-    frame_dump_samples();  /* before the stack starts, so its log does not cut into the dump */
+    sample_screens_dump();  /* before the stack starts, so its log does not cut into the dump */
 #endif
     start_stack_and_panel();
 
@@ -350,18 +348,8 @@ static device_state_t run_shutdown(void)
     } else if (low_battery) {
         ESP_LOGW(TAG, "battery low not reported: not latched, the next wake tries again");
     }
-    /* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
-    if (panel_clear("shutdown") != ESP_OK) {
-        ESP_LOGE(TAG, "e-paper final clear failed");
-    }
     device_state_t next = latch ? STATE_LOW_BATTERY : STATE_SLEEP;
-    display_show_state(next);  /* the failure screen (Battery dead) is drawn either way */
-    display_redraw();
-    ESP_LOGI(TAG, "final refresh done");
-    TickType_t start = xTaskGetTickCount();
-    epaper_power_off();
-    ESP_LOGI(TAG, "panel: poweroff %lu ms", (unsigned long)elapsed_ms(start));
-    ESP_LOGI(TAG, "panel asleep, pins low: safe to remove power now");
+    display_power_off(next);  /* the failure screen (Battery dead) is drawn either way */
     return next;
 }
 

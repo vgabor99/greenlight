@@ -4,7 +4,7 @@
 
 #include <string.h>
 #include "board/board.h"
-#include "display/epaper.h"
+#include "panel/epaper.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
@@ -32,10 +32,9 @@ static const char *TAG = "epd";
 
 #define UPDATE_PARTIAL 0xFF  /* load temp+LUT, display mode 2 (partial waveform), ~440 ms */
 #define WHITE_PASSES   1     /* passes to white in epaper_clear(); more passes make the white grainier */
-#define FRAME_BYTES    (EPAPER_ROW_BYTES * EPAPER_HEIGHT)
 
 static spi_device_handle_t spi;
-static uint8_t             old_ram[FRAME_BYTES];
+static uint8_t             old_ram[EPAPER_FRAME_BYTES];
 
 /* The panel's signal pins: epaper_power_off() drives and holds them low. */
 static const int signal_pins[] = {EPAPER_PIN_SCK, EPAPER_PIN_MOSI, EPAPER_PIN_CS, EPAPER_PIN_DC, EPAPER_PIN_RST};
@@ -191,7 +190,7 @@ esp_err_t epaper_clear(void)
     send_command_with_data(CMD_DISPLAY_UPDATE_CONTROL_1, (uint8_t[]){0x40, 0x00}, 2);  /* as in init */
     send_command_with_data(CMD_BORDER_WAVEFORM, (uint8_t[]){0x05}, 1);
 
-    static uint8_t white[FRAME_BYTES];
+    static uint8_t white[EPAPER_FRAME_BYTES];
     memset(white, 0xFF, sizeof(white));
     for (int i = 0; i < WHITE_PASSES; i++) {
         esp_err_t err = drive_pass(white);
@@ -214,8 +213,13 @@ esp_err_t epaper_refresh_partial(const uint8_t *frame)
     send_command_with_data(CMD_BORDER_WAVEFORM, (uint8_t[]){0x05}, 1);
     reset_ram_cursor();
     send_command(CMD_WRITE_RAM_NEW);
-    send_data(frame, FRAME_BYTES);
+    send_data(frame, EPAPER_FRAME_BYTES);
     return run_update(UPDATE_PARTIAL);
+}
+
+int epaper_busy_level(void)
+{
+    return gpio_get_level(EPAPER_PIN_BUSY);
 }
 
 /* Deep sleep (0x10 = 0x01): the controller stops driving the panel. Only a hardware reset wakes it. */

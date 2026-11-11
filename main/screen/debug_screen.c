@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include "display/epaper.h"
+#include "panel/epaper.h"
 #include "display/framebuffer.h"
 #include "screen/debug_screen.h"
 #include "u8g2.h"
