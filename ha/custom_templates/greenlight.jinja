@@ -13,7 +13,7 @@
 {# The watched entities as dataset items: [{'text': text, 'members': [[entity_id, kind], ...]}, ...].
    The text is `II|name|state` (docs/data-model.md#line-format): II is the line icon's id in hex (the append-only
    table in tools/gen_bitmaps.py: 00 alert-circle, 01 dots-horizontal, 02 door-open, 04 window-open,
-   08 lock-open-variant, 09 shield-off, 0D lightbulb-on, 13 remote-tv, 27 water), then the name and a
+   08 lock-open-variant, 09 shield-off, 0D lightbulb-on, 13 remote, 27 water), then the name and a
    one- or two-word state. More than max_lines items: the first max_lines - 1 stay and the last line is
    a fixed catch-all whose members are all the others. The name is cut so the text fits 64 UTF-8 bytes. #}
 {% macro greenlight_dataset_items(max_lines=32, returns=none) %}

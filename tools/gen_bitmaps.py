@@ -66,7 +66,7 @@ LINE_ICONS = [
     ("led-strip-variant", 0xF1051),
     ("power-plug", 0xF06A5),
     ("television", 0xF0502),
-    ("remote-tv", 0xF0EC5),
+    ("remote", 0xF0454),
     ("speaker", 0xF04C3),
     ("fan", 0xF0210),
     ("air-conditioner", 0xF001B),

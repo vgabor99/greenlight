@@ -55,7 +55,7 @@ lines need no reflash. The ids HA uses today: [home-assistant.md](home-assistant
 | 00 | alert-circle (fallback) | 10 | led-strip-variant | 20 | washing-machine | 30 | thermometer |
 | 01 | dots-horizontal (overflow) | 11 | power-plug | 21 | tumble-dryer | 31 | water-percent |
 | 02 | door-open | 12 | television | 22 | dishwasher | 32 | weather-pouring |
-| 03 | door-sliding-open | 13 | remote-tv | 23 | robot-vacuum | 33 | weather-windy |
+| 03 | door-sliding-open | 13 | remote | 23 | robot-vacuum | 33 | weather-windy |
 | 04 | window-open | 14 | speaker | 24 | robot-mower | 34 | smoke-detector-variant |
 | 05 | window-shutter-open | 15 | fan | 25 | ev-station | 35 | fire |
 | 06 | garage-open-variant | 16 | air-conditioner | 26 | car | 36 | molecule-co |
