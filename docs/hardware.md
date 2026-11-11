@@ -8,13 +8,13 @@ The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) 
 |-----------------------|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **MCU**               | Seeed XIAO ESP32-C6 (ESP-IDF target `esp32c6`)                                                       | Low-power<br>Supports deep sleep<br>Supports Zigbee<br>Has battery management<br>Sufficient GPIOs and peripherals<br>Support external antenna if needed |
 | **Panel**             | 4.2" 400x300 1-bit e-paper, Waveshare V2 rev 2.2, SSD1683 controller; driver `main/display/epaper.c` | Low-power<br>Supports partial updates (~0.5s)<br>Sufficient size and resolution for glanceability                                                       |
-| **PIR**               | Panasonic EKMB1205111 (2 uA, dT=4°C, 36°x150°) on 3V3                                                | Ultra low-power<br>High senstivity<br>Wide lens fits the shape of the room<br>Voltage levels compatible with the 3.3V board                             |
-| **Pair button**       | One I had lying around                                                                               | User facing button for (re-) pairing                                                                                                                    |
-| **Resistor**          | 100k                                                                                                 | External pull-down resistor for the PIR output<br>Resistance is chosen to keep the sensor's output current within spec, under 100 uA                    |
+| **PIR**               | Panasonic EKMB1205111 (2 uA, dT=4°C, 36°x150°) on 3V3                                                | Ultra low-power<br>High sensitivity<br>Wide lens fits the shape of the room<br>Voltage levels compatible with the 3.3V board                             |
+| **Pair button**       | Right-angle tactile switch (AliExpress, generic, sold as 6x6x5): body 7.5 x 7 mm, SPST, through hole, Ø3.5 actuator centred 4 mm above the PCB, its tip 5 mm in front of the switch pins; footprint `SW_Tactile_SPST_Angled_PTS645Vx31-2LFS` (same pin layout), its peg holes widened on the board from 1.3 to 1.5 mm for the snap-in legs | User facing button for (re-) pairing<br>Right angle: hidden inside the enclosure, pressed with a pin through its bottom                                       |
+| **Resistors, capacitors** | SMD, 0603 (C2 1206); values and LCSC part numbers in the schematic, uses in [Pins](#pins) and [Power and battery](#power-and-battery) | JLCPCB basic parts, placed by JLCPCB ([Board](#board))                                                                                   |
 | **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
 
-The battery voltage is measured (on the breadboard); USB power is simulated for now
-([firmware.md](firmware.md#battery-and-usb-power)).
+The battery voltage and USB power are measured on the breadboard
+([firmware.md](firmware.md#battery-and-usb-power)); the PCB is not built yet.
 
 ## Pins
 
@@ -22,7 +22,7 @@ The wake inputs must be deep-sleep wake pins, which on the ESP32-C6 are GPIO0-7 
 its underside the JTAG pads MTMS, MTDI, MTCK, MTDO = GPIO4-7). So the panel's DC and RST lines are on D4/D5, not
 D1/D2. The ADC also reaches only GPIO0-6 (D0-D2 on the header), so D2 goes to the battery measurement, and USB
 sense, LOW_BATTERY's wake, goes to the MTDO pad. Pin map in `main/board/board.h`; the schematic names its nets
-after these defines (the planned ones after the defines they will get).
+after these defines.
 
 | Pin | Use |
 |---|---|
@@ -47,7 +47,8 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 
 - 103 x 98.5 mm, two layers. The upper 103 x 78.5 mm sits behind the panel; the 20 mm strip below it holds the
   XIAO (bottom right, USB to the right edge), the PIR (bottom centre) and the pair button (bottom left, a
-  TS11-674-50 right-angle switch pushing down out of the bottom edge).
+  right-angle switch facing the bottom edge, its actuator's tip 0.7 mm past it, pressed with a pin through the
+  enclosure).
 - All parts are on the front, which faces the panel; the back lies against the enclosure.
 - Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, behind the panel) or above
   it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the battery 8 mm.

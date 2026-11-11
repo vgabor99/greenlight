@@ -25,8 +25,8 @@ target of one charge a year or less, so both the hardware and the software are d
 
 ## Status
 
-Works end to end on the bench, with real deep sleep. The battery is still simulated, and the display runs on a
-breadboard. Details: [docs/roadmap.md](docs/roadmap.md).
+Works end to end on the bench, with real deep sleep and real battery and USB sensing, on a breadboard; the PCB is
+designed but not built yet. Details: [docs/roadmap.md](docs/roadmap.md).
 
 ## Repository layout
 
