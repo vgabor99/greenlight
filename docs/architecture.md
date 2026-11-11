@@ -44,8 +44,8 @@ awake and pushes data. The device never asks for data; it only reports what it s
 **The device is dumb.** Home Assistant creates the data lines, orders them as they should appear on the screen
 (dataset), and decides which lines of the dataset are active (view). The device only lays the view lines out.
 The dataset and the view are both identified by a hash, so the system can detect when updates are needed.
-The hashes are computed exclusively in the Home Assistant automation. The device never computes hashes, 
-only stores and acknowledges the received ones.
+The hashes are computed exclusively in the Home Assistant automation. The device never computes a hash; it only stores
+the ones it receives and echoes them back.
 
 ```mermaid
 flowchart TB
@@ -72,9 +72,9 @@ view). Details: [data-model.md](data-model.md).
 
 The dataset consists of all possible lines the device can display (icon, name, state), in the order they should
 appear on the screen. This is a large amount of relatively stable data: it only changes when entities are added,
-removed or renamed in Home Assistant. A dataset sync transfers the entire dataset, one frame per line part, and
-takes from a few seconds to over a minute, depending on its size and on lost frames. During day-to-day operation,
-Greenlight uses its cached copy of the dataset, identified by a hash.
+removed or renamed in Home Assistant. A dataset sync transfers the entire dataset, where each line is up to 3
+frames, and takes from a few seconds to over a minute. During day-to-day operation, Greenlight uses its cached
+copy of the dataset, identified by a hash.
 
 **View**
 
