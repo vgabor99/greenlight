@@ -140,23 +140,6 @@ static void accept_attribute_write(ezb_zcl_set_attr_value_message_t *message)
     message->out.result = EZB_ZCL_STATUS_SUCCESS;
 }
 
-/* Only the goodbye reports and the low-battery alarm ask for a default response: it confirms them. */
-static void handle_default_response(const ezb_zcl_cmd_default_rsp_message_t *response)
-{
-    ESP_LOGI(TAG, "default response: cluster 0x%04x cmd 0x%02x status 0x%02x", response->info.cluster_id,
-             response->in.rsp_to_cmd, response->in.status_code);
-    if (response->in.rsp_to_cmd != EZB_ZCL_CMD_REPORT_ATTRIBUTES) {
-        return;
-    }
-    if (response->info.cluster_id == EZB_ZCL_CLUSTER_ID_POWER_CONFIG) {
-        xEventGroupSetBits(zigbee_context.events, EVENT_BATTERY_LOW);
-    } else if (response->info.cluster_id == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING) {
-        xEventGroupSetBits(zigbee_context.events, EVENT_GOODBYE_OCCUPANCY);
-    } else if (response->info.cluster_id == CUSTOM_CLUSTER_ID) {
-        xEventGroupSetBits(zigbee_context.events, EVENT_GOODBYE_AWAKE);
-    }
-}
-
 void zigbee_handle_core_action(ezb_zcl_core_action_callback_id_t callback_id, void *message)
 {
     switch (callback_id) {
@@ -164,7 +147,7 @@ void zigbee_handle_core_action(ezb_zcl_core_action_callback_id_t callback_id, vo
         accept_attribute_write(message);
         break;
     case EZB_ZCL_CORE_DEFAULT_RSP_CB_ID:
-        handle_default_response(message);
+        zigbee_reports_on_default_response(message);
         break;
     default:
         ESP_LOGI(TAG, "ZCL core action 0x%04lx", (unsigned long)callback_id);

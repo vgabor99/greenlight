@@ -87,6 +87,24 @@ uint8_t zigbee_battery_half_percent(uint16_t mv)
     return 200;
 }
 
+/* Only the goodbye reports and the low-battery alarm ask for a default response: it confirms them, which ends
+ * their resending (zigbee_report_goodbye(), zigbee_report_battery_low()). */
+void zigbee_reports_on_default_response(const ezb_zcl_cmd_default_rsp_message_t *response)
+{
+    ESP_LOGI(TAG, "default response: cluster 0x%04x cmd 0x%02x status 0x%02x", response->info.cluster_id,
+             response->in.rsp_to_cmd, response->in.status_code);
+    if (response->in.rsp_to_cmd != EZB_ZCL_CMD_REPORT_ATTRIBUTES) {
+        return;
+    }
+    if (response->info.cluster_id == EZB_ZCL_CLUSTER_ID_POWER_CONFIG) {
+        xEventGroupSetBits(zigbee_context.events, EVENT_BATTERY_LOW);
+    } else if (response->info.cluster_id == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING) {
+        xEventGroupSetBits(zigbee_context.events, EVENT_GOODBYE_OCCUPANCY);
+    } else if (response->info.cluster_id == CUSTOM_CLUSTER_ID) {
+        xEventGroupSetBits(zigbee_context.events, EVENT_GOODBYE_AWAKE);
+    }
+}
+
 /* ---- Public API ---- */
 
 void zigbee_report_wake_count(void)

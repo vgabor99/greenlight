@@ -64,6 +64,7 @@ void    zigbee_send_report(uint16_t cluster, uint16_t attribute, bool ask_for_re
 void    zigbee_report_shown_view_id_lock_held(void);
 void    zigbee_report_dataset_hash_lock_held(void);
 uint8_t zigbee_battery_half_percent(uint16_t mv);  /* ZCL batteryPercentageRemaining */
+void    zigbee_reports_on_default_response(const ezb_zcl_cmd_default_rsp_message_t *response);  /* a report confirmed */
 
-/* zigbee.c: the stack's ZCL core actions (attribute writes, default responses) */
+/* zigbee.c: the stack's ZCL core actions (attribute writes; default responses go to zigbee_reports.c) */
 void zigbee_handle_core_action(ezb_zcl_core_action_callback_id_t callback_id, void *message);
