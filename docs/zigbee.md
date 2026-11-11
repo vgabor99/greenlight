@@ -102,10 +102,11 @@ Writes to the custom cluster 0xFC8A:
 | 0x0030 | `ds_entry` | string (0x42) | `HHHHHH\|II\|text`: the new dataset hash as 6 hex digits, `II` as 2 hex digits (bits 0-4 the line index 0-31, bits 5-6 the part 0-2, bit 7 "more parts follow"), the UTF-8 text of this part (0-26 bytes) |
 | 0x0031 | `ds_commit` | uint32 (0x23) | `count * 16777216 + hash`: number of entries (0-32) in the top byte, the new dataset hash below |
 
-HA sends them through Z2M's documented raw `write` message on `zigbee2mqtt/<device>/set`. Numeric attribute ids
-work with the cluster known to the converter: zigbee-herdsman looks a string key up by name, and a numeric key
-falls back to a raw write with the given type. The converter also declares the input attributes as writable,
-so a write by name works as well (`{"viewBits": 5}`, no type).
+HA sends them through Z2M's documented raw `write` message on `zigbee2mqtt/<device>/set`, by the names the
+[converter](#external-converter) declares (`viewBits`, `viewDs`, `viewTime`, `viewId`, `dsEntry`, `dsCommit`):
+zigbee-herdsman looks a string key up in the cluster and takes the id and type from there. The ids above stay the
+contract; the names exist only in Z2M. A numeric key with an explicit type (`{"48": {"value": "...", "type":
+66}}`) is sent as a raw write and works without the converter; `tools/paced_write_test.py` uses that form.
 
 ### View push
 
@@ -163,15 +164,14 @@ order, 100 ms apart), then the commit.
 
 ### Example
 
-HA publishes these to `zigbee2mqtt/<device>/set`; ids in decimal, the format of the Z2M raw write; 64650 is
-0xFC8A, the dataset hash 4821377 is 0x499181:
+HA publishes these to `zigbee2mqtt/<device>/set`; the dataset hash 4821377 is 0x499181:
 
 ```json
-{"write": {"cluster": 64650, "payload": {"48": {"value": "499181|00|02|Teraszajtó|nyitva", "type": 66}}}}
-{"write": {"cluster": 64650, "payload": {"48": {"value": "499181|01|04|Háló ablak|nyitva", "type": 66}}}}
-{"write": {"cluster": 64650, "payload": {"49": {"value": 71930241, "type": 35}}}}
-{"write": {"cluster": 64650, "payload": {"32": {"value": 5, "type": 35}, "33": {"value": 4821377, "type": 35},
-                                          "34": {"value": 1793112720, "type": 35}, "35": {"value": 9871234, "type": 35}}}}
+{"write": {"cluster": "greenlight", "payload": {"dsEntry": "499181|00|02|Teraszajtó|nyitva"}}}
+{"write": {"cluster": "greenlight", "payload": {"dsEntry": "499181|01|04|Háló ablak|nyitva"}}}
+{"write": {"cluster": "greenlight", "payload": {"dsCommit": 71930241}}}
+{"write": {"cluster": "greenlight", "payload": {"viewBits": 5, "viewDs": 4821377,
+                                                "viewTime": 1793112720, "viewId": 9871234}}}
 ```
 
 The dataset commit is 4 * 16777216 + 0x499181; all four entries 00 to 03 are written, two are shown here. The

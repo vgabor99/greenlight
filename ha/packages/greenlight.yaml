@@ -116,16 +116,16 @@ automation:
                         data:
                           topic: "{{ topic }}"
                           payload: >
-                            {{ {'write': {'cluster': 64650, 'payload':
-                                {'48': {'value': repeat.item, 'type': 66}}}} | to_json }}
+                            {{ {'write': {'cluster': 'greenlight', 'payload':
+                                {'dsEntry': repeat.item}}} | to_json }}
                       - delay:
                           milliseconds: 100
                 - action: mqtt.publish
                   data:
                     topic: "{{ topic }}"
                     payload: >
-                      {{ {'write': {'cluster': 64650, 'payload':
-                          {'49': {'value': (lines | count) * 16777216 + ds, 'type': 35}}}} | to_json }}
+                      {{ {'write': {'cluster': 'greenlight', 'payload':
+                          {'dsCommit': (lines | count) * 16777216 + ds}}} | to_json }}
                 - wait_template: "{{ states(device_ds) | int(0) == ds }}"
                   timeout: 20
               until:
@@ -137,12 +137,12 @@ automation:
             - variables:
                 view_id: "{{ states('sensor.greenlight_view') | int(0) }}"
                 write:
-                  cluster: 64650
+                  cluster: greenlight
                   payload:
-                    "32": {value: "{{ state_attr('sensor.greenlight_view', 'bits') | int(0) }}", type: 35}
-                    "33": {value: "{{ state_attr('sensor.greenlight_view', 'ds') | int(0) }}", type: 35}
-                    "34": {value: "{{ (now().timestamp() + now().utcoffset().total_seconds()) | int }}", type: 35}
-                    "35": {value: "{{ view_id }}", type: 35}
+                    viewBits: "{{ state_attr('sensor.greenlight_view', 'bits') | int(0) }}"
+                    viewDs: "{{ state_attr('sensor.greenlight_view', 'ds') | int(0) }}"
+                    viewTime: "{{ (now().timestamp() + now().utcoffset().total_seconds()) | int }}"
+                    viewId: "{{ view_id }}"
             - action: mqtt.publish
               data:
                 topic: "{{ topic }}"
