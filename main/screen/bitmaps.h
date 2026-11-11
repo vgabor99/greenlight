@@ -35,7 +35,7 @@ extern const bitmap_font_t bitmap_font_detail;  /* Inter 500, 18 px */
 extern const bitmap_font_t bitmap_font_hint;  /* Inter 500, 22 px */
 
 /* Line icons by icon id (docs/data-model.md#line-icons), 30 px. */
-#define BITMAP_LINE_ICON_COUNT 61
+#define BITMAP_LINE_ICON_COUNT 63
 #define BITMAP_LINE_ICON_ALERT_CIRCLE 0x00
 #define BITMAP_LINE_ICON_DOTS_HORIZONTAL 0x01
 extern const bitmap_icon_t bitmap_line_icons[BITMAP_LINE_ICON_COUNT];

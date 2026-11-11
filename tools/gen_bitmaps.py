@@ -108,6 +108,8 @@ LINE_ICONS = [
     ("mailbox", 0xF06EE),
     ("battery-low", 0xF12A1),
     ("wifi-off", 0xF05AA),
+    ("television-ambient-light", 0xF1356),
+    ("floor-lamp", 0xF08DD),
 ]
 
 # Other icons: C name, MDI codepoint, pixel size

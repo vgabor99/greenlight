@@ -65,8 +65,8 @@ lines need no reflash. The ids HA uses today: [home-assistant.md](home-assistant
 | 0A | shield-home | 1A | fireplace | 2A | water-pump | 3A | mailbox |
 | 0B | motion-sensor | 1B | stove | 2B | water-boiler | 3B | battery-low |
 | 0C | cctv | 1C | iron | 2C | sprinkler-variant | 3C | wifi-off |
-| 0D | lightbulb-on | 1D | coffee-maker | 2D | pool | | |
-| 0E | ceiling-light | 1E | kettle | 2E | fridge | | |
+| 0D | lightbulb-on | 1D | coffee-maker | 2D | pool | 3D | television-ambient-light |
+| 0E | ceiling-light | 1E | kettle | 2E | fridge | 3E | floor-lamp |
 | 0F | lamp | 1F | printer | 2F | snowflake | | |
 
 No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an alert device already.
