@@ -1,6 +1,6 @@
 # Greenlight
 
-*"If you gaze long into the screen, the screen gazes back at you."<br>
+*"And if you gaze long into a screen, the screen also gazes into you."<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— Friedrich Nietzsche*
 
 Greenlight is a battery-powered display that tells you whether the house is ready to be armed and left. Mounted
