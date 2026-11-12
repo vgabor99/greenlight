@@ -30,7 +30,8 @@ No dependencies; exits 1 and prints `file:line: problem` lines if anything is wr
   docs/firmware.md#persistent-state matches the `STORE_KEY_*` strings; docs/firmware.md#build-switches matches
   `main/CMakeLists.txt`; every custom attribute id in `zigbee_internal.h` is in docs/zigbee.md, and the custom
   cluster id is the code's; docs/data-model.md#line-icons matches `LINE_ICONS` in `tools/gen_bitmaps.py`.
-- **Indexes**: every skill is listed in docs/README.md and CLAUDE.md; every doc is listed in docs/README.md.
+- **Indexes**: every skill is listed in docs/README.md, and in CLAUDE.md unless it runs only when asked for by
+  name (`disable-model-invocation: true`); every doc is listed in docs/README.md.
 
 A false positive (a name that lives outside the repo, such as a ZCL status or a path on the HA host) goes into
 `EXTERNAL_NAMES` / `EXTERNAL_PREFIXES` at the top of the script, not around the check. When a new table in the

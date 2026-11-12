@@ -290,7 +290,9 @@ def check_skill_index():
     for skill in sorted({p.split("/")[2] for p in FILES if p.startswith(".claude/skills/") and p.endswith("SKILL.md")}):
         if f".claude/skills/{skill}/SKILL.md" not in readme:
             report("docs/README.md#how-to", f"skill {skill} is not listed")
-        if f"`{skill}`" not in read("CLAUDE.md"):
+        # CLAUDE.md lists the skills Claude loads on its own; one run only when asked by name stays out of it
+        on_request = "disable-model-invocation: true" in read(f".claude/skills/{skill}/SKILL.md")
+        if not on_request and f"`{skill}`" not in read("CLAUDE.md"):
             report("CLAUDE.md#skills", f"skill {skill} is not listed")
     for rel in [p for p in FILES if p.startswith("docs/") and p.endswith(".md") and p != "docs/README.md"]:
         if Path(rel).relative_to("docs").as_posix() not in readme:
