@@ -19,7 +19,8 @@ EXTERNAL_NAMES = {
     "idf.py", "compile_commands.json",          # ESP-IDF tool, build output
     "NWK_TABLE_FULL", "UNSUPPORTED_ATTRIBUTE",  # Zigbee / ZCL status names
 }
-EXTERNAL_PREFIXES = ("config/", "data/", "custom_templates/")  # paths on the HA / Z2M host
+EXTERNAL_PREFIXES = ("config/", "data/", "custom_templates/",  # paths on the HA / Z2M host
+                     "ha_config_")                             # ha-mcp tools (the repo's own ha_input_* stay checked)
 
 problems = []
 

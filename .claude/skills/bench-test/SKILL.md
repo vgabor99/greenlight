@@ -70,6 +70,16 @@ every round), `--oos` (out of sync), `--same` (same view id), `--no-view` (expec
 `%TEMP%\gl_test\paced_write_test_<date>_<time>.log`. `--reset-each` needs an awake board (or `SIM_SLEEP`).
 Record notable results in docs/research/wake-delivery-bench.md.
 
+**Turn HA's push automation off for the test** and on again afterwards: ha-mcp's
+`ha_config_set_automation(entity_id="automation.greenlight_push", enabled=false)` (load the `home-assistant-profile`
+skill first, as for any HA call). Otherwise, once the test dataset replaces HA's, HA runs its own dataset sync on
+every wake. Its writes queue in Z2M ahead of the test's view, so rounds time out or come late, and `--reset-each`
+cuts each of HA's syncs short, so its commits are rejected. After turning it back on, wake the board once: HA then
+syncs its own dataset back, and the screen shows the real house status again.
+
+If the venv's imports fail (`No module named ...`), a clean-up of `%TEMP%` has removed its files: recreate it with
+`python -m venv --clear %TEMP%\gl_test\venv` and install `paho-mqtt==2.1.0 pyserial==3.5`.
+
 ## Factory-new device
 
 ```
