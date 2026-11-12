@@ -55,7 +55,7 @@ stateDiagram-v2
     INTERVIEW --> ACTIVE: INTERVIEW_MS over
     PAIRING --> SHUTDOWN: battery low
     UNPAIRED --> SHUTDOWN: IDLE_TIMEOUT_MS expired or battery low
-    BOOT --> SHUTDOWN: stack did not start
+    BOOT --> SHUTDOWN: stack did not start or panel failed
     BOOT --> LOW_BATTERY: battery still low (latched)
     SHUTDOWN --> LOW_BATTERY: battery low reported, panel off
     SHUTDOWN --> SLEEP: panel off (also a low battery not reported)
@@ -67,14 +67,14 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | State | What it does | Leaves when |
 |---|---|---|
 | **SLEEP** | deep sleep, nothing runs | PIR active or pair button pressed -> BOOT |
-| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low, not latched: boot on, so ACTIVE reports it ([Low battery](#low-battery)); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (*Unknown error* screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
+| **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low, not latched: boot on, so ACTIVE reports it ([Low battery](#low-battery)); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (*Unknown error* screen); panel init or boot clear failed -> SHUTDOWN once the stack is up (nothing drawn); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
 | **UNPAIRED** | shows the *Pairing* screen (how to pair); `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired, no hold left -> SHUTDOWN; battery low -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> UNPAIRED; battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK (so a device whose network is gone can be paired again); `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired, no hold left (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()`. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), and draw the *Battery dead* screen | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
+| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view; skipped if the panel failed at boot); `epaper_power_off()`. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), and draw the *Battery dead* screen | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
 | **LOW_BATTERY** | the *Battery dead* screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
@@ -212,5 +212,5 @@ How the voltage and USB power are read, and the console's overrides for bench te
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
 | Battery low | *Battery dead* screen, `battery_low` reported when joined; once Z2M confirms it, LOW_BATTERY until USB power, else the next wake reports again. |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale. Seen once in 39 wakes. Next wake is normal. |
-| Panel init fails at boot | `e-paper init failed` in the log, and the device stops there: awake, with no sleep, until a reset, which drains the battery ([roadmap.md](roadmap.md#urgent)). |
+| Panel init fails at boot | `e-paper init failed` in the log (also when the boot clear fails). The wake ends as soon as the stack is up: SHUTDOWN without the wake's reports and without drawing. The failed init waits 10 s for BUSY, so the stack has usually rejoined by then, and SHUTDOWN sends the goodbye. Then the panel pins go low (another 10 s wait for BUSY) and SLEEP: about 26 s from boot. The screen keeps what it showed (grey or old). No recovery: the next wake's `epaper_init()` resets the panel and tries again. HA is not told yet (`panel_error`, [roadmap.md](roadmap.md#future-work)). |
 | Panel BUSY hang | A refresh never finishes and the controller stays stuck until a hardware reset ([hardware.md](hardware.md#busy-hang)). **No recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epaper_init()` resets the panel. Automatic recovery is a later option ([roadmap.md](roadmap.md#future-work)). |

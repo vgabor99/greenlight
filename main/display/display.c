@@ -11,6 +11,7 @@ static const char *TAG = "greenlight";
 
 /* The state the panel was last drawn from, and the latest one (static: they are large). */
 static app_state_t drawn, latest;
+static bool        panel_failed;  /* at boot: nothing was drawn, and the final refresh is skipped */
 
 static void draw(const app_state_t *state)
 {
@@ -40,12 +41,19 @@ void display_wait_ms(uint32_t ms)
 
 bool display_power_on(void)
 {
-    return panel_power_on() == ESP_OK;
+    panel_failed = panel_power_on() != ESP_OK;
+    return !panel_failed;
 }
 
-/* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). */
+/* Cleanest state for power-off: full white reset, then the screen to sleep with (SLEEP on the debug screen). After a
+ * failed power-on only the power-off, which holds the panel pins low: each refresh would wait 10 s for BUSY. */
 void display_power_off(void)
 {
+    if (panel_failed) {
+        ESP_LOGW(TAG, "e-paper failed at boot: no final refresh");
+        panel_power_off();
+        return;
+    }
     if (panel_clear("shutdown") != ESP_OK) {
         ESP_LOGE(TAG, "e-paper final clear failed");
     }

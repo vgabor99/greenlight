@@ -9,7 +9,8 @@
 /* Power the panel up and clear it, at boot (in parallel with the Zigbee start-up). False if the panel failed. */
 bool display_power_on(void);
 
-/* End of the wake: clear the panel, draw the state on it and power it off. Safe to cut power after. */
+/* End of the wake: clear the panel, draw the state on it and power it off (only power it off if display_power_on()
+ * failed). Safe to cut power after. */
 void display_power_off(void);
 
 /* Draw the state now (~0.5 s). Blocks the state loop; the input task keeps polling the inputs meanwhile. */

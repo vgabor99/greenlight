@@ -1,13 +1,5 @@
 # Status and roadmap
 
-## Urgent
-
-**A panel that fails at boot drains the battery.** When `epaper_init()` or the boot clear fails, the device logs
-`e-paper init failed` and stops in BOOT: awake, radio on, no sleep, until a reset. On the battery this empties
-it. Instead it should shut down and sleep as usual, and hope the next wake's `epaper_init()` (a panel reset)
-works. This is not a panel recovery: the failure still shows, as a grey or old screen, the log line and a wake
-that ends early. HA should learn about it too (the reserved `panel_error`, [Future work](#future-work)).
-
 ## Status
 
 As of 2026-11-11, working end to end on the bench, with the device in the lobby:
@@ -68,6 +60,10 @@ in the converter):
 | 0x0012 | `last_awake_s` | uint16 | duration of the previous wake cycle, for battery life insight |
 | 0x0013 | `battery_mv` | uint16 | in use: the exact battery voltage |
 | 0x0014 | `panel_error` | enum8 | 0 ok, 1 panel init failed, 2 refresh failed, 3 BUSY timeout |
+
+`panel_error` 1 would make a panel that fails at boot visible in HA. Today that wake ends without its reports
+([behaviour.md](behaviour.md#failure-modes)), so HA sees at most `awake` false from the goodbye, and no
+`wake_count`.
 
 **Panel recovery** (once the hang's cause is fixed or its rate is known to be acceptable): on a BUSY timeout,
 `epaper_init()` + `epaper_clear()` + redraw (about 1.5 s), with the timeout cut to about 2 s (a refresh takes

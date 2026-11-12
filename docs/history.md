@@ -68,6 +68,8 @@ generated bitmaps instead of u8g2 fonts.
   most 6 texts, the sixth possibly "további N"), which put the screen's layout into the data model and into NVS;
   it now holds every active line, and the screen lays them out. The stored view changed size, so the first wake
   after that update had none to show.
+- 2026-11-12: a panel that fails at boot ends the wake and the device sleeps. It used to stop in BOOT, awake with
+  the radio on until a reset, which would have emptied the battery.
 
 ## Rejected options
 

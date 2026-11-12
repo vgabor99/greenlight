@@ -107,8 +107,9 @@ static device_state_t check_battery_at_boot(void)
     return STATE_BOOT;
 }
 
-/* Start the Zigbee stack, and the panel with the stored view while the stack starts up. */
-static void start_stack_and_panel(void)
+/* Start the Zigbee stack, and the panel with the stored view while the stack starts up. False if the panel
+ * failed. */
+static bool start_stack_and_panel(void)
 {
     boot_tick = xTaskGetTickCount();
     zigbee_callbacks_t callbacks = {
@@ -125,13 +126,14 @@ static void start_stack_and_panel(void)
     zigbee_start(&callbacks, &initial);
 
     /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. A
-     * failed panel stays visible: no recovery (docs/behaviour.md#failure-modes). */
+     * failed panel ends the wake, with no recovery: the failure stays visible (docs/behaviour.md#failure-modes). */
     if (!display_power_on()) {
         ESP_LOGE(TAG, "e-paper init failed");
-        vTaskDelay(portMAX_DELAY);
+        return false;
     }
     app_state_set_device_state(STATE_BOOT);
     display_redraw();
+    return true;
 }
 
 static device_state_t run_boot(void)
@@ -152,7 +154,7 @@ static device_state_t run_boot(void)
 #ifdef SCREEN_DUMP
     sample_screens_dump();  /* before the stack starts, so its log does not cut into the dump */
 #endif
-    start_stack_and_panel();
+    bool panel_ok = start_stack_and_panel();
 
     bool factory_new = false;
     if (!zigbee_wait_started(STACK_START_TIMEOUT_MS, &factory_new)) {
@@ -162,6 +164,10 @@ static device_state_t run_boot(void)
     }
     ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)elapsed_ms(boot_tick),
              factory_new ? "no network" : "network restored", wake_reason_text());
+    if (!panel_ok) {  /* only now: no deep sleep while the stack restores the network from NVS */
+        ESP_LOGW(TAG, "panel failed: ending the wake");
+        return STATE_SHUTDOWN;
+    }
     if (!factory_new) {
         return STATE_REJOIN;
     }

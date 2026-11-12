@@ -22,7 +22,7 @@ panel: refresh #<partials since clear> (<label>) <ms> ms, busy before <0|1>, bla
 | clear about 500 ms, refresh about 470 ms | normal, whatever the pixel count |
 | `busy before 1` | the controller is still stuck from an earlier hang: every command fails until a hardware reset |
 | `timeout waiting for BUSY` (tag `epd`) and `, FAILED` after 10 s | a refresh never finished: a BUSY hang |
-| `busy before 0` at boot followed by a timeout | the panel failed at init; a reboot usually clears it |
+| `busy before 0` at boot followed by a timeout | the panel failed at init; a reboot usually clears it. The wake ends at once (`panel failed: ending the wake`, `BOOT -> SHUTDOWN`), so the next wake retries |
 
 ## BUSY hang
 
