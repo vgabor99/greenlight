@@ -81,6 +81,8 @@ idf.py menuconfig             # then: idf.py save-defconfig (sdkconfig.defaults 
 - **Panel failures stay visible**: no automatic recovery until it is decided ([docs/roadmap.md](docs/roadmap.md)).
 - **Docs**: when behaviour changes, update the design file that owns it, move what it replaces to
   `docs/history.md` if the reason matters, and keep each fact in one place.
+- **Docs style**: short, clean and to the point. Readers may not be native English speakers: use simple
+  grammar, and choose clarity over style.
 - **Docs are for readers who do not speak Hungarian.** English comes first: screens by their names in
   [docs/uispec/ui-spec.md](docs/uispec/ui-spec.md#device-screens), in italics where mentioned (*All OK*,
   *Problems*, *Pairing*, ...), HA dashboards by their name. Where the Hungarian is worth showing (HA state words, a
