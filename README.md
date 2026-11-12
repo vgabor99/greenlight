@@ -17,20 +17,21 @@ target of one charge a year or less, so both the hardware and the software are d
 
 ## Parts
 
-- Hardware: Seeed XIAO ESP32-C6, 4.2" 400x300 e-paper (Waveshare V2, SSD1683), Panasonic EKMB1205111 low-power
-  PIR sensor, pair button. Details: [docs/hardware.md](docs/hardware.md).
+- Hardware: an ESP32-C6 microcontroller, a 4.2" 400x300 e-paper display, a low-power PIR sensor, a pair button,
+  and a few resistors and capacitors. A custom PCB holds them together in a 3D-printed enclosure. Details:
+  [docs/hardware.md](docs/hardware.md).
 - Firmware: ESP-IDF v6.1 (C, CMake), a Zigbee sleepy end device.
 - Home Assistant side: Zigbee2MQTT with the external converter in `z2m/`, templates and an automation in `ha/`.
 
 ## Status
 
-Works end to end on the bench, with real deep sleep and real battery and USB sensing, on a breadboard; the PCB is
-designed but not built yet. Details: [docs/roadmap.md](docs/roadmap.md).
+Works end to end on a breadboard, with real deep sleep and real battery and USB sensing. The PCB is designed but
+not built yet. Details: [docs/roadmap.md](docs/roadmap.md).
 
 ## Repository layout
 
 ```
-main/        firmware, grouped by part: board/, display/, screen/, zigbee/, util/
+main/        firmware, grouped by concern: app/, board/, display/, panel/, screen/, zigbee/, util/
 hardware/    KiCad 10 schematic and PCB, project libraries (lib/), board outline DXF (mechanical/)
 tools/       bitmap and mockup generators, serial console, framebuffer dump, Zigbee bench test, docs checker
 z2m/         Zigbee2MQTT external converter
