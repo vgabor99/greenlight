@@ -83,7 +83,7 @@ No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an 
 ```
 
 - `ds`: the dataset hash the bits refer to. The device accepts the view only if `ds` equals its stored
-  `dataset_hash`; otherwise it is **out of sync** and leaves the screen as it is.
+  `dataset_hash`; otherwise it is **out of sync** and keeps its stored view ([zigbee.md](zigbee.md#view-push)).
 - `bits`: bitfield over the dataset, bit *i* set = line *i* is active. 0 = *All OK*.
 - `id`: **24-bit**, chosen by HA, identifying `ds` + `bits`. **Not 0**. The device echoes it as
   `shown_view_id` when the view is on the panel; it never computes it. The time is **not** part of the id: a
@@ -93,7 +93,7 @@ No alert markers on line icons (`fridge`, not `fridge-alert`): the device is an 
   instead). 0 = unknown. Currently unused.
 
 The device stores the text of the shown view's active lines (with the id and the time), not only the bits. A new
-dataset therefore never changes the screen by itself: the old lines stay until a view for the new dataset arrives
+dataset therefore never changes the shown lines by itself: the old lines stay until a view for the new dataset arrives
 (HA sends one right after the sync). How many of them fit is the screen's business
 ([display.md](display.md#house-screens)).
 

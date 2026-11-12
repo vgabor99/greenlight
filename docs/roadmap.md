@@ -1,5 +1,13 @@
 # Status and roadmap
 
+## Urgent
+
+**A panel that fails at boot drains the battery.** When `epaper_init()` or the boot clear fails, the device logs
+`e-paper init failed` and stops in BOOT: awake, radio on, no sleep, until a reset. On the battery this empties
+it. Instead it should shut down and sleep as usual, and hope the next wake's `epaper_init()` (a panel reset)
+works. This is not a panel recovery: the failure still shows, as a grey or old screen, the log line and a wake
+that ends early. HA should learn about it too (the reserved `panel_error`, [Future work](#future-work)).
+
 ## Status
 
 As of 2026-11-11, working end to end on the bench, with the device in the lobby:

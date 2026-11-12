@@ -64,6 +64,7 @@ stateDiagram-v2
     BOOT --> PAIRING: unpaired and pair_now
     REJOIN --> ACTIVE: joined
     REJOIN --> SHUTDOWN: REJOIN_TIMEOUT_MS over
+    REJOIN --> ERASE_NETWORK: pair button held 3 s
     ACTIVE --> ERASE_NETWORK: pair button held 3 s
     ERASE_NETWORK --> BOOT: restart
     ACTIVE --> SHUTDOWN: IDLE_TIMEOUT_MS expired or battery low
@@ -89,7 +90,7 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | **UNPAIRED** | shows the *Pairing* screen (how to pair); `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired, no hold left -> SHUTDOWN; battery low -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> UNPAIRED; battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
-| **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
+| **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK (so a device whose network is gone can be paired again); `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired, no hold left (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
 | **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), draw the *Battery dead* screen; confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
@@ -100,7 +101,7 @@ Rules that keep it simple:
 - One timer per state, no hidden state elsewhere. The only things that survive SLEEP are the retained
   data in NVS (stored dataset and view, `pair_now`, the wake counter, the battery latch), the staleness
   deadline in RTC memory and the Zigbee network in NVS ([firmware.md](firmware.md#persistent-state)).
-- The pair button is only acted on in UNPAIRED and ACTIVE, both times as a 3 s hold. In every other state it
+- The pair button is only acted on in UNPAIRED, REJOIN and ACTIVE, always as a 3 s hold. In every other state it
   is ignored, apart from waking the device.
 - A failed pairing never erases anything; the device stays factory new.
 - A failed rejoin never erases the network; only the pair button does.
@@ -198,7 +199,7 @@ How the voltage and USB power are read, and the console's overrides for bench te
 |---|---|
 | Frame lost | HA resends after its acknowledgement timeout; a repeated view with the shown id only makes the screen fresh again, a repeated dataset entry overwrites the staged one. |
 | Device sleeps mid-sync | Staged dataset entries dropped; `dataset_hash` unchanged, so HA syncs again at the next wake. A view is one frame and cannot be half applied. |
-| View for another dataset | Out of sync ([zigbee.md](zigbee.md#view-push)): screen unchanged (it goes stale), `dataset_hash` reported, device stays awake for the sync. |
+| View for another dataset | Out of sync ([zigbee.md](zigbee.md#view-push)): the stored view is kept, the screen shows *Synchronizing* while awake, `dataset_hash` reported, device stays awake for the sync. |
 | HA down / Zigbee down | Screen keeps the stored view; the stale badge appears at most 8 s after the last view received. |
 | Rejoin fails (parent gone) | After `REJOIN_TIMEOUT_MS` the device shuts down with the *Join failed* screen; network kept. |
 | Parent forgot the device | Slower full rejoin on wake. |
@@ -209,4 +210,5 @@ How the voltage and USB power are read, and the console's overrides for bench te
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
 | Battery low | *Battery dead* screen, `battery_low` reported when joined; once Z2M confirms it, LOW_BATTERY until USB power, else the next wake reports again. |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale. Seen once in 39 wakes. Next wake is normal. |
+| Panel init fails at boot | `e-paper init failed` in the log, and the device stops there: awake, with no sleep, until a reset, which drains the battery ([roadmap.md](roadmap.md#urgent)). |
 | Panel BUSY hang | A refresh never finishes and the controller stays stuck until a hardware reset ([hardware.md](hardware.md#busy-hang)). **No recovery, on purpose**, so failures stay visible: each later panel command times out after 10 s (`panel: ... FAILED` in the log), the screen stays grainy grey until the next wake, whose `epaper_init()` resets the panel. Automatic recovery is a later option ([roadmap.md](roadmap.md#future-work)). |

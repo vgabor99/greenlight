@@ -116,9 +116,11 @@ sends it on every wake, whenever its view changes while the device is awake, and
 device collects the four values and applies them once the whole frame has been processed (`deliver_view()`,
 deferred to the Zigbee task's next turn, after the frame), so the order of the records does not matter:
 
-- `view_ds` != stored `dataset_hash`: **out of sync**. Nothing changes on the screen; `shown_view_id` is not
-  reported. The device reports `dataset_hash` (so HA's cached value is right) and stays awake
-  `RESYNC_HOLD_MS` for the resync.
+- `view_id` = 0 or not all four attributes arrived: **incomplete**. Ignored, apart from the log and the debug
+  screen.
+- `view_ds` != stored `dataset_hash`: **out of sync**. The stored view is kept (the screen shows *Synchronizing*
+  while awake); `shown_view_id` is not reported. The device reports `dataset_hash` (so HA's cached value is
+  right) and stays awake `RESYNC_HOLD_MS` for the resync.
 - `view_id` == `shown_view_id`: nothing new to draw, but the view is fresh again. Store the time, report
   `shown_view_id` (the acknowledgement).
 - otherwise: take the text of the active lines from the dataset and the bits, store it with the id and the time,
@@ -142,7 +144,7 @@ order, 100 ms apart), then the commit.
   "more", and parts 0 to L all staged with that tag. A part from an older sync has another tag, so it is never
   mixed in. Then it joins the parts, stores the dataset in NVS (one blob), clears the staging and reports
   `dataset_hash`. Otherwise it rejects the commit and logs the first missing index; HA resends the whole
-  dataset after its timeout.
+  dataset after its timeout. A commit for the dataset already stored is acknowledged again (`dataset_hash`).
 - A staged sync that does not finish before the device sleeps is lost, and the next wake starts over.
 
 ### Why it looks like this

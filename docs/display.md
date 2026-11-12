@@ -45,7 +45,7 @@ badge's ring is 4.5 px wide for 4.
 The look is in the [UI spec](uispec/ui-spec.md#house-screens); as built:
 
 - **Problems**: 6 rows of 50 px from the top. The name is cut with "…" to leave room for the state (a state wider
-  than 180 px is cut as well). More than 6 active lines: 5 rows and "további N" (N more), as the
+  than 180 px is cut as well). More than 6 active lines: 5 rows and "N more" (`további N`), as the
   [UI spec](uispec/ui-spec.md#problems) says. The device stores every active line
   ([data-model.md](data-model.md#view)), so the row count is the screen's alone (`main/screen/status_screen.c`).
 - **All OK** when no line is active.
@@ -64,7 +64,7 @@ lines 22 px. When each is shown (`screen_kind_t` in `main/app/screen_content.h`)
 | Synchronizing | REJOIN / ACTIVE with no view stored yet, while dataset entries arrive (until their commit), and after an out-of-sync view |
 | Pairing | UNPAIRED, also after a pairing attempt timed out, and to sleep with after an unpaired wake |
 | Join failed | to sleep with, after a rejoin timeout |
-| Battery dead | to sleep with in LOW_BATTERY, until USB power |
+| Battery dead | to sleep with after a low battery: in LOW_BATTERY until USB power, or in SLEEP when the report was not confirmed ([behaviour.md](behaviour.md#low-battery)) |
 | Unknown error | to sleep with, when the Zigbee stack did not start |
 
 Otherwise the house screen: BOOT draws the stored view (blank when there is none), SHUTDOWN the stored view
@@ -77,14 +77,15 @@ For RnD, built with `idf.py -DDEBUG_SCREEN=1 build` instead of the proper screen
 fonts are too faint on this panel), the same in every state; rows show the raw `II|name|state` text:
 
 ```
-ACTIVE          w412 37.2s          state, wake counter, uptime
+ACTIVE    3.86V w412 37.2s          state; battery (with USB or LOW), wake counter, uptime
 DS 499181 n=4  VIEW 969F82          stored dataset (hash, entries) and shown view id
 age 3s / 8s FRESH  2 lines         age of the last view received, its validity, the staleness flag,
                                     active line count ("OUT OF SYNC" if the last view was); age "-" = unknown
 1 02|Teraszajtó|nyitva              ... the shown lines (up to 6; with more, 5 and "+N more"; "ALL OK" for none)
 36.9 V 969F82 b=00000005 OK         last received writes, newest first, uptime stamp:
-36.7 D 499181 n=4 OK                  V = view (OK, TIME, OOS ds=<hash>), E = ds_entry index and text,
-36.5 E 03 0D|Nappali lámpa|be         D = ds_commit (OK, REJ idx=<first missing>, BAD N)
+36.7 D 499181 n=4 OK                  V = view (OK, TIME, OOS ds=<hash>, PART m=<attributes>),
+36.5 E 03.0 0D|Nappali lámpa|be       E = ds_entry line.part (+ = more parts follow) and text,
+                                      D = ds_commit (OK, SAME, REJ idx=<first missing>, BAD N)
 ```
 
 The age ticks, so the debug screen refreshes about once a second while awake. Rows longer than 49 characters are

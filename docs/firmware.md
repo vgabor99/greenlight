@@ -39,7 +39,7 @@ state machine hands it. So another 1-bit panel changes `panel/` (the size follow
 | `board/usb_sense.c` | USB sense on GPIO7 (the MTDO pad) |
 | `board/sleep.c` | deep sleep (or the simulated sleep) |
 | `board/wake_reason.c` | the wake cause, logged at boot |
-| `app/app_state.c` | the mutex-guarded application state (device state, wake failure, dataset, shown view, received writes), its snapshot, the Zigbee callbacks |
+| `app/app_state.c` | the mutex-guarded application state (device state, wake failure, dataset, shown view, received writes), its snapshot |
 | `app/ha_input.c` | HA's views and datasets: checked against the state, applied, acknowledged ([zigbee.md](zigbee.md#input-ha-to-device)) |
 | `app/keep_awake.c` | how long the wake must go on besides the inputs: a deadline that HA's writes and the states extend ([behaviour.md](behaviour.md#timeouts)) |
 | `app/screen_content.c` | what should be on the screen for a state (`screen_content_of()`) |

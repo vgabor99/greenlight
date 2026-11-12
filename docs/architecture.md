@@ -91,7 +91,7 @@ changes catches up in one push.
 Dataset and view arrive separately and in no fixed order: a view can arrive before its dataset, e.g. after a sync cut
 short by sleep or a lost commit. The view is tied to its dataset by the dataset's hash. A view for another dataset is
 rejected: the device keeps its stored view, shows the *Synchronizing* screen while awake, reports its own dataset hash
-and stays awake for the sync. Likewise, a new dataset alone never changes the screen.
+and stays awake for the sync. Likewise, a new dataset alone never changes the shown lines.
 
 The mismatch fixes itself: every Home Assistant push syncs the dataset first if the hashes differ, then sends the view,
 so the next push (within 5 s while awake) repairs it. A lost or misordered frame costs a resend, never a wrong screen.
