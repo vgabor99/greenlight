@@ -40,13 +40,9 @@
 #define EVENT_BATTERY_LOW        BIT6  /* Z2M confirmed the low-battery alarm report */
 
 typedef struct {
-    EventGroupHandle_t events;
-    zigbee_callbacks_t callbacks;
-    /* The values to report; battery_mv is also the stack's storage for its attribute (zigbee_device.c) */
-    uint32_t           wake_count;
-    uint32_t           shown_view_id;
-    uint32_t           dataset_hash;
-    uint16_t           battery_mv;
+    EventGroupHandle_t      events;
+    zigbee_callbacks_t      callbacks;
+    zigbee_initial_values_t initial;  /* the attributes' first values (zigbee_device.c) */
 } zigbee_context_t;
 
 extern zigbee_context_t zigbee_context;
@@ -61,8 +57,6 @@ void zigbee_display_input_register_handlers(uint8_t endpoint);
 /* zigbee_reports.c */
 void    zigbee_set_attribute(uint16_t cluster, uint16_t attribute, void *value);  /* lock held */
 void    zigbee_send_report(uint16_t cluster, uint16_t attribute, bool ask_for_response);  /* lock held */
-void    zigbee_report_shown_view_id_lock_held(void);
-void    zigbee_report_dataset_hash_lock_held(void);
 uint8_t zigbee_battery_half_percent(uint16_t mv);  /* ZCL batteryPercentageRemaining */
 void    zigbee_reports_on_default_response(const ezb_zcl_cmd_default_rsp_message_t *response);  /* a report confirmed */
 

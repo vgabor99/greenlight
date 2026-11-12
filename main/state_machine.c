@@ -8,6 +8,7 @@
 #include "board/sleep.h"
 #include "board/wake_reason.h"
 #include "app/app_state.h"
+#include "app/ha_input.h"
 #include "display/display.h"
 #include "persistent_store.h"
 #include "screen/sample_screens.h"
@@ -71,8 +72,8 @@ static bool pair_button_held_long(void)
  * by WAKE_REPORTS_DELAY_MS, so the push that the wake counter triggers is not held up by them. */
 static void report_wake_state(void)
 {
-    zigbee_report_dataset_hash();
-    zigbee_report_shown_view_id();
+    zigbee_report_dataset_hash(app_state_dataset_hash());
+    zigbee_report_shown_view_id(app_state_shown_view_id());
     zigbee_report_awake(true);
     zigbee_report_battery(battery_voltage_mv(), battery_is_low());
     zigbee_report_occupancy(inputs_occupied());
@@ -103,13 +104,17 @@ static void start_stack_and_panel(void)
 {
     boot_tick = xTaskGetTickCount();
     zigbee_callbacks_t callbacks = {
-        .on_view           = app_state_on_view,
-        .on_dataset        = app_state_on_dataset,
-        .on_activity       = inputs_note_activity,
-        .on_received_write = app_state_on_received_write,
+        .on_view           = ha_input_on_view,
+        .on_dataset_entry  = ha_input_on_dataset_entry,
+        .on_dataset_commit = ha_input_on_dataset_commit,
     };
-    zigbee_start(&callbacks, app_state_dataset_hash(), app_state_shown_view_id(), wake_number,
-             battery_voltage_mv());
+    zigbee_initial_values_t initial = {
+        .wake_count    = wake_number,
+        .shown_view_id = app_state_shown_view_id(),
+        .dataset_hash  = app_state_dataset_hash(),
+        .battery_mv    = battery_voltage_mv(),
+    };
+    zigbee_start(&callbacks, &initial);
 
     /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. A
      * failed panel stays visible: no recovery (docs/behaviour.md#failure-modes). */
@@ -208,7 +213,7 @@ static device_state_t run_interview(void)
 {
     app_state_set_device_state(STATE_INTERVIEW);
     report_wake_state();  /* Z2M has no cached state yet: everything, the wake counter last */
-    zigbee_report_wake_count();
+    zigbee_report_wake_count(wake_number);
     ESP_LOGI(TAG, "staying awake for %d ms", INTERVIEW_MS);
     TickType_t start = xTaskGetTickCount();
     while (elapsed_ms(start) < INTERVIEW_MS) {  /* the PIR is ignored here */
@@ -225,7 +230,7 @@ static device_state_t run_rejoin(void)
     while (elapsed_ms(start) < REJOIN_TIMEOUT_MS) {
         if (zigbee_is_joined()) {
             ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)elapsed_ms(boot_tick));
-            zigbee_report_wake_count();  /* the only report before the push (docs/zigbee.md#when-the-device-reports) */
+            zigbee_report_wake_count(wake_number);  /* the only report before the push (docs/zigbee.md#when-the-device-reports) */
             wake_reports_pending = true;
             return STATE_ACTIVE;
         }
@@ -260,7 +265,7 @@ static void report_pending_and_occupancy(TickType_t active_since, bool *reported
 /* Tell HA we are still awake. */
 static void report_heartbeat(void)
 {
-    zigbee_report_shown_view_id();
+    zigbee_report_shown_view_id(app_state_shown_view_id());
     zigbee_report_awake(true);
     zigbee_log_neighbors();
 }

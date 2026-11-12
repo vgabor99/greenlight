@@ -1,5 +1,6 @@
-/* The display input (docs/zigbee.md#input-ha-to-device): HA's writes to the custom cluster. A view comes as four view_* attributes in
- * one write; a dataset as ds_entry writes (one per line part) followed by a ds_commit. */
+/* The display input (docs/zigbee.md#input-ha-to-device): HA's writes to the custom cluster, decoded and handed to
+ * the receiver (zigbee_callbacks_t). A view comes as four view_* attributes in one write; a dataset as ds_entry
+ * writes (one per line part) followed by a ds_commit. What they mean is the receiver's business. */
 
 #include <string.h>
 #include "esp_log.h"
@@ -11,13 +12,11 @@
 
 static const char *TAG = "zb";
 
-#define VIEW_ATTRIBUTES_ALL 0x0F  /* all four view_* attributes received */
+static view_t  pending_view;       /* view_* values received since the last delivery */
+static uint8_t pending_view_mask;  /* which of them (bit 0 = view_bits) */
+static bool    deliver_view_queued;
 
-static view_t pending_view;       /* view_* values received since the last apply */
-static uint8_t       pending_view_mask;  /* which of them (bit 0 = view_bits) */
-static bool          apply_view_queued;
-
-/* Dataset entry parts received since the last accepted commit, by line index and part */
+/* Dataset entry parts received since the last complete commit, by line index and part */
 typedef struct {
     int32_t dataset_hash;  /* -1 = none */
     bool    more;          /* another part of the line follows */
@@ -26,66 +25,19 @@ typedef struct {
 
 static staged_part_t staged_parts[DATASET_MAX_LINES][ZIGBEE_LINE_MAX_PARTS];
 
-/* ---- Callbacks ---- */
-
-static void notify_received_write(const zigbee_received_write_t *write)
-{
-    if (zigbee_context.callbacks.on_received_write) {
-        zigbee_context.callbacks.on_received_write(write);
-    }
-}
-
-static void notify_activity(void)
-{
-    if (zigbee_context.callbacks.on_activity) {
-        zigbee_context.callbacks.on_activity();
-    }
-}
-
-static void notify_view(const view_t *view, zigbee_view_result_t result)
-{
-    if (zigbee_context.callbacks.on_view) {
-        zigbee_context.callbacks.on_view(view, result);
-    }
-}
-
 /* ---- View ---- */
 
 /* Runs in the Zigbee task after the frame that carried the view_* writes has been processed, so all four
  * records of one write are in pending_view whatever their order. */
-static void apply_view(void *unused)
+static void deliver_view(void *unused)
 {
-    zigbee_received_write_t write = {.kind = ZIGBEE_WRITE_VIEW};
-    write.view.view          = pending_view;
-    write.view.received_mask = pending_view_mask;
-    apply_view_queued = false;
-    pending_view_mask = 0;
-    const view_t *view = &write.view.view;
-
-    if (write.view.received_mask != VIEW_ATTRIBUTES_ALL || view->id == 0) {
-        ESP_LOGW(TAG, "view %06lx incomplete: attributes 0x%x", (unsigned long)view->id, write.view.received_mask);
-        write.view.result = ZIGBEE_VIEW_INCOMPLETE;
-        notify_received_write(&write);
-        return;
+    view_t  view = pending_view;
+    uint8_t received_mask = pending_view_mask;
+    deliver_view_queued = false;
+    pending_view_mask   = 0;
+    if (zigbee_context.callbacks.on_view) {
+        zigbee_context.callbacks.on_view(&view, received_mask);
     }
-    if (view->dataset_hash == 0 || view->dataset_hash != zigbee_context.dataset_hash) {
-        ESP_LOGW(TAG, "view %06lx out of sync: for dataset %06lx, stored %06lx", (unsigned long)view->id,
-                 (unsigned long)view->dataset_hash, (unsigned long)zigbee_context.dataset_hash);
-        write.view.result = ZIGBEE_VIEW_OUT_OF_SYNC;
-        notify_view(view, write.view.result);
-        notify_received_write(&write);
-        notify_activity();
-        zigbee_report_dataset_hash_lock_held();  /* tells HA which dataset the device has */
-        return;
-    }
-    write.view.result = view->id == zigbee_context.shown_view_id ? ZIGBEE_VIEW_TIME_ONLY : ZIGBEE_VIEW_NEW;
-    ESP_LOGI(TAG, "view %06lx %s: bits %08lx time %lu", (unsigned long)view->id,
-             write.view.result == ZIGBEE_VIEW_NEW ? "accepted" : "time only", (unsigned long)view->bits,
-             (unsigned long)view->time);
-    notify_view(view, write.view.result);
-    zigbee_context.shown_view_id = view->id;
-    notify_received_write(&write);
-    zigbee_report_shown_view_id_lock_held();
 }
 
 static void handle_view_write(uint16_t attribute, uint32_t value)
@@ -94,9 +46,9 @@ static void handle_view_write(uint16_t attribute, uint32_t value)
     int       index = attribute - ATTR_VIEW_BITS;
     *fields[index] = value;
     pending_view_mask |= 1 << index;
-    if (!apply_view_queued) {
-        if (esp_zigbee_task_queue_post(apply_view, NULL) == ESP_OK) {
-            apply_view_queued = true;
+    if (!deliver_view_queued) {
+        if (esp_zigbee_task_queue_post(deliver_view, NULL) == ESP_OK) {
+            deliver_view_queued = true;
         } else {
             ESP_LOGE(TAG, "could not queue the view");
         }
@@ -187,13 +139,13 @@ static bool parse_entry_header(const uint8_t *s, entry_header_t *header)
 /* "HHHHHH|II|text": stage one part of a line. */
 static void handle_dataset_entry_write(const uint8_t *s)
 {
-    size_t                  length = s[0];
-    zigbee_received_write_t write = {.kind = ZIGBEE_WRITE_DATASET_ENTRY, .entry = {.dataset_hash = -1}};
-    entry_header_t          header;
+    size_t                 length = s[0];
+    zigbee_dataset_entry_t entry = {.dataset_hash = -1};
+    entry_header_t         header;
     if (!parse_entry_header(s, &header)) {
         ESP_LOGW(TAG, "ds_entry: not a valid entry (length %u)", (unsigned)length);
-        memcpy(write.entry.text, &s[1], length > ZIGBEE_PART_MAX_BYTES ? ZIGBEE_PART_MAX_BYTES : length);
-        utf8_sanitize(write.entry.text);
+        memcpy(entry.text, &s[1], length > ZIGBEE_PART_MAX_BYTES ? ZIGBEE_PART_MAX_BYTES : length);
+        utf8_sanitize(entry.text);
     } else {
         size_t         text_length = length - 10;
         staged_part_t *staged = &staged_parts[header.line][header.part];
@@ -202,16 +154,17 @@ static void handle_dataset_entry_write(const uint8_t *s)
         memset(staged->text, 0, sizeof(staged->text));
         memcpy(staged->text, &s[11], text_length);
         utf8_sanitize(staged->text);
-        write.entry.dataset_hash = header.dataset_hash;
-        write.entry.index        = header.line;
-        write.entry.part         = header.part;
-        write.entry.more         = header.more;
-        memcpy(write.entry.text, staged->text, sizeof(write.entry.text));
+        entry.dataset_hash = header.dataset_hash;
+        entry.index        = header.line;
+        entry.part         = header.part;
+        entry.more         = header.more;
+        memcpy(entry.text, staged->text, sizeof(entry.text));
         ESP_LOGI(TAG, "ds_entry %02d.%d%s for %06lx: \"%s\" (%u bytes)", header.line, header.part,
                  header.more ? "+" : "", (unsigned long)header.dataset_hash, staged->text, (unsigned)text_length);
     }
-    notify_received_write(&write);
-    notify_activity();
+    if (zigbee_context.callbacks.on_dataset_entry) {
+        zigbee_context.callbacks.on_dataset_entry(&entry);
+    }
 }
 
 /* Join the staged lines of the dataset `hash` into dataset. -1 when every line is there, else the first line that
@@ -229,43 +182,25 @@ static int assemble_dataset(uint32_t hash, uint8_t count, dataset_t *dataset)
     return -1;
 }
 
-/* The commit value: bits 0-23 the dataset hash, bits 24-31 the line count. */
+/* The commit value: bits 0-23 the dataset hash, bits 24-31 the line count. Delivered with the dataset its staged
+ * entries make up, if they all arrived. */
 static void handle_dataset_commit_write(uint32_t value)
 {
-    zigbee_received_write_t write = {
-        .kind   = ZIGBEE_WRITE_DATASET_COMMIT,
-        .commit = {.hash = value & 0xFFFFFF, .count = value >> 24},
-    };
-    uint32_t hash  = write.commit.hash;
-    uint8_t  count = write.commit.count;
-    if (count > DATASET_MAX_LINES || hash == 0) {
-        ESP_LOGW(TAG, "ds_commit %06lx: bad count %u", (unsigned long)hash, count);
-        write.commit.result = ZIGBEE_COMMIT_BAD_COUNT;
-    } else if (hash == zigbee_context.dataset_hash) {
-        ESP_LOGI(TAG, "ds_commit %06lx: already stored", (unsigned long)hash);
-        write.commit.result = ZIGBEE_COMMIT_ALREADY_STORED;
-        zigbee_report_dataset_hash_lock_held();  /* re-acknowledge */
-    } else {
-        static dataset_t dataset;
-        int                     first_missing = assemble_dataset(hash, count, &dataset);
+    static dataset_t        dataset;
+    zigbee_dataset_commit_t commit = {.hash = value & 0xFFFFFF, .count = value >> 24};
+    commit.well_formed = commit.hash != 0 && commit.count <= DATASET_MAX_LINES;
+    if (commit.well_formed) {
+        int first_missing = assemble_dataset(commit.hash, commit.count, &dataset);
         if (first_missing >= 0) {
-            ESP_LOGW(TAG, "ds_commit %06lx rejected: entry %02d missing a part or for another dataset",
-                     (unsigned long)hash, first_missing);
-            write.commit.result        = ZIGBEE_COMMIT_REJECTED;
-            write.commit.first_missing = first_missing;
+            commit.first_missing = first_missing;
         } else {
-            write.commit.result = ZIGBEE_COMMIT_STORED;
+            commit.dataset = &dataset;
             clear_staged_parts();  /* used up */
-            if (zigbee_context.callbacks.on_dataset) {
-                zigbee_context.callbacks.on_dataset(&dataset);
-            }
-            zigbee_context.dataset_hash = hash;
-            ESP_LOGI(TAG, "ds_commit %06lx accepted: %u entries", (unsigned long)hash, count);
-            zigbee_report_dataset_hash_lock_held();
         }
     }
-    notify_received_write(&write);
-    notify_activity();
+    if (zigbee_context.callbacks.on_dataset_commit) {
+        zigbee_context.callbacks.on_dataset_commit(&commit);
+    }
 }
 
 /* ---- Custom cluster handlers ---- */

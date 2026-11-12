@@ -53,16 +53,6 @@ static void set_and_report(uint16_t cluster, uint16_t attribute, void *value)
     zigbee_send_report(cluster, attribute, false);
 }
 
-void zigbee_report_shown_view_id_lock_held(void)
-{
-    set_and_report(CUSTOM_CLUSTER_ID, ATTR_SHOWN_VIEW_ID, &zigbee_context.shown_view_id);
-}
-
-void zigbee_report_dataset_hash_lock_held(void)
-{
-    set_and_report(CUSTOM_CLUSTER_ID, ATTR_DATASET_HASH, &zigbee_context.dataset_hash);
-}
-
 /* LiPo charge in half percents (ZCL batteryPercentageRemaining, 200 = 100 %), interpolated in a rough open-circuit
  * voltage curve. */
 uint8_t zigbee_battery_half_percent(uint16_t mv)
@@ -107,24 +97,25 @@ void zigbee_reports_on_default_response(const ezb_zcl_cmd_default_rsp_message_t 
 
 /* ---- Public API ---- */
 
-void zigbee_report_wake_count(void)
+/* The Zigbee lock is recursive, so these also work from the receiver's callbacks, which run in the Zigbee task. */
+void zigbee_report_wake_count(uint32_t wake_count)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    set_and_report(CUSTOM_CLUSTER_ID, ATTR_WAKE_COUNT, &zigbee_context.wake_count);
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_WAKE_COUNT, &wake_count);
     esp_zigbee_lock_release();
 }
 
-void zigbee_report_shown_view_id(void)
+void zigbee_report_shown_view_id(uint32_t view_id)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    zigbee_report_shown_view_id_lock_held();
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_SHOWN_VIEW_ID, &view_id);
     esp_zigbee_lock_release();
 }
 
-void zigbee_report_dataset_hash(void)
+void zigbee_report_dataset_hash(uint32_t dataset_hash)
 {
     esp_zigbee_lock_acquire(portMAX_DELAY);
-    zigbee_report_dataset_hash_lock_held();
+    set_and_report(CUSTOM_CLUSTER_ID, ATTR_DATASET_HASH, &dataset_hash);
     esp_zigbee_lock_release();
 }
 

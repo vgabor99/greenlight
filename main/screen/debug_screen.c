@@ -84,29 +84,28 @@ static void draw_row(int y, const char *format, ...)
     draw_text(LEFT_MARGIN, y, text);
 }
 
-static void draw_received_write(int y, const app_state_received_write_t *received)
+static void draw_received_write(int y, const received_write_t *write)
 {
     static const char *const view_results[]   = {"OK", "TIME", "OOS", "PART"};
     static const char *const commit_results[] = {"OK", "SAME", "BAD N", "REJ"};
-    _Static_assert(sizeof(view_results) / sizeof(view_results[0]) == ZIGBEE_VIEW_INCOMPLETE + 1, "view results");
-    _Static_assert(sizeof(commit_results) / sizeof(commit_results[0]) == ZIGBEE_COMMIT_REJECTED + 1, "commit results");
+    _Static_assert(sizeof(view_results) / sizeof(view_results[0]) == VIEW_INCOMPLETE + 1, "view results");
+    _Static_assert(sizeof(commit_results) / sizeof(commit_results[0]) == COMMIT_REJECTED + 1, "commit results");
     char time[12];
-    snprintf(time, sizeof(time), "%lu.%lu", (unsigned long)(received->uptime_ms / 1000),
-             (unsigned long)(received->uptime_ms % 1000 / 100));
-    const zigbee_received_write_t *write = &received->write;
+    snprintf(time, sizeof(time), "%lu.%lu", (unsigned long)(write->uptime_ms / 1000),
+             (unsigned long)(write->uptime_ms % 1000 / 100));
     switch (write->kind) {
-    case ZIGBEE_WRITE_VIEW: {
+    case RECEIVED_VIEW: {
         const view_t *view = &write->view.view;
-        if (write->view.result == ZIGBEE_VIEW_OUT_OF_SYNC) {
+        if (write->view.result == VIEW_OUT_OF_SYNC) {
             draw_row(y, "%s V %06lX OOS ds=%06lX", time, (unsigned long)view->id, (unsigned long)view->dataset_hash);
-        } else if (write->view.result == ZIGBEE_VIEW_INCOMPLETE) {
+        } else if (write->view.result == VIEW_INCOMPLETE) {
             draw_row(y, "%s V %06lX PART m=%X", time, (unsigned long)view->id, write->view.received_mask);
         } else {
             draw_row(y, "%s V %06lX b=%08lX %s", time, (unsigned long)view->id, (unsigned long)view->bits,
                      view_results[write->view.result]);
         }
     } break;
-    case ZIGBEE_WRITE_DATASET_ENTRY:
+    case RECEIVED_DATASET_ENTRY:
         if (write->entry.dataset_hash < 0) {
             draw_row(y, "%s E bad %s", time, write->entry.text);
         } else {
@@ -114,8 +113,8 @@ static void draw_received_write(int y, const app_state_received_write_t *receive
                      write->entry.text);
         }
         break;
-    case ZIGBEE_WRITE_DATASET_COMMIT:
-        if (write->commit.result == ZIGBEE_COMMIT_REJECTED) {
+    case RECEIVED_DATASET_COMMIT:
+        if (write->commit.result == COMMIT_REJECTED) {
             draw_row(y, "%s D %06lX n=%u REJ idx=%u", time, (unsigned long)write->commit.hash, write->commit.count,
                      write->commit.first_missing);
         } else {

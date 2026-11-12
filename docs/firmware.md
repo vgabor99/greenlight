@@ -9,19 +9,20 @@ knows only the ones below it, so a different panel or a different screen design 
 
 | Concern | Where | Knows nothing of |
 |---|---|---|
-| The data HA and the device share ([data-model.md](data-model.md)): dataset, view, line format | `data_model.c` | Zigbee, the screens, the panel |
-| The application state, and from it alone what should be on the screen: which screen, the shown lines, stale or not; no sizes, texts or icons | `app/` | the screens, the panel |
+| The data HA and the device share ([data-model.md](data-model.md)): dataset, view, line format, and the rule for what a view means | `data_model.c` | Zigbee, the screens, the panel |
+| The application state, and from it alone what should be on the screen: which screen, the shown lines, stale or not; no sizes, texts or icons. Applies and acknowledges what HA sends | `app/` | the screens, the panel |
 | The UI: lays the screen out and draws it into a framebuffer of the panel's size | `screen/` | the state machine, Zigbee, the panel driver |
 | The output device: the panel driver and its refresh policy | `panel/` | what a frame shows |
 | Keeping the panel showing the state: snapshot, draw, send, and when to redraw | `display/` | how a screen looks |
-| The transport to HA | `zigbee/` | the application state (the state machine hands it callbacks), the screens |
+| The transport to HA: decodes HA's writes into views, dataset entries and commits, sends the reports it is asked to | `zigbee/` | what the data means: the application state, the rules, the screens |
 | Behaviour: states, timeouts, reports, sleep | `state_machine.c` | how the screens look, the panel |
 | The board and storage: pins, inputs, battery, sleep, NVS | `board/`, `persistent_store.c` | the application |
 | Diagnostics | `console.c`, the debug screen, `SCREEN_DUMP` | |
 
 Dependencies point down: `state_machine.c` -> `display/` -> `screen/` -> `panel/` -> `board/`. The state machine,
-`display/` and `screen/` read `app/`, which uses only `data_model.c`, `persistent_store.c`, the battery and the Zigbee
-callback types. So another 1-bit panel changes `panel/` (the size follows) and the layout constants in
+`display/` and `screen/` read `app/`, which uses `data_model.c`, `persistent_store.c`, the battery and the inputs,
+and `zigbee/` to acknowledge what HA sent. `zigbee/` calls back into `app/ha_input.c` only through the callbacks the
+state machine hands it. So another 1-bit panel changes `panel/` (the size follows) and the layout constants in
 `screen/status_screen.c` and the bitmaps; another screen design changes `screen/status_screen.c`.
 
 | Path | Purpose |
@@ -30,7 +31,7 @@ callback types. So another 1-bit panel changes `panel/` (the size follows) and t
 | `state_machine.c` | the states and timeouts ([behaviour.md](behaviour.md)) |
 | `console.c` | USB console commands (`bat`, `usb`, `vbat`) |
 | `persistent_store.c` | NVS keys and access ([Persistent state](#persistent-state)) |
-| `data_model.c` | dataset, view and line types and limits, the line format parser |
+| `data_model.c` | dataset, view and line types and limits, the line format parser, what a view means |
 | `board/board.c` | pin map (`board.h`), RF switch |
 | `board/inputs.c` | PIR and pair button: polling, debounce, occupancy hold |
 | `board/battery.c` | battery voltage and USB power (measured, or the console's overrides), low-battery latch |
@@ -39,6 +40,7 @@ callback types. So another 1-bit panel changes `panel/` (the size follows) and t
 | `board/sleep.c` | deep sleep (or the simulated sleep) |
 | `board/wake_reason.c` | the wake cause, logged at boot |
 | `app/app_state.c` | the mutex-guarded application state (device state, wake failure, dataset, shown view, received writes), its snapshot, the Zigbee callbacks |
+| `app/ha_input.c` | HA's views and datasets: checked against the state, applied, acknowledged ([zigbee.md](zigbee.md#input-ha-to-device)) |
 | `app/screen_content.c` | what should be on the screen for a state (`screen_content_of()`) |
 | `app/device_state.c` | the device states and wake failures |
 | `app/view_freshness.c` | staleness deadline in RTC memory ([data-model.md](data-model.md#staleness-flag)) |
@@ -55,7 +57,7 @@ callback types. So another 1-bit panel changes `panel/` (the size follows) and t
 | `panel/frame_dump.c` | `SCREEN_DUMP` output of a frame |
 | `zigbee/zigbee.c` | stack, network, public API |
 | `zigbee/zigbee_device.c` | endpoint and clusters ([zigbee.md](zigbee.md#endpoint-and-clusters)) |
-| `zigbee/zigbee_display_input.c` | view and dataset writes ([zigbee.md](zigbee.md#input-ha-to-device)) |
+| `zigbee/zigbee_display_input.c` | decodes the view and dataset writes, reassembles the dataset ([zigbee.md](zigbee.md#input-ha-to-device)) |
 | `zigbee/zigbee_reports.c` | reports to the coordinator and their confirmations ([zigbee.md](zigbee.md#state-device-to-ha)) |
 | `zigbee/zigbee_internal.h` | shared between the `zigbee/` files only |
 | `util/utf8.c`, `util/hex.h`, `util/elapsed_time.h` | helpers |
@@ -79,8 +81,9 @@ ESP-IDF QEMU container; `.clangd` strips `-f*` / `-m*` flags so clangd copes wit
 
 - `app_main()` sets up the parts in order, then runs the state machine (`state_machine_run()`) in the main task.
 - `input_task` polls and debounces D0 and D1 (level based); `console_task` reads the console commands.
-- The Zigbee task runs the stack. Its callbacks update the mutex-guarded application state (`app/app_state.c`),
-  which counts its changes. A view write is applied by `apply_view()` after the whole frame has been processed.
+- The Zigbee task runs the stack and decodes HA's writes; a view is handed on by `deliver_view()` after the whole
+  frame has been processed. In the same task `app/ha_input.c` checks each against the mutex-guarded application
+  state (`app/app_state.c`, which counts its changes), applies it and sends the acknowledgement.
 - The state loops wait with `display_wait_ms()`. It takes a snapshot of the state and redraws when the screen would
   change (`render_is_outdated()`): the proper screen when what should be on it changes (the staleness flag
   included), the debug screen on any change of the state, the shown age or the battery simulation. So a burst of

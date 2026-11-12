@@ -2,7 +2,8 @@
 
 The device's Zigbee interface: identity, clusters, the state it reports and the writes it accepts. The firmware
 side is `main/zigbee/` (`zigbee_device.c` declares the clusters, `zigbee_reports.c` sends the reports,
-`zigbee_display_input.c` handles the writes); the Z2M side is `z2m/greenlight.mjs`. What the values mean is in
+`zigbee_display_input.c` decodes the writes, which `main/app/ha_input.c` applies and acknowledges); the Z2M side
+is `z2m/greenlight.mjs`. What the values mean is in
 [data-model.md](data-model.md).
 
 The device is a **sleepy end device**: rx-on-when-idle off, it polls its parent every `PARENT_POLL_MS` (50 ms)
@@ -112,7 +113,7 @@ contract; the names exist only in Z2M. A numeric key with an explicit type (`{"4
 
 **All four `view_*` attributes in one write, one frame** (28 bytes of ZCL payload, 4 records of 7 bytes). HA
 sends it on every wake, whenever its view changes while the device is awake, and every 5 s while awake. The
-device collects the four values and applies them once the whole frame has been processed (`apply_view()`,
+device collects the four values and applies them once the whole frame has been processed (`deliver_view()`,
 deferred to the Zigbee task's next turn, after the frame), so the order of the records does not matter:
 
 - `view_ds` != stored `dataset_hash`: **out of sync**. Nothing changes on the screen; `shown_view_id` is not

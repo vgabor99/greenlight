@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "app/device_state.h"
 #include "data_model.h"
-#include "zigbee/zigbee.h"
 
 /* The application state (docs/firmware.md#tasks-and-data-flow): the device state, the stored dataset, the view on
  * the panel and how current it is, and the writes HA sent in this wake. The state machine and the Zigbee task change
@@ -21,10 +20,40 @@ typedef struct {
     char    lines[DATASET_MAX_LINES][LINE_MAX_BYTES + 1];  /* in dataset order, "II|name|state" */
 } shown_view_t;
 
+/* One write HA sent and what came of it (app/ha_input.c), for the debug screen. */
+typedef enum { RECEIVED_VIEW, RECEIVED_DATASET_ENTRY, RECEIVED_DATASET_COMMIT } received_kind_t;
+
+typedef enum {
+    COMMIT_STORED,
+    COMMIT_ALREADY_STORED,  /* the stored dataset already has this hash */
+    COMMIT_BAD_COUNT,       /* count > DATASET_MAX_LINES or hash 0 */
+    COMMIT_REJECTED,        /* a line is missing a part, or has one for another dataset */
+} commit_result_t;
+
 typedef struct {
-    uint32_t                uptime_ms;  /* when it arrived */
-    zigbee_received_write_t write;
-} app_state_received_write_t;
+    uint32_t        uptime_ms;  /* when it arrived */
+    received_kind_t kind;
+    union {
+        struct {
+            view_t        view;
+            view_result_t result;
+            uint8_t       received_mask;  /* VIEW_INCOMPLETE: which fields arrived (bit 0 = bits) */
+        } view;
+        struct {
+            int32_t dataset_hash;  /* the dataset it is for; -1 = not a valid entry */
+            uint8_t index;
+            uint8_t part;          /* a long line comes in parts */
+            bool    more;          /* another part of this line follows */
+            char    text[LINE_MAX_BYTES + 1];
+        } entry;
+        struct {
+            uint32_t        hash;
+            uint8_t         count;
+            commit_result_t result;
+            uint8_t         first_missing;  /* REJECTED: the first line missing a part or wrongly tagged */
+        } commit;
+    };
+} received_write_t;
 
 /* Everything a screen may show, at one moment (app_state_snapshot()). */
 typedef struct {
@@ -46,7 +75,7 @@ typedef struct {
     bool                       battery_low;    /* latched or below the threshold */
     uint32_t                   battery_simulation_changes;
     int                        received_write_count;
-    app_state_received_write_t received_writes[APP_STATE_RECEIVED_WRITES];  /* newest first */
+    received_write_t received_writes[APP_STATE_RECEIVED_WRITES];  /* newest first */
 } app_state_t;
 
 void app_state_init(void);  /* before any other call */
@@ -66,7 +95,7 @@ bool     app_state_view_received(void);  /* a view was applied in this wake */
 
 void app_state_snapshot(app_state_t *state);
 
-/* Zigbee callbacks (zigbee_callbacks_t), called in the Zigbee task */
-void app_state_on_view(const view_t *view, zigbee_view_result_t result);
-void app_state_on_dataset(const dataset_t *dataset);
-void app_state_on_received_write(const zigbee_received_write_t *write);
+/* HA's input, once app/ha_input.c has checked it */
+void app_state_apply_view(const view_t *view, view_result_t result);  /* NEW shows it, TIME_ONLY renews it */
+void app_state_store_dataset(const dataset_t *dataset);
+void app_state_note_received(const received_write_t *write);           /* for the debug screen; tracks syncing */

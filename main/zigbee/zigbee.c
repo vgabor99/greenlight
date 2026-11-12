@@ -189,14 +189,10 @@ static void stack_task(void *arg)
 
 /* ---- Public API ---- */
 
-void zigbee_start(const zigbee_callbacks_t *callbacks, uint32_t dataset_hash, uint32_t shown_view_id,
-                  uint32_t wake_count, uint16_t battery_mv)
+void zigbee_start(const zigbee_callbacks_t *callbacks, const zigbee_initial_values_t *initial)
 {
-    zigbee_context.callbacks     = *callbacks;
-    zigbee_context.battery_mv    = battery_mv;
-    zigbee_context.dataset_hash  = dataset_hash;
-    zigbee_context.shown_view_id = shown_view_id;
-    zigbee_context.wake_count    = wake_count;
+    zigbee_context.callbacks = *callbacks;
+    zigbee_context.initial   = *initial;
     zigbee_display_input_init();
     zigbee_context.events = xEventGroupCreate();
     const esp_timer_create_args_t timer_args = {.callback = retry_commissioning, .name = "zb_retry"};

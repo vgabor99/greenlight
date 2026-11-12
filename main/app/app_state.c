@@ -34,7 +34,7 @@ static shown_view_t               shown;
 static bool                       out_of_sync;    /* the last view received was for another dataset (not stored) */
 static bool                       syncing;        /* dataset entries arrived and their commit has not */
 static volatile bool              view_received;  /* a view was applied in this wake (VIEW_WAIT_MS) */
-static app_state_received_write_t received_writes[APP_STATE_RECEIVED_WRITES];  /* ring; next_write_slot is the next slot */
+static received_write_t received_writes[APP_STATE_RECEIVED_WRITES];  /* ring; next_write_slot is the next slot */
 static int                        next_write_slot, received_write_count;
 
 void app_state_init(void)
@@ -87,12 +87,18 @@ wake_failure_t app_state_wake_failure(void)
 
 uint32_t app_state_dataset_hash(void)
 {
-    return dataset.hash;
+    xSemaphoreTake(lock, portMAX_DELAY);
+    uint32_t hash = dataset.hash;
+    xSemaphoreGive(lock);
+    return hash;
 }
 
 uint32_t app_state_shown_view_id(void)
 {
-    return shown.view.id;
+    xSemaphoreTake(lock, portMAX_DELAY);
+    uint32_t id = shown.view.id;
+    xSemaphoreGive(lock);
+    return id;
 }
 
 bool app_state_view_received(void)
@@ -149,18 +155,18 @@ static void log_shown_view(void)
     }
 }
 
-void app_state_on_view(const view_t *view, zigbee_view_result_t result)
+void app_state_apply_view(const view_t *view, view_result_t result)
 {
-    bool accepted = result == ZIGBEE_VIEW_NEW || result == ZIGBEE_VIEW_TIME_ONLY;
+    bool accepted = result == VIEW_NEW || result == VIEW_TIME_ONLY;
     xSemaphoreTake(lock, portMAX_DELAY);
-    out_of_sync = result == ZIGBEE_VIEW_OUT_OF_SYNC;
+    out_of_sync = result == VIEW_OUT_OF_SYNC;
     if (accepted) {
         view_received = true;
         view_freshness_renew();
     }
-    if (result == ZIGBEE_VIEW_NEW) {
+    if (result == VIEW_NEW) {
         show_view(view);
-    } else if (result == ZIGBEE_VIEW_TIME_ONLY) {
+    } else if (result == VIEW_TIME_ONLY) {
         shown.view.time = view->time;
     }
     changes++;
@@ -168,12 +174,12 @@ void app_state_on_view(const view_t *view, zigbee_view_result_t result)
     if (accepted) {
         persistent_store_save_blob(STORE_KEY_SHOWN_VIEW, &shown, shown_view_stored_size(&shown));
     }
-    if (result == ZIGBEE_VIEW_NEW) {
+    if (result == VIEW_NEW) {
         log_shown_view();
     }
 }
 
-void app_state_on_dataset(const dataset_t *new_dataset)
+void app_state_store_dataset(const dataset_t *new_dataset)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
     dataset = *new_dataset;
@@ -183,16 +189,16 @@ void app_state_on_dataset(const dataset_t *new_dataset)
     ESP_LOGI(TAG, "dataset %06lx stored: %u lines", (unsigned long)new_dataset->hash, new_dataset->count);
 }
 
-void app_state_on_received_write(const zigbee_received_write_t *write)
+void app_state_note_received(const received_write_t *write)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
-    if (write->kind == ZIGBEE_WRITE_DATASET_ENTRY && write->entry.dataset_hash >= 0) {
+    if (write->kind == RECEIVED_DATASET_ENTRY && write->entry.dataset_hash >= 0) {
         syncing = true;
-    } else if (write->kind == ZIGBEE_WRITE_DATASET_COMMIT) {
+    } else if (write->kind == RECEIVED_DATASET_COMMIT) {
         syncing = false;
     }
-    received_writes[next_write_slot] =
-        (app_state_received_write_t){.uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount()), .write = *write};
+    received_writes[next_write_slot]           = *write;
+    received_writes[next_write_slot].uptime_ms = pdTICKS_TO_MS(xTaskGetTickCount());
     next_write_slot = (next_write_slot + 1) % APP_STATE_RECEIVED_WRITES;
     if (received_write_count < APP_STATE_RECEIVED_WRITES) {
         received_write_count++;

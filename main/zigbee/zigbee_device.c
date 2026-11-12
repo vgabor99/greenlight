@@ -17,6 +17,7 @@ static uint32_t commit_attribute;
 static uint8_t  entry_attribute[ENTRY_MAX_CHARS + 1];
 static uint32_t state_attributes[3];  /* wake_count, shown_view_id, dataset_hash */
 static bool     awake_attribute;
+static uint16_t battery_mv_attribute;
 
 /* Add an attribute to a cluster descriptor and say so if the stack refuses it. */
 #define ADD_ATTR(fn, desc, id, value)                                                       \
@@ -66,7 +67,7 @@ static ezb_zcl_cluster_desc_t create_power_config_cluster(void)
         .mains_voltage_max_threshold = EZB_ZCL_POWER_CONFIG_MAINS_VOLTAGE_MAX_THRESHOLD_DEFAULT_VALUE,
     };
     ezb_zcl_cluster_desc_t power = ezb_zcl_power_config_create_cluster_desc(&config, EZB_ZCL_CLUSTER_SERVER);
-    uint16_t mv = zigbee_context.battery_mv;
+    uint16_t mv = zigbee_context.initial.battery_mv;
     uint8_t  voltage_100mv = mv / 100, half_percent = zigbee_battery_half_percent(mv);
     uint8_t  size = EZB_ZCL_POWER_CONFIG_BATTERY_SIZE_OTHER, quantity = 1, rated_voltage_100mv = 37;
     uint16_t capacity_10mah = 100;  /* 1000 mAh */
@@ -137,14 +138,15 @@ static ezb_zcl_cluster_desc_t create_custom_cluster(void)
     memset(&entry_attribute[1], ' ', ENTRY_MAX_CHARS);
     add_custom_attribute(custom, ATTR_DATASET_ENTRY, EZB_ZCL_ATTR_TYPE_STRING, writable, entry_attribute);
     add_custom_attribute(custom, ATTR_DATASET_COMMIT, EZB_ZCL_ATTR_TYPE_UINT32, writable, &commit_attribute);
-    state_attributes[0] = zigbee_context.wake_count;
-    state_attributes[1] = zigbee_context.shown_view_id;
-    state_attributes[2] = zigbee_context.dataset_hash;
+    state_attributes[0]  = zigbee_context.initial.wake_count;
+    state_attributes[1]  = zigbee_context.initial.shown_view_id;
+    state_attributes[2]  = zigbee_context.initial.dataset_hash;
+    battery_mv_attribute = zigbee_context.initial.battery_mv;
     for (int i = 0; i < 3; i++) {  /* wake_count, shown_view_id, dataset_hash */
         add_custom_attribute(custom, ATTR_WAKE_COUNT + i, EZB_ZCL_ATTR_TYPE_UINT32, reported, &state_attributes[i]);
     }
     add_custom_attribute(custom, ATTR_AWAKE, EZB_ZCL_ATTR_TYPE_BOOL, reported, &awake_attribute);
-    add_custom_attribute(custom, ATTR_BATTERY_MV, EZB_ZCL_ATTR_TYPE_UINT16, reported, &zigbee_context.battery_mv);
+    add_custom_attribute(custom, ATTR_BATTERY_MV, EZB_ZCL_ATTR_TYPE_UINT16, reported, &battery_mv_attribute);
     return custom;
 }
 

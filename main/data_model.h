@@ -24,6 +24,17 @@ typedef struct {
     uint32_t id;            /* 24-bit id chosen by HA, not 0 */
 } view_t;
 
+/* What a view means for the device (docs/data-model.md#view). */
+typedef enum {
+    VIEW_NEW,          /* new content: show it */
+    VIEW_TIME_ONLY,    /* the id of the shown view: only the time is new */
+    VIEW_OUT_OF_SYNC,  /* for another dataset than the stored one: nothing changes */
+    VIEW_INCOMPLETE,   /* not a whole view (a field missing, or id 0): nothing changes */
+} view_result_t;
+
+/* The rule for a whole view, given the stored dataset's hash and the shown view's id (0 = none). */
+view_result_t data_model_check_view(const view_t *view, uint32_t dataset_hash, uint32_t shown_view_id);
+
 /* Line i of the dataset is active in the view. */
 bool data_model_line_active(const view_t *view, int line);
 
