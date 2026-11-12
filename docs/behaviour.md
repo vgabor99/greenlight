@@ -12,32 +12,13 @@ How the device reacts to its inputs: states, timeouts, sleep, pairing, low batte
 
 Both inputs are polled and debounced by `input_task` (level based). "Activity" below means: PIR active **or**
 pair button pressed. Either one wakes the device from sleep, and either one holds the `IDLE_TIMEOUT_MS`
-timeout. HA's writes are not activity: they keep the device awake for a time of their own (`DATASET_SYNC_HOLD_MS`,
-`RESYNC_HOLD_MS`). The wake ends once there has been no activity for `IDLE_TIMEOUT_MS` and no such hold is left.
-The 3 s hold is measured from when the button went down; a button still held from the wake-up counts from boot. So
-one continuous 3 s hold from sleep is enough, both to start pairing (unpaired) and to reset the network (paired).
-The PIR's own hold time is ignored.
+timeout. The PIR's own hold time is ignored. HA's writes are not activity: they keep the device awake for a time
+of their own (`DATASET_SYNC_HOLD_MS`, `RESYNC_HOLD_MS`). The wake ends once there has been no activity for
+`IDLE_TIMEOUT_MS` and no such hold is left.
 
-## Timeouts
-
-| Name | Value | Meaning |
-|---|---|---|
-| `IDLE_TIMEOUT_MS` | 20 s | activity timeout. Held at full while the PIR is active or the pair button is pressed, counts down after release, re-armed by any new activation. At 0, with no hold left, the device shuts down. UNPAIRED and ACTIVE also hold the wake this long when they begin. Long enough to see a push arrive after a wake. |
-| `DATASET_SYNC_HOLD_MS` | 20 s | each `ds_entry` and `ds_commit` keeps the device awake this long, for the next part or the view after the commit ([zigbee.md](zigbee.md#dataset-sync)). |
-| `RESYNC_HOLD_MS` | 20 s | an out-of-sync view keeps the device awake this long, for HA to see `dataset_hash` and start the sync ([zigbee.md](zigbee.md#view-push)). |
-| `PAIRING_WINDOW_MS` | 180 s | length of the pairing window. |
-| `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
-| `PAIR_BUTTON_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
-| `STACK_START_TIMEOUT_MS` | 30 s | BOOT waits this long for the Zigbee stack to report whether it restored a network ([Pairing](#pairing)). |
-| `REJOIN_TIMEOUT_MS` | 15 s | give up a rejoin after this long (a rejoin normally takes about 1.5 s). |
-| `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend ([home-assistant.md](home-assistant.md#push-automation)). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
-| `HEARTBEAT_MS` | 30 s | ACTIVE repeats `awake` + `shown_view_id` this often. |
-| `WAKE_REPORTS_DELAY_MS` | 2 s | after a rejoin, the reports that follow the wake counter ([zigbee.md](zigbee.md#when-the-device-reports)). |
-| `OCCUPANCY_HOLD_MS` | 5 s | reported occupancy: the PIR was active within this long. A PIR wake counts as PIR activity at boot, so the wake's short pulse, long over when the wake's reports go out (about 3.5 s after boot after a fast rejoin), is still reported. After a slow rejoin it may be lost. |
-| `GOODBYE_TIMEOUT_MS` | 5 s | SHUTDOWN waits up to this long for Z2M to confirm `occupancy` = 0 and `awake` = false. |
-| `VIEW_VALID_MS` | 8 s | a received view is fresh this long ([data-model.md](data-model.md#staleness-flag)): HA's 5 s push period while awake plus 3 s for the push to arrive (normally 0.1-1.3 s). |
-| `BATTERY_CHECK_MS` | 1 s | mid-wake battery check period ([Low battery](#low-battery)). |
-| `BATTERY_REPORT_TIMEOUT_MS` | 10 s | SHUTDOWN resends the low-battery report up to this long until Z2M confirms it ([Low battery](#low-battery)). |
+The 3 s hold of the pair button is measured from when the button went down; a button still held from the wake-up
+counts from boot. So one continuous 3 s hold from sleep is enough, both to start pairing (unpaired) and to reset
+the network (paired).
 
 ## State machine
 
@@ -93,7 +74,7 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK (so a device whose network is gone can be paired again); `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
 | **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired, no hold left (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
-| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), draw the *Battery dead* screen; confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
+| **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()`. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), and draw the *Battery dead* screen | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
 | **LOW_BATTERY** | the *Battery dead* screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |
 
 Rules that keep it simple:
@@ -106,13 +87,34 @@ Rules that keep it simple:
 - A failed pairing never erases anything; the device stays factory new.
 - A failed rejoin never erases the network; only the pair button does.
 
+## Timeouts
+
+| Name | Value | Meaning |
+|---|---|---|
+| `IDLE_TIMEOUT_MS` | 20 s | activity timeout. Held at full while the PIR is active or the pair button is pressed, counts down after release, re-armed by any new activation. At 0, with no hold left, the device shuts down. UNPAIRED and ACTIVE also hold the wake this long when they begin. Long enough to see a push arrive after a wake. |
+| `DATASET_SYNC_HOLD_MS` | 20 s | each `ds_entry` and `ds_commit` keeps the device awake this long, for the next part or the view after the commit ([zigbee.md](zigbee.md#dataset-sync)). |
+| `RESYNC_HOLD_MS` | 20 s | an out-of-sync view keeps the device awake this long, for HA to see `dataset_hash` and start the sync ([zigbee.md](zigbee.md#view-push)). |
+| `PAIRING_WINDOW_MS` | 180 s | length of the pairing window. |
+| `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
+| `PAIR_BUTTON_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
+| `STACK_START_TIMEOUT_MS` | 30 s | BOOT waits this long for the Zigbee stack to report whether it restored a network ([Pairing](#pairing)). |
+| `REJOIN_TIMEOUT_MS` | 15 s | give up a rejoin after this long (a rejoin normally takes about 1.5 s). |
+| `VIEW_WAIT_MS` | 45 s | ACTIVE does not shut down before this long (from entering ACTIVE) while no view has been applied in this wake, so a write that Z2M lost can still arrive as HA's resend ([home-assistant.md](home-assistant.md#push-automation)). Covers HA's 20 s acknowledgement timeout plus one more 13 s Z2M recovery. Costs battery only in wakes without a view (HA or Zigbee down). |
+| `HEARTBEAT_MS` | 30 s | ACTIVE repeats `awake` + `shown_view_id` this often. |
+| `WAKE_REPORTS_DELAY_MS` | 2 s | after a rejoin, the reports that follow the wake counter ([zigbee.md](zigbee.md#when-the-device-reports)). |
+| `OCCUPANCY_HOLD_MS` | 5 s | reported occupancy: the PIR was active within this long. A PIR wake counts as PIR activity at boot, so the wake's short pulse, long over when the wake's reports go out (about 3.5 s after boot after a fast rejoin), is still reported. After a slow rejoin it may be lost. |
+| `GOODBYE_TIMEOUT_MS` | 5 s | SHUTDOWN waits up to this long for Z2M to confirm `occupancy` = 0 and `awake` = false. |
+| `VIEW_VALID_MS` | 8 s | a received view is fresh this long ([data-model.md](data-model.md#staleness-flag)): HA's 5 s push period while awake plus 3 s for the push to arrive (normally 0.1-1.3 s). |
+| `BATTERY_CHECK_MS` | 1 s | mid-wake battery check period ([Low battery](#low-battery)). |
+| `BATTERY_REPORT_TIMEOUT_MS` | 10 s | SHUTDOWN resends the low-battery report up to this long until Z2M confirms it ([Low battery](#low-battery)). |
+
 ## Panel on each wake
 
-On every wake (BOOT) the panel gets a full clear (so the controller has a valid previous frame for partial
-updates, [hardware.md](hardware.md#e-paper-panel)), then the stored view is rendered right away, in parallel
-with the rejoin. The stored view is normally stale by then, so it carries the stale badge; HA's wake push
-removes it with one partial refresh. So the screen flashes once per wake. SHUTDOWN ends with a clear and a
-final render of the current view. Between those, every redraw is a partial refresh
+On every wake (BOOT) the panel gets a full clear, then the stored view is rendered right away, in parallel with
+the rejoin. The clear is needed so that the controller has a valid previous frame for partial updates
+([hardware.md](hardware.md#e-paper-panel)), and it makes the screen flash once per wake. The stored view is
+normally stale by then, so it carries the stale badge; HA's wake push removes it with one partial refresh.
+SHUTDOWN ends with a clear and a final render of the current view. Between those, every redraw is a partial refresh
 ([display.md](display.md#refresh-policy)).
 
 ## Deep sleep

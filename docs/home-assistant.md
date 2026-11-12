@@ -52,9 +52,9 @@ alarm's arm panel, where the lobby door is open, unlocked and the alarm disarmed
 living-room lamp is the night light: moving around the ground floor at dusk turns it on and arming turns it
 off, so it is no problem for whoever is leaving. Those members (`greenlight_expected_members`:
 `alarm_control_panel.house_alarm` `disarmed`, `binary_sensor.gf_lobby_door_lock_contact`,
-`binary_sensor.gf_lobby_door_contact` and `light.gf_living_light_sw` `on`) keep their dataset lines, but
+`binary_sensor.gf_lobby_door_contact` and `light.gf_living_light_sw` `on`) keep their dataset lines.
 `greenlight_hidden_bits` masks out every line whose members are all expected: `bits` = `raw_bits` without
-`hidden`, and `view_id` is computed from the filtered `bits`, so those entities changing push nothing. The
+`hidden`. `view_id` is computed from the filtered `bits`, so a change of those entities pushes nothing. The
 alarm's unknown (`ismeretlen`) line stays a problem.
 
 ## Push automation

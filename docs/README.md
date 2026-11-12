@@ -1,7 +1,8 @@
 # Greenlight documentation
 
 Each file answers one kind of question. The design files describe the system as it is now; the past is in
-[history.md](history.md), what is still to do in [roadmap.md](roadmap.md).
+[history.md](history.md), what is still to do in [roadmap.md](roadmap.md). If you are new to the project, start
+with [architecture.md](architecture.md): it introduces the parts and links to the file that has the details.
 
 | Question | File |
 |---|---|

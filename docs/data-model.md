@@ -123,6 +123,6 @@ inverted `sync` badge is drawn over the top-right corner while the view is **sta
 
 ## State exposed by the device
 
-`awake`, `shown_view_id`, `dataset_hash` and `wake_count`, next to the battery and occupancy
-([zigbee.md](zigbee.md#state-device-to-ha)). `shown_view_id` after a redraw is the acknowledgement of a view
-push, `dataset_hash` after a store is the acknowledgement of a dataset sync.
+The device reports `awake`, `shown_view_id`, `dataset_hash` and `wake_count`, next to the battery and occupancy
+([zigbee.md](zigbee.md#state-device-to-ha)). Two of them double as acknowledgements: `shown_view_id` after a
+redraw acknowledges a view push, and `dataset_hash` after a store acknowledges a dataset sync.

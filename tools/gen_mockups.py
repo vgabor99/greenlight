@@ -14,7 +14,7 @@ Without NAME it renders every screen in screens.json. PNGs (and the SVGs) go to 
 differing pixels is printed. A new or changed screen: add or edit its entry in screens.json, render it, and copy
 the PNG into docs/uispec/mockups/ once it is accepted.
 
-screens.json maps a screen name (the render_screen_t value, house_* for the house screens) to one of:
+screens.json maps a screen name (the screen_kind_t value, house_* for the house screens) to one of:
   {"layout": "problems", "rows": [[icon, name, state], ...], "stale": bool}   up to 6 rows
   {"layout": "ok", "title": str, "lines": [str, str], "stale": bool}
   {"layout": "device", "icon": str, "text": str}

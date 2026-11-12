@@ -80,10 +80,10 @@ no badge.
 
 ## Device screens
 
-A large outline icon, centred, with one line of bold text below; no header and no stale badge. Outline icons keep these screens apart from the
-solid check of *All OK*, and the single centred line keeps them apart from the problem list. The *Pairing* screen
-adds two instruction lines under the title, with a slightly smaller icon, because it is the one screen that asks
-the user to act.
+A large outline icon, centred, with one line of bold text below; no header and no stale badge. Outline icons keep
+these screens apart from the solid check of *All OK*, and the single centred line keeps them apart from the problem
+list. The *Pairing* screen adds two instruction lines under the title, with a slightly smaller icon, because it is
+the one screen that asks the user to act.
 
 | Screen | Situation | Icon | Text |
 |---|---|---|---|
@@ -177,7 +177,7 @@ mockup. It rasterises with resvg (pip-installable, no system libraries): every p
 the accepted mockups, with 40 to 200 pixels per screen differing on glyph edges. The mockups are the target
 layout, not pixel-exact references: the firmware's own font rendering differs by a pixel here and there as well.
 
-A changed or new screen is added to `screens.json`, rendered, and accepted as a new mockup in
-[mockups/](mockups/), named after its `render_screen_t` value (`house_*` for the house screens), together with the
-text here that describes it. Then the firmware is
-changed to match and checked against it (the `regen-bitmaps` skill).
+A changed or new screen is added to `screens.json`, rendered, and accepted as a new mockup in [mockups/](mockups/),
+named after its `screen_kind_t` value in lower case without the `SCREEN_` prefix (`house_*` for the house screens;
+*Battery dead* keeps its older name, `battery`), together with the text here that describes it. Then the firmware
+is changed to match and checked against it (the `regen-bitmaps` skill).

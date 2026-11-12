@@ -50,8 +50,7 @@ As of 2026-11-11, working end to end on the bench, with the device in the lobby:
 
 **Hardware**: the PCB, whose soldered display GND fixes the BUSY hang ([hardware.md](hardware.md#busy-hang)); the
 sleep current measured on the battery, including whether the panel module's LDO (about 90 uA if it stays on) is
-off while RST is held low; the dividers
-on the PCB ([hardware.md](hardware.md#power-and-battery)).
+off while RST is held low; the dividers on the PCB ([hardware.md](hardware.md#power-and-battery)).
 
 **USB sense divider values** (decide after the sleep current is measured): on battery the XIAO's 5V pin sits at
 about 0.33 V from a stiff leak (about 20k behind it), so the USB sense divider draws about 1.2 uA in deep sleep
@@ -80,10 +79,10 @@ in the converter):
 
 **Screens rendered on the PC.** Build the screen code (`main/screen/`: `status_screen.c`, `render.c`,
 `bitmap_text.c`, `bitmaps.c`, `framebuffer.c`, with `main/app/screen_content.c` and `main/data_model.c`; no ESP-IDF
-dependencies) for the PC, render each [mockup](uispec/ui-spec.md)'s content
-to PNG, and write a mockup | firmware | diff image per screen. A layout change could then be checked without
-flashing, and a new screen designed as a firmware change. Needs a C compiler for the PC (e.g. MinGW-w64); the
-sample content now in `sample_screens_dump()` would move to a file both builds share.
+dependencies) for the PC, render each [mockup](uispec/ui-spec.md)'s content to PNG, and write a mockup | firmware |
+diff image per screen. A layout change could then be checked without flashing, and a new screen designed as a
+firmware change. Needs a C compiler for the PC (e.g. MinGW-w64); the sample content now in `sample_screens_dump()`
+would move to a file both builds share.
 
 **Grey levels.** The panel (Waveshare 4.2" V2, SSD1683) has a 4-level grey mode in Waveshare's driver
 (`Init_4Gray` / `display_4Gray`); the firmware and the [UI spec](uispec/ui-spec.md#panel) use 1 bit today. Grey

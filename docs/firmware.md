@@ -20,9 +20,9 @@ knows only the ones below it, so a different panel or a different screen design 
 | Diagnostics | `console.c`, the debug screen, `SCREEN_DUMP` | |
 
 Dependencies point down: `state_machine.c` -> `display/` -> `screen/` -> `panel/` -> `board/`. The state machine,
-`display/` and `screen/` read `app/`, which uses `data_model.c`, `persistent_store.c` and the battery,
-and `zigbee/` to acknowledge what HA sent. `zigbee/` calls back into `app/ha_input.c` only through the callbacks the
-state machine hands it. So another 1-bit panel changes `panel/` (the size follows) and the layout constants in
+`display/` and `screen/` read `app/`. `app/` in turn uses `data_model.c`, `persistent_store.c` and the battery, and
+`zigbee/` to acknowledge what HA sent. `zigbee/` calls back into `app/ha_input.c` only through the callbacks the
+state machine hands it. So another 1-bit panel changes `panel/` (the size follows), the layout constants in
 `screen/status_screen.c` and the bitmaps; another screen design changes `screen/status_screen.c`.
 
 | Path | Purpose |
@@ -64,13 +64,12 @@ state machine hands it. So another 1-bit panel changes `panel/` (the size follow
 | `util/utf8.c`, `util/hex.h`, `util/elapsed_time.h` | helpers |
 
 Other folders: `tools/` (bitmap and mockup generators, serial console, framebuffer dump, Zigbee bench test,
-docs checker), `z2m/` (the
-Zigbee2MQTT converter), `ha/` (the Home Assistant sources).
+docs checker), `z2m/` (the Zigbee2MQTT converter), `ha/` (the Home Assistant sources).
 
-Dependencies: the Zigbee libraries (`espressif__esp-zigbee-lib`, `esp-zboss-lib`) and u8g2 (upstream git,
-pinned to a commit), all in `main/idf_component.yml`. u8g2 is used only for the debug screen's font and text,
-drawn through a callback into the framebuffer, never for the panel. The top-level `CMakeLists.txt` sets `MINIMAL_BUILD ON`, so a
-new component dependency must be declared in `main/CMakeLists.txt` (`PRIV_REQUIRES`).
+External dependencies: the Zigbee libraries (`espressif__esp-zigbee-lib`, `esp-zboss-lib`) and u8g2 (upstream
+git, pinned to a commit), all in `main/idf_component.yml`. u8g2 is used only for the debug screen's font and text,
+drawn through a callback into the framebuffer, never for the panel. The top-level `CMakeLists.txt` sets
+`MINIMAL_BUILD ON`, so a new component dependency must be declared in `main/CMakeLists.txt` (`PRIV_REQUIRES`).
 
 `sdkconfig` is generated and git-ignored; `sdkconfig.defaults` (from `idf.py save-defconfig`: target,
 USB-Serial-JTAG primary console, Zigbee end device) holds the non-default settings, so rerun `save-defconfig`

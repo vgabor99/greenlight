@@ -6,7 +6,7 @@ The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) 
 
 | Part                  | Type                                                                                                 | Reason for choice                                                                                                                                       |
 |-----------------------|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **MCU**               | Seeed XIAO ESP32-C6 (ESP-IDF target `esp32c6`)                                                       | Low-power<br>Supports deep sleep<br>Supports Zigbee<br>Has battery management<br>Sufficient GPIOs and peripherals<br>Support external antenna if needed |
+| **MCU**               | Seeed XIAO ESP32-C6 (ESP-IDF target `esp32c6`)                                                       | Low-power<br>Supports deep sleep<br>Supports Zigbee<br>Has battery management<br>Sufficient GPIOs and peripherals<br>Supports an external antenna if needed |
 | **Panel**             | 4.2" 400x300 1-bit e-paper, Waveshare V2 rev 2.2, SSD1683 controller; driver `main/panel/epaper.c` | Low-power<br>Supports partial updates (~0.5s)<br>Sufficient size and resolution for glanceability                                                       |
 | **PIR**               | Panasonic EKMB1205111 (2 uA, dT=4°C, 36°x150°) on 3V3                                                | Ultra low-power<br>High sensitivity<br>Wide lens fits the shape of the room<br>Voltage levels compatible with the 3.3V board                             |
 | **Pair button**       | Right-angle tactile switch (AliExpress, generic, sold as 6x6x5): body 7.5 x 7 mm, SPST, through hole, Ø3.5 actuator centred 4 mm above the PCB, its tip 5 mm in front of the switch pins; footprint `SW_Tactile_SPST_Angled_PTS645Vx31-2LFS` (same pin layout), its peg holes widened on the board from 1.3 to 1.5 mm for the snap-in legs | User facing button for (re-) pairing<br>Right angle: hidden inside the enclosure, pressed with a pin through its bottom                                       |
@@ -50,17 +50,17 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   right-angle switch facing the bottom edge, its actuator's tip 0.7 mm past it, pressed with a pin through the
   enclosure).
 - All parts are on the front, which faces the panel; the back lies against the enclosure.
-- Heights: under the panel the gap is 6 mm. Nothing goes on the battery (59 x 37 mm, behind the panel) or above
-  it, where the panel has parts on its back; right of the battery only flat SMD parts. Below the battery 8 mm.
-  The PIR sticks out of the enclosure; keep its 27 x 14 mm lens (centred on it) clear. KiCad rule areas mark the battery
-  and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD parts
-  (C2, C3, not fitted: [BUSY hang](#busy-hang)).
+- Heights: the room for parts on the front depends on the area, named by where it lies relative to the battery.
+  On the battery (59 x 37 mm, behind the panel) there is none: the battery fills the gap. Right of it and above
+  it, under the panel, the gap is 6 mm, but nothing goes above it, where the panel has parts on its back, and right
+  of it only flat SMD parts. Below the battery there is no panel, so the gap is 8 mm. The PIR sticks out of the enclosure; keep its 27 x 14 mm lens (centred on it) clear. KiCad rule areas mark the
+  battery and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD
+  parts (C2, C3, not fitted: [BUSY hang](#busy-hang)).
 - Antenna: the XIAO lies entirely below the panel, its chip antenna at the left end (marked in the Fusion
   sketch), so no metal is over it. No copper fill under the XIAO, and no copper at all (fill, tracks, vias)
   under its antenna end, 7 mm left of it and up to 0.8 mm above the top pin row; tracks reach the XIAO from
-  above. The
-  footprint is a header-only copy of Seeed's (`XIAO-ESP32-C6-Header`): Seeed's also has the SMD pads, which
-  stick out 0.8 mm past the XIAO's long edges.
+  above. The footprint is a header-only copy of Seeed's (`XIAO-ESP32-C6-Header`): Seeed's also has the SMD pads,
+  which stick out 0.8 mm past the XIAO's long edges.
 - The battery is soldered to the XIAO's BAT pads; a wire from BAT+ comes up to J1 above the XIAO for the
   battery measurement. The dividers (R2-R5, C1) sit above the XIAO too, not under it, where the battery wires
   are.
@@ -68,15 +68,14 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   (VCC at the bottom, BUSY at the top), so the panel and the board open like a book.
 - Four M3 holes for standoffs.
 - Routing keep-outs (KiCad rule areas): no tracks or vias on the front under the battery (the back may carry
-  them), none within an 8 mm circle around each mounting hole (ground fill may reach the hole); above the lower holes no tracks or vias within 3 mm of
-  the left, top and right edges (2.6 mm on the right, beside the panel wire holes); below them 0.5 mm, as
-  Freerouting does not know JLCPCB's 0.3 mm copper-to-edge rule.
-- Silkscreen: the battery's outline, the PIR lens (a dashed 27 x 14 mm rectangle), a 6 mm circle around
-  each mounting hole, the panel wire names, BAT+, and
-  "Greenlight v1 / Gabor Varga 2026" above the pair button.
-- Routed with Freerouting, then tidied by hand in KiCad; ground fill on both layers. Tracks 0.3 mm, +3V3 and GND 0.5 mm. The rules follow
-  JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting narrows tracks between
-  the XIAO's pads).
+  them), none within an 8 mm circle around each mounting hole (ground fill may reach the hole); above the lower
+  holes no tracks or vias within 3 mm of the left, top and right edges (2.6 mm on the right, beside the panel wire
+  holes); below them 0.5 mm, as Freerouting does not know JLCPCB's 0.3 mm copper-to-edge rule.
+- Silkscreen: the battery's outline, the PIR lens (a dashed 27 x 14 mm rectangle), a 6 mm circle around each
+  mounting hole, the panel wire names, BAT+, and "Greenlight v1 / Gabor Varga 2026" above the pair button.
+- Routed with Freerouting, then tidied by hand in KiCad; ground fill on both layers. Tracks 0.3 mm, +3V3 and GND
+  0.5 mm. The rules follow JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting
+  narrows tracks between the XIAO's pads).
 - Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
   part numbers are in each symbol's LCSC field), except those marked DNP (C2, C3). The XIAO, the PIR, the button
   and the wires are soldered by hand.

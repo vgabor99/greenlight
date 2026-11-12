@@ -2,9 +2,10 @@
 
 ## Purpose
 
-A battery-powered device that shows Home Assistant's list of "problems" (doors and windows left open, lights left on,
-...). Each line has an icon, a name and a state, such as `Patio door | open`. An empty list shows a large *All OK*
-checkmark instead. A badge in the corner shows when the screen is no longer confirmed up to date.
+Greenlight is a battery-powered device that shows Home Assistant's list of "problems" (doors and windows left open,
+lights left on, ...). Each line has an icon, a name and a state, such as `Patio door | open`. An empty list shows a
+large *All OK* checkmark instead. A badge in the corner, the stale badge, shows when the screen is no longer confirmed
+up to date.
 
 ## Design goals
 
@@ -12,8 +13,8 @@ checkmark instead. A badge in the corner shows when the screen is no longer conf
   ([UI spec](uispec/ui-spec.md#principles))
 - Responsiveness: the list updates in real time, with a delay under 1 s
 - Battery: at most one battery charge per year
-- Reliability: appliance-like, zero-maintenance operation: automatic recovery from the usual errors (network or Home
-  Assistant outage, power loss, restarts). Software bugs and hardware failures stay visible instead of being masked.
+- Reliability: appliance-like, zero-maintenance operation, with automatic recovery from the usual errors (network or
+  Home Assistant outage, power loss, restarts). Software bugs and hardware failures stay visible instead of being masked.
 
 **Success metrics**
 
@@ -47,8 +48,8 @@ and pushes data. The device never asks for data; it only reports what it shows.
 **The device is dumb.** Home Assistant creates the data lines, orders them as they should appear on the screen
 (dataset), and decides which lines of the dataset are active (view). The device only lays the view lines out. The
 dataset and the view are both identified by a hash, so the system can detect when updates are needed. The hashes are
-computed exclusively in the Home Assistant automation. The device never computes a hash; it only stores the ones it
-receives and echoes them back.
+computed only in Home Assistant. The device never computes a hash; it only stores the ones it receives and echoes
+them back.
 
 ```mermaid
 flowchart TB
@@ -81,10 +82,9 @@ identified by a hash.
 
 **View**
 
-The view is a bitfield of active lines from the (cached) dataset. This is frequently changing but small data (it fits in
-a single Zigbee frame). Despite the minimal size, it carries the full view atomically. Every view push is the complete
-bitfield, so a lost, repeated or late frame never leaves lasting damage, and a device that slept through any number of
-changes catches up in one push.
+The view is a bitfield of active lines from the (cached) dataset. It changes often, but it is small: it fits in a
+single Zigbee frame. So every view push carries the complete bitfield, applied as a whole. A lost, repeated or late
+frame never leaves lasting damage, and a device that slept through any number of changes catches up in one push.
 
 **Dataset and view out of sync**
 
@@ -104,25 +104,23 @@ and goes back to sleep afterwards.
 
 Every Zigbee frame may get lost, causing a long delay, so critical data is exchanged first. The device reports its wake
 counter, and Home Assistant answers with the view. During day-to-day operation the dataset is already cached, so this
-minimal exchange is enough to get the first render of live data. Initial frames are the most time-critical part, and
-unfortunately also when most frame losses are observed. To mitigate the risk and give the best chance of achieving a low
-wake-to-render time, the first 2 seconds of the wake window are reserved for the initial exchange, to free up resources
-in the Zigbee network.
+minimal exchange is enough to get the first render of live data. These first frames are the most time-critical, and
+unfortunately they are also the ones most often lost. To give them the best chance and keep the wake-to-render time
+low, the 2 seconds after the wake counter are reserved for this exchange, which keeps the Zigbee network free for it.
 
-About 2 seconds after the wake counter, when the view has normally arrived, the device reports the rest of its state and
-diagnostics. While the device is awake, the Home Assistant automation pushes new datasets and new views as needed.
+After these 2 seconds, when the view has normally arrived, the device reports the rest of its state and diagnostics.
+While the device is awake, the Home Assistant automation pushes new datasets and new views as needed. Both sides also
+send heartbeats, so that each can tell whether the other is still there:
+
+- Home Assistant sends a heartbeat every 5 seconds (the view, even if unchanged). Greenlight uses it for the stale
+  badge ([staleness flag](data-model.md#staleness-flag)).
+- Greenlight sends a heartbeat (shown_view_id and awake) every 30 seconds. Home Assistant uses it to detect a lost
+  goodbye at the end of the wake ([awake gate](home-assistant.md#push-automation)).
 
 At the end of the wake window, the device sends goodbye messages (awake=false, occupancy=false), then clears the panel
 and renders the current view one last time. The panel is the memory: the e-paper keeps its image without power, so the
 screen keeps showing the last view while the device is in deep sleep. If the wake ended without fresh data, the stale
 badge stays on until the next wake.
-
-Both sides send heartbeats to the other to observe liveness:
-
-- Home Assistant sends a heartbeat every 5 seconds (the view, even if unchanged). Greenlight uses it to maintain the
-  staleness indicator.
-- Greenlight sends a heartbeat (shown_view_id and awake) every 30 seconds. Home Assistant uses it to detect a lost
-  goodbye.
 
 ```mermaid
 sequenceDiagram

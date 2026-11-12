@@ -3,8 +3,7 @@
 The device's Zigbee interface: identity, clusters, the state it reports and the writes it accepts. The firmware
 side is `main/zigbee/` (`zigbee_device.c` declares the clusters, `zigbee_reports.c` sends the reports,
 `zigbee_display_input.c` decodes the writes, which `main/app/ha_input.c` applies and acknowledges); the Z2M side
-is `z2m/greenlight.mjs`. What the values mean is in
-[data-model.md](data-model.md).
+is `z2m/greenlight.mjs`. What the values mean is in [data-model.md](data-model.md).
 
 The device is a **sleepy end device**: rx-on-when-idle off, it polls its parent every `PARENT_POLL_MS` (50 ms)
 while awake and not at all while asleep.
@@ -76,11 +75,11 @@ There is nothing periodic while asleep.
   view; `dataset_hash` after each accepted dataset and after an out-of-sync view; `occupancy` when it changes
   (on when the PIR is active, off `OCCUPANCY_HOLD_MS` after it was last active); the battery when it changes
   over the console.
-- **At SHUTDOWN**, if joined: after a low battery first its battery reports, `batteryAlarmState` asking for a
-  default response and resent every second until confirmed, for up to `BATTERY_REPORT_TIMEOUT_MS`
-  (`zigbee_report_battery_low()`; [behaviour.md](behaviour.md#low-battery)); then `occupancy` = 0 and
-  `awake` = false, also asking for a default response, the unconfirmed one resent every second, for up to
-  `GOODBYE_TIMEOUT_MS` (`zigbee_report_goodbye()`). No other report asks for one.
+- **At SHUTDOWN**, if joined: after a low battery, the battery reports go first. `batteryAlarmState` asks for a
+  default response and is resent every second until confirmed, for up to `BATTERY_REPORT_TIMEOUT_MS`
+  (`zigbee_report_battery_low()`; [behaviour.md](behaviour.md#low-battery)). Then comes the goodbye:
+  `occupancy` = 0 and `awake` = false. They also ask for a default response, and the unconfirmed one is resent
+  every second, for up to `GOODBYE_TIMEOUT_MS` (`zigbee_report_goodbye()`). No other report asks for one.
 
 **Why a counter triggers the push, not `awake`.** `awake = false` is sent just before the radio goes off and
 can be lost. Then Z2M keeps `awake = true` cached, the next wake's `true` is no change in HA, and a trigger on
@@ -185,9 +184,10 @@ view shows lines 0 and 2.
 Once per wake the device reports `batteryPercentageRemaining` (half percents, from a rough LiPo curve: 3.3 V
 0 %, 3.5 V 5 %, 3.6 V 12 %, 3.7 V 30 %, 3.8 V 50 %, 4.0 V 80 %, 4.2 V 100 %, interpolated;
 `zigbee_battery_half_percent()`), `batteryAlarmState` (bit 0 = low) and the exact voltage as 0xFC8A
-`battery_mv`. The same reports go out in the farewell before a low-battery shutdown. The static Power
-Configuration attributes are set from the start: `batterySize` 0x0031 = 2 (Other), `batteryQuantity` 0x0033 =
-1, `batteryRatedVoltage` 0x0034 = 37 (3.7 V), `batteryAHrRating` 0x0032 = 100 (units of 10 mAh).
+`battery_mv`. The same reports go out at SHUTDOWN after a low battery
+([When the device reports](#when-the-device-reports)). The static Power Configuration attributes are set from the
+start: `batterySize` 0x0031 = 2 (Other), `batteryQuantity` 0x0033 = 1, `batteryRatedVoltage` 0x0034 = 37 (3.7 V),
+`batteryAHrRating` 0x0032 = 100 (units of 10 mAh).
 
 - Percent pitfall: the ZCL percentage is in half percents and Z2M divides by 2, so 100 % is the raw value 200.
 - Z2M names follow zigbee-herdsman-converters' `battery()` helper: `battery` (%), `voltage` (mV) and
