@@ -43,16 +43,16 @@ void sample_screens_dump(void)
     /* The device screens, each from a state that leads to it (app/screen_content.c) */
     static const struct {
         device_state_t state;
-        wake_failure_t failure;
+        failure_t failure;
         const char    *name;
     } device_screens[] = {
-        {STATE_UNPAIRED, WAKE_FAILURE_NONE, "unpaired"},
-        {STATE_PAIRING, WAKE_FAILURE_NONE, "searching"},
-        {STATE_INTERVIEW, WAKE_FAILURE_NONE, "joining"},
-        {STATE_ACTIVE, WAKE_FAILURE_NONE, "syncing"},
-        {STATE_SLEEP, WAKE_FAILURE_JOIN_FAILED, "join_failed"},
-        {STATE_LOW_BATTERY, WAKE_FAILURE_LOW_BATTERY, "battery"},
-        {STATE_SLEEP, WAKE_FAILURE_ERROR, "error"},
+        {STATE_UNPAIRED, FAILURE_NONE, "unpaired"},
+        {STATE_PAIRING, FAILURE_NONE, "searching"},
+        {STATE_INTERVIEW, FAILURE_NONE, "joining"},
+        {STATE_ACTIVE, FAILURE_NONE, "syncing"},
+        {STATE_SLEEP, FAILURE_JOIN_FAILED, "join_failed"},
+        {STATE_LOW_BATTERY, FAILURE_LOW_BATTERY, "battery"},
+        {STATE_SLEEP, FAILURE_ERROR, "error"},
     };
     for (int i = 0; i < sizeof(device_screens) / sizeof(device_screens[0]); i++) {
         memset(&state, 0, sizeof(state));

@@ -58,7 +58,7 @@ typedef struct {
 /* Everything a screen may show, at one moment (app_state_snapshot()). */
 typedef struct {
     device_state_t             state;
-    wake_failure_t             failure;
+    failure_t                  failure;
     uint32_t                   changes;        /* counts the changes of the state, the failure and the model */
     uint32_t                   dataset_hash;   /* the stored dataset, 0 = none */
     uint8_t                    dataset_lines;
@@ -85,9 +85,9 @@ void app_state_erase_stored(void);
 void app_state_set_device_state(device_state_t state);
 void app_state_set_wake_number(uint32_t wake_number);
 
-/* This wake failed: from now on the screen shows it whatever the state. WAKE_FAILURE_NONE while the wake goes well. */
-void           app_state_set_wake_failure(wake_failure_t failure);
-wake_failure_t app_state_wake_failure(void);
+/* This wake failed: from now on the screen shows it whatever the state. FAILURE_NONE while the wake goes well. */
+void           app_state_set_failure(failure_t failure);
+failure_t      app_state_failure(void);
 
 uint32_t app_state_dataset_hash(void);   /* 0 = no dataset */
 uint32_t app_state_shown_view_id(void);  /* 0 = nothing shown */

@@ -26,7 +26,7 @@ static size_t shown_view_stored_size(const shown_view_t *view)
 
 static SemaphoreHandle_t          lock;
 static device_state_t             device_state;
-static volatile wake_failure_t    wake_failure;
+static volatile failure_t         current_failure;
 static uint32_t                   wake_number;
 static uint32_t                   changes;
 static dataset_t                  dataset;
@@ -72,17 +72,17 @@ void app_state_set_wake_number(uint32_t number)
     wake_number = number;
 }
 
-void app_state_set_wake_failure(wake_failure_t failure)
+void app_state_set_failure(failure_t failure)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
-    wake_failure = failure;
+    current_failure = failure;
     changes++;
     xSemaphoreGive(lock);
 }
 
-wake_failure_t app_state_wake_failure(void)
+failure_t app_state_failure(void)
 {
-    return wake_failure;
+    return current_failure;
 }
 
 uint32_t app_state_dataset_hash(void)
@@ -110,7 +110,7 @@ void app_state_snapshot(app_state_t *state)
 {
     xSemaphoreTake(lock, portMAX_DELAY);
     state->state                = device_state;
-    state->failure              = wake_failure;
+    state->failure              = current_failure;
     state->changes              = changes;
     state->dataset_hash         = dataset.hash;
     state->dataset_lines        = dataset.count;

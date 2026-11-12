@@ -1,13 +1,13 @@
 #include <string.h>
 #include "app/screen_content.h"
 
-static screen_kind_t failure_screen(wake_failure_t failure)
+static screen_kind_t failure_screen(failure_t failure)
 {
     switch (failure) {
-    case WAKE_FAILURE_UNPAIRED:    return SCREEN_UNPAIRED;
-    case WAKE_FAILURE_JOIN_FAILED: return SCREEN_JOIN_FAILED;
-    case WAKE_FAILURE_LOW_BATTERY: return SCREEN_BATTERY_DEAD;
-    case WAKE_FAILURE_ERROR:
+    case FAILURE_UNPAIRED:    return SCREEN_UNPAIRED;
+    case FAILURE_JOIN_FAILED: return SCREEN_JOIN_FAILED;
+    case FAILURE_LOW_BATTERY: return SCREEN_BATTERY_DEAD;
+    case FAILURE_ERROR:
     default:                       return SCREEN_ERROR;
     }
 }
@@ -15,7 +15,7 @@ static screen_kind_t failure_screen(wake_failure_t failure)
 /* The house status, unless the device is pairing, joining or syncing, or this wake failed. */
 static screen_kind_t choose_kind(const app_state_t *state)
 {
-    if (state->failure != WAKE_FAILURE_NONE) {
+    if (state->failure != FAILURE_NONE) {
         return failure_screen(state->failure);
     }
     bool view_shown = state->shown.view.id != 0;

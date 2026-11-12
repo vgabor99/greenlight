@@ -54,7 +54,7 @@ static bool battery_ran_low(void)
         return false;
     }
     ESP_LOGW(TAG, "battery low (%u mV): shutting down", battery_voltage_mv());
-    app_state_set_wake_failure(WAKE_FAILURE_LOW_BATTERY);
+    app_state_set_failure(FAILURE_LOW_BATTERY);
     return true;
 }
 
@@ -157,7 +157,7 @@ static device_state_t run_boot(void)
     bool factory_new = false;
     if (!zigbee_wait_started(STACK_START_TIMEOUT_MS, &factory_new)) {
         ESP_LOGE(TAG, "Zigbee stack did not start");
-        app_state_set_wake_failure(WAKE_FAILURE_ERROR);
+        app_state_set_failure(FAILURE_ERROR);
         return STATE_SHUTDOWN;
     }
     ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)elapsed_ms(boot_tick),
@@ -184,7 +184,7 @@ static device_state_t run_unpaired(void)
         }
         if (wake_is_idle()) {
             ESP_LOGI(TAG, "no activity for %d ms", IDLE_TIMEOUT_MS);
-            app_state_set_wake_failure(WAKE_FAILURE_UNPAIRED);  /* still not paired: sleep with how to pair */
+            app_state_set_failure(FAILURE_UNPAIRED);  /* still not paired: sleep with how to pair */
             return STATE_SHUTDOWN;
         }
         if (battery_ran_low()) {
@@ -248,7 +248,7 @@ static device_state_t run_rejoin(void)
     ESP_LOGW(TAG, "rejoin failed");
     battery_measure();
     /* Not latched: the next wake tries again. */
-    app_state_set_wake_failure(battery_is_low() ? WAKE_FAILURE_LOW_BATTERY : WAKE_FAILURE_JOIN_FAILED);
+    app_state_set_failure(battery_is_low() ? FAILURE_LOW_BATTERY : FAILURE_JOIN_FAILED);
     return STATE_SHUTDOWN;
 }
 
@@ -337,7 +337,7 @@ static device_state_t run_erase_network(void)
 
 static device_state_t run_shutdown(void)
 {
-    bool low_battery = app_state_wake_failure() == WAKE_FAILURE_LOW_BATTERY;
+    bool low_battery = app_state_failure() == FAILURE_LOW_BATTERY;
     bool latch = false;
     if (zigbee_is_joined()) {
         /* HA learns why the device went quiet. Only a confirmed report latches; else the next wake tries again. */
