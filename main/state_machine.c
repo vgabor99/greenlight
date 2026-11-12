@@ -9,6 +9,7 @@
 #include "board/wake_reason.h"
 #include "app/app_state.h"
 #include "app/ha_input.h"
+#include "app/keep_awake.h"
 #include "display/display.h"
 #include "persistent_store.h"
 #include "screen/sample_screens.h"
@@ -19,7 +20,7 @@
 static const char *TAG = "greenlight";
 
 /* ---- Timing (docs/behaviour.md#timeouts) ---- */
-#define IDLE_TIMEOUT_MS        20000   /* no activity for this long ends the wake */
+#define IDLE_TIMEOUT_MS        20000   /* no input for this long ends the wake, unless something keeps it awake */
 #define PAIRING_WINDOW_MS      180000
 #define INTERVIEW_MS           60000   /* time to stay awake after joining, for the Z2M interview */
 #define PAIR_BUTTON_HOLD_MS    3000    /* pair button hold that starts pairing, or clears the network */
@@ -66,6 +67,13 @@ static bool pair_button_held_long(void)
     }
     ESP_LOGI(TAG, "pair button held %d ms", PAIR_BUTTON_HOLD_MS);
     return true;
+}
+
+/* The wake may end: no input for IDLE_TIMEOUT_MS, and nothing keeps it awake (HA's writes, the state's own
+ * minimum). */
+static bool wake_is_idle(void)
+{
+    return inputs_idle_ms() >= IDLE_TIMEOUT_MS && keep_awake_expired();
 }
 
 /* The reports of a wake other than the wake counter (docs/zigbee.md#when-the-device-reports). After a rejoin they follow the wake counter
@@ -154,7 +162,6 @@ static device_state_t run_boot(void)
     }
     ESP_LOGI(TAG, "stack up after %lu ms: %s (wake: %s)", (unsigned long)elapsed_ms(boot_tick),
              factory_new ? "no network" : "network restored", wake_reason_text());
-    inputs_note_activity();
     if (!factory_new) {
         return STATE_REJOIN;
     }
@@ -170,12 +177,12 @@ static device_state_t run_boot(void)
 static device_state_t run_unpaired(void)
 {
     app_state_set_device_state(STATE_UNPAIRED);
-    inputs_note_activity();
+    keep_awake_for(IDLE_TIMEOUT_MS);  /* the Pairing screen stays up at least this long */
     for (;;) {
         if (pair_button_held_long()) {
             return STATE_PAIRING;
         }
-        if (inputs_idle_ms() >= IDLE_TIMEOUT_MS) {
+        if (wake_is_idle()) {
             ESP_LOGI(TAG, "no activity for %d ms", IDLE_TIMEOUT_MS);
             app_state_set_wake_failure(WAKE_FAILURE_UNPAIRED);  /* still not paired: sleep with how to pair */
             return STATE_SHUTDOWN;
@@ -226,7 +233,6 @@ static device_state_t run_rejoin(void)
 {
     app_state_set_device_state(STATE_REJOIN);
     TickType_t start = xTaskGetTickCount();
-    inputs_note_activity();
     while (elapsed_ms(start) < REJOIN_TIMEOUT_MS) {
         if (zigbee_is_joined()) {
             ESP_LOGI(TAG, "rejoined, %lu ms after boot", (unsigned long)elapsed_ms(boot_tick));
@@ -270,7 +276,7 @@ static void report_heartbeat(void)
     zigbee_log_neighbors();
 }
 
-/* No activity for IDLE_TIMEOUT_MS: true while the wake goes on anyway, because its view has not arrived yet (up to
+/* The wake is idle (wake_is_idle()): true while the wake goes on anyway, because its view has not arrived yet (up to
  * VIEW_WAIT_MS after ACTIVE began). *announced: the wait was logged. */
 static bool keep_waiting_for_view(TickType_t active_since, bool *announced)
 {
@@ -288,7 +294,7 @@ static bool keep_waiting_for_view(TickType_t active_since, bool *announced)
 static device_state_t run_active(void)
 {
     app_state_set_device_state(STATE_ACTIVE);
-    inputs_note_activity();
+    keep_awake_for(IDLE_TIMEOUT_MS);  /* ACTIVE lasts at least this long */
     bool       reported_occupancy = inputs_occupied();
     TickType_t last_heartbeat = xTaskGetTickCount();
     TickType_t start = last_heartbeat;
@@ -309,7 +315,7 @@ static device_state_t run_active(void)
         if (pair_button_held_long()) {
             return STATE_ERASE_NETWORK;
         }
-        if (inputs_idle_ms() >= IDLE_TIMEOUT_MS && !keep_waiting_for_view(start, &view_wait_announced)) {
+        if (wake_is_idle() && !keep_waiting_for_view(start, &view_wait_announced)) {
             return STATE_SHUTDOWN;
         }
         display_wait_ms(20);

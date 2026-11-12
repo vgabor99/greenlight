@@ -81,6 +81,7 @@ generated bitmaps instead of u8g2 fonts.
 | Trigger HA's push on `awake` or on any device message | a lost `awake = false` hides the next wake; the device announce comes before it is ready ([zigbee.md](zigbee.md#when-the-device-reports)) |
 | Showing the view's time | replaced by the staleness badge |
 | `IDLE_TIMEOUT_MS` 5 s | too short to see a push arrive after a wake (up to about 20 s) |
+| HA's writes counted as input activity (`inputs_note_activity()`, until 2026-11-12) | a board module carried an application rule, and every reason to stay awake got the same 20 s; now a keep-awake deadline (`app/keep_awake.c`) with a time per reason |
 | A "monitoring" LOW_BATTERY state forced at any transition | monitoring means staying awake or waking by timer, and after real deep sleep every check is a boot anyway; a transition-only check misses ACTIVE and UNPAIRED, which can run indefinitely; and the cleanup depends on the state |
 | Retained RAM for the dataset and view | NVS survives a battery change too, and one write per wake is negligible wear |
 | USB sense on D2 as LOW_BATTERY's only wake source | D2 is the only free header pin with both ADC and deep-sleep wake, and the battery measurement needs the ADC; USB sense moved to D7, and LOW_BATTERY wakes by timer instead (2026-11-08) |

@@ -12,7 +12,8 @@ How the device reacts to its inputs: states, timeouts, sleep, pairing, low batte
 
 Both inputs are polled and debounced by `input_task` (level based). "Activity" below means: PIR active **or**
 pair button pressed. Either one wakes the device from sleep, and either one holds the `IDLE_TIMEOUT_MS`
-timeout. The 3 s hold is measured from when the button went down; a button still held from the wake-up counts
+timeout. HA's writes are not activity: they keep the device awake for a time of their own (`DATASET_SYNC_HOLD_MS`,
+`RESYNC_HOLD_MS`). The wake ends once there has been no activity for `IDLE_TIMEOUT_MS` and no such hold is left. The 3 s hold is measured from when the button went down; a button still held from the wake-up counts
 from boot. So one continuous 3 s hold from sleep is enough, both to start pairing (unpaired) and to reset the
 network (paired). The PIR's own hold time is ignored.
 
@@ -20,7 +21,9 @@ network (paired). The PIR's own hold time is ignored.
 
 | Name | Value | Meaning |
 |---|---|---|
-| `IDLE_TIMEOUT_MS` | 20 s | activity timeout. Held at full while the PIR is active or the pair button is pressed, counts down after release, re-armed by any new activation. At 0 the device shuts down. Long enough to see a push arrive after a wake. |
+| `IDLE_TIMEOUT_MS` | 20 s | activity timeout. Held at full while the PIR is active or the pair button is pressed, counts down after release, re-armed by any new activation. At 0, with no hold left, the device shuts down. UNPAIRED and ACTIVE also hold the wake this long when they begin. Long enough to see a push arrive after a wake. |
+| `DATASET_SYNC_HOLD_MS` | 20 s | each `ds_entry` and `ds_commit` keeps the device awake this long, for the next part or the view after the commit ([zigbee.md](zigbee.md#dataset-sync)). |
+| `RESYNC_HOLD_MS` | 20 s | an out-of-sync view keeps the device awake this long, for HA to see `dataset_hash` and start the sync ([zigbee.md](zigbee.md#view-push)). |
 | `PAIRING_WINDOW_MS` | 180 s | length of the pairing window. |
 | `INTERVIEW_MS` | 60 s | time to stay awake after joining, for the Z2M interview. |
 | `PAIR_BUTTON_HOLD_MS` | 3 s | pair button hold: start pairing (unpaired) or clear the network and start pairing (paired). |
@@ -82,11 +85,11 @@ The same in text (the screen each state shows is in [display.md](display.md#devi
 |---|---|---|
 | **SLEEP** | deep sleep, nothing runs | PIR active or pair button pressed -> BOOT |
 | **BOOT** | first the battery check, before the radio and the panel; then init, read the stored dataset and view from NVS (none after an erase: `dataset_hash = 0`, `shown_view_id = 0`), check the stack for a stored network | battery low and latched -> LOW_BATTERY (panel untouched); battery low, not latched: boot on, so ACTIVE reports it ([Low battery](#low-battery)); stack not started within `STACK_START_TIMEOUT_MS` -> SHUTDOWN (*Unknown error* screen); paired -> REJOIN; unpaired and `pair_now` flag set -> PAIRING (flag cleared); unpaired -> UNPAIRED |
-| **UNPAIRED** | shows the *Pairing* screen (how to pair); `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired -> SHUTDOWN; battery low -> SHUTDOWN |
+| **UNPAIRED** | shows the *Pairing* screen (how to pair); `IDLE_TIMEOUT_MS` runs as usual (activity keeps it awake, so the hold can complete) | pair button held `PAIR_BUTTON_HOLD_MS` -> PAIRING; `IDLE_TIMEOUT_MS` expired, no hold left -> SHUTDOWN; battery low -> SHUTDOWN |
 | **PAIRING** | network steering; ignores the PIR | joined -> INTERVIEW; `PAIRING_WINDOW_MS` over -> UNPAIRED; battery low -> SHUTDOWN |
 | **INTERVIEW** | awake and answering Z2M; ignores the PIR; reports the wake state so HA can already sync the dataset and push the view | `INTERVIEW_MS` over -> ACTIVE |
 | **REJOIN** | restores the network from NVS and rejoins; the stored view is on screen | joined -> ACTIVE; `REJOIN_TIMEOUT_MS` expired -> SHUTDOWN |
-| **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
+| **ACTIVE** | listens continuously, receives pushes, redraws, reports; heartbeat every `HEARTBEAT_MS` | `IDLE_TIMEOUT_MS` expired, no hold left (and `VIEW_WAIT_MS` passed or a view arrived) -> SHUTDOWN; pair button held `PAIR_BUTTON_HOLD_MS` -> ERASE_NETWORK; battery low -> SHUTDOWN |
 | **ERASE_NETWORK** | set the `pair_now` flag, clear the stored dataset and view, polite leave, erase the Zigbee storage, restart | restart -> BOOT (-> PAIRING) |
 | **SHUTDOWN** | if joined, report `occupancy` = 0 and `awake` = false and wait for Z2M to confirm them (up to `GOODBYE_TIMEOUT_MS`; a failed rejoin, an unpaired device or a stack that did not start sends nothing); then the final clean refresh (clear, then render the current view); `epaper_power_off()` | -> SLEEP; if an input is already active, the next wake is immediate. After a low battery: report the battery (`battery_low`) before the goodbye until Z2M confirms it (up to `BATTERY_REPORT_TIMEOUT_MS`), draw the *Battery dead* screen; confirmed: latch `bat_low`, -> LOW_BATTERY; not confirmed (or not joined): -> SLEEP, the next wake tries again |
 | **LOW_BATTERY** | the *Battery dead* screen is on the panel, the radio is off; the PIR and the pair button are ignored | USB power -> BOOT (restart) |

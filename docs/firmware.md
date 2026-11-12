@@ -20,7 +20,7 @@ knows only the ones below it, so a different panel or a different screen design 
 | Diagnostics | `console.c`, the debug screen, `SCREEN_DUMP` | |
 
 Dependencies point down: `state_machine.c` -> `display/` -> `screen/` -> `panel/` -> `board/`. The state machine,
-`display/` and `screen/` read `app/`, which uses `data_model.c`, `persistent_store.c`, the battery and the inputs,
+`display/` and `screen/` read `app/`, which uses `data_model.c`, `persistent_store.c` and the battery,
 and `zigbee/` to acknowledge what HA sent. `zigbee/` calls back into `app/ha_input.c` only through the callbacks the
 state machine hands it. So another 1-bit panel changes `panel/` (the size follows) and the layout constants in
 `screen/status_screen.c` and the bitmaps; another screen design changes `screen/status_screen.c`.
@@ -41,6 +41,7 @@ state machine hands it. So another 1-bit panel changes `panel/` (the size follow
 | `board/wake_reason.c` | the wake cause, logged at boot |
 | `app/app_state.c` | the mutex-guarded application state (device state, wake failure, dataset, shown view, received writes), its snapshot, the Zigbee callbacks |
 | `app/ha_input.c` | HA's views and datasets: checked against the state, applied, acknowledged ([zigbee.md](zigbee.md#input-ha-to-device)) |
+| `app/keep_awake.c` | how long the wake must go on besides the inputs: a deadline that HA's writes and the states extend ([behaviour.md](behaviour.md#timeouts)) |
 | `app/screen_content.c` | what should be on the screen for a state (`screen_content_of()`) |
 | `app/device_state.c` | the device states and wake failures |
 | `app/view_freshness.c` | staleness deadline in RTC memory ([data-model.md](data-model.md#staleness-flag)) |

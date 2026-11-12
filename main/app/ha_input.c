@@ -2,15 +2,13 @@
 #include "esp_log.h"
 #include "app/app_state.h"
 #include "app/ha_input.h"
-#include "board/inputs.h"
+#include "app/keep_awake.h"
 
 static const char *TAG = "greenlight";
 
-/* HA works with the device: restart the idle countdown, as an input would. */
-static void note_activity(void)
-{
-    inputs_note_activity();
-}
+/* How long HA's writes keep the device awake (docs/behaviour.md#timeouts) */
+#define DATASET_SYNC_HOLD_MS 20000  /* after a ds_entry or ds_commit: the next part, or the view after it */
+#define RESYNC_HOLD_MS       20000  /* after an out-of-sync view: HA sees dataset_hash and starts the sync */
 
 void ha_input_on_view(const view_t *view, uint8_t received_mask)
 {
@@ -28,7 +26,7 @@ void ha_input_on_view(const view_t *view, uint8_t received_mask)
                  (unsigned long)view->dataset_hash, (unsigned long)app_state_dataset_hash());
         app_state_apply_view(view, write.view.result);
         app_state_note_received(&write);
-        note_activity();                                      /* stay awake for the resync */
+        keep_awake_for(RESYNC_HOLD_MS);                       /* stay awake for the resync */
         zigbee_report_dataset_hash(app_state_dataset_hash());  /* tells HA which dataset the device has */
         break;
     case VIEW_NEW:
@@ -51,7 +49,7 @@ void ha_input_on_dataset_entry(const zigbee_dataset_entry_t *entry)
     };
     strlcpy(write.entry.text, entry->text, sizeof(write.entry.text));
     app_state_note_received(&write);
-    note_activity();
+    keep_awake_for(DATASET_SYNC_HOLD_MS);
 }
 
 void ha_input_on_dataset_commit(const zigbee_dataset_commit_t *commit)
@@ -76,5 +74,5 @@ void ha_input_on_dataset_commit(const zigbee_dataset_commit_t *commit)
         zigbee_report_dataset_hash(commit->hash);
     }
     app_state_note_received(&write);
-    note_activity();
+    keep_awake_for(DATASET_SYNC_HOLD_MS);
 }

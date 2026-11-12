@@ -170,7 +170,7 @@ sequenceDiagram
 
     rect rgba(200, 200, 200, 0.2)
     Note left of Greenlight: 6: Shutdown
-    Note over Greenlight: No PIR activity for 20 s
+    Note over Greenlight: No input for 20 s, nothing else keeps it awake
     Greenlight->>HomeAssistant: Send goodbye: occupancy=false, awake=false
     Note over Greenlight: Clear, render final view (the panel keeps it)
     Note over Greenlight: Deep sleep

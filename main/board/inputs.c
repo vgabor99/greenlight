@@ -50,11 +50,6 @@ uint32_t inputs_pair_button_held_ms(void)
     return pair_button_pressed ? elapsed_ms(pair_button_pressed_tick) : 0;
 }
 
-void inputs_note_activity(void)
-{
-    last_activity_tick = xTaskGetTickCount();
-}
-
 static bool read_pir(void)
 {
     return gpio_get_level(PIR_PIN) == PIR_ACTIVE_LEVEL;

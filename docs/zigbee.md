@@ -117,8 +117,8 @@ device collects the four values and applies them once the whole frame has been p
 deferred to the Zigbee task's next turn, after the frame), so the order of the records does not matter:
 
 - `view_ds` != stored `dataset_hash`: **out of sync**. Nothing changes on the screen; `shown_view_id` is not
-  reported. The device reports `dataset_hash` (so HA's cached value is right) and counts it as activity, so it
-  stays awake for the resync.
+  reported. The device reports `dataset_hash` (so HA's cached value is right) and stays awake
+  `RESYNC_HOLD_MS` for the resync.
 - `view_id` == `shown_view_id`: nothing new to draw, but the view is fresh again. Store the time, report
   `shown_view_id` (the acknowledgement).
 - otherwise: take the text of the active lines from the dataset and the bits, store it with the id and the time,
@@ -136,8 +136,8 @@ order, 100 ms apart), then the commit.
 - Each write takes about 0.45 s to reach the sleepy device (one poll plus the response), with occasional stalls
   of up to about 15 s: a sync of 16 three-part and 16 one-part lines (64 writes) took 31 to 78 s on the bench;
   the worst case of 32 lines x 3 parts = 96 writes about 45 s or more.
-- The device stages each part in RAM by index and part, together with its tag, and counts every write as
-  activity, so it stays awake while a sync runs.
+- The device stages each part in RAM by index and part, together with its tag, and every write keeps it awake
+  `DATASET_SYNC_HOLD_MS`, so it stays awake while a sync runs.
 - On `ds_commit` it accepts only if every line 0 to count-1 is complete with that hash: a last part L without
   "more", and parts 0 to L all staged with that tag. A part from an older sync has another tag, so it is never
   mixed in. Then it joins the parts, stores the dataset in NVS (one blob), clears the staging and reports
