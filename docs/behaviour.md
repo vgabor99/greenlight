@@ -13,9 +13,10 @@ How the device reacts to its inputs: states, timeouts, sleep, pairing, low batte
 Both inputs are polled and debounced by `input_task` (level based). "Activity" below means: PIR active **or**
 pair button pressed. Either one wakes the device from sleep, and either one holds the `IDLE_TIMEOUT_MS`
 timeout. HA's writes are not activity: they keep the device awake for a time of their own (`DATASET_SYNC_HOLD_MS`,
-`RESYNC_HOLD_MS`). The wake ends once there has been no activity for `IDLE_TIMEOUT_MS` and no such hold is left. The 3 s hold is measured from when the button went down; a button still held from the wake-up counts
-from boot. So one continuous 3 s hold from sleep is enough, both to start pairing (unpaired) and to reset the
-network (paired). The PIR's own hold time is ignored.
+`RESYNC_HOLD_MS`). The wake ends once there has been no activity for `IDLE_TIMEOUT_MS` and no such hold is left.
+The 3 s hold is measured from when the button went down; a button still held from the wake-up counts from boot. So
+one continuous 3 s hold from sleep is enough, both to start pairing (unpaired) and to reset the network (paired).
+The PIR's own hold time is ignored.
 
 ## Timeouts
 
@@ -153,31 +154,43 @@ the battery:
 
 ## Low battery
 
-Below `BATTERY_LOW_ENTER_MV` (3.5 V) the wake ends. ACTIVE, UNPAIRED and PAIRING measure and check every
-`BATTERY_CHECK_MS` (1 s) and go to SHUTDOWN with the *Battery dead* screen (one final refresh, the farewell
-`battery_low` report when joined). INTERVIEW and REJOIN (bounded) and ERASE_NETWORK are not interrupted; a
-rejoin that fails on a low battery also ends with the *Battery dead* screen.
+A low battery ends the wake with the *Battery dead* screen. Once HA knows about it, the PIR and the pair button no
+longer wake the device, to save the rest of the battery. Not before: HA must not think that the device is fine
+while it no longer wakes. So the battery has three states:
 
-**The latch waits for HA.** SHUTDOWN resends the `battery_low` report, asking Z2M for a default response, every
-second for up to `BATTERY_REPORT_TIMEOUT_MS` (10 s). Only once Z2M confirms it does SHUTDOWN set the NVS latch
-`bat_low` and go to LOW_BATTERY, where the PIR and the pair button no longer wake the device: **only USB power
-does**. Unconfirmed, or not joined (failed rejoin, unpaired, stack down), the device shows *Battery dead* but
-sleeps as usual, so the next wake finds the battery low at boot and tries again: HA must not be left thinking
-the device is fine while it no longer wakes.
+```mermaid
+stateDiagram-v2
+    state "Latched low" as Latched
+    Normal --> Low: below 3.5 V
+    Low --> Normal: 3.5 V or more, or USB power
+    Low --> Latched: Z2M confirms the report
+    Latched --> Normal: BOOT finds 3.7 V or more, or USB power
+```
 
-- While latched, the exit threshold `BATTERY_LOW_EXIT_MV` (3.7 V) applies. The entry voltage may be read
-  under load while the exit check runs at rest, and a nearly empty LiPo recovers tens of mV just by resting,
-  so the hysteresis is wide; a charger raises the voltage at once anyway.
-- **USB power overrides a low battery** (the device then runs from USB, and a device that slept while already
-  on USB would never see a wake edge), so a USB wake clears the latch; unplugging with the cell still low ends
-  the next wake the same way.
-- **A low battery found at boot is reported.** The cell drains during the sleep, so a wake usually finds it
-  already low. Not latched yet, the wake boots on and rejoins, and the first check in ACTIVE ends it with the
-  `battery_low` report, so HA learns it; 3.5 V leaves plenty for a few rejoins. Latched, BOOT checks before the
-  radio, the panel and any NVS write, and a battery still low goes straight back to LOW_BATTERY.
-- LOW_BATTERY is deep sleep with USB sense (GPIO7) as its only wake. How the voltage and USB power are read,
-  and the console's overrides for bench tests: [firmware.md](firmware.md#battery-and-usb-power).
-- How the battery is reported over Zigbee: [zigbee.md](zigbee.md#battery).
+**Normal**: 3.5 V (`BATTERY_LOW_ENTER_MV`) or more, or USB power. The device runs as usual and checks the battery
+at BOOT (at rest, before the radio and the panel start), every `BATTERY_CHECK_MS` (1 s) in ACTIVE, UNPAIRED and
+PAIRING, and once when REJOIN fails.
+
+**Low**: below 3.5 V, not reported yet. The wake ends in SHUTDOWN, which draws *Battery dead* and reports
+`battery_low`. SHUTDOWN resends the report every second until Z2M confirms it, for up to
+`BATTERY_REPORT_TIMEOUT_MS` (10 s). If Z2M confirms it, the battery is latched low. If not, or if the device is not
+joined (failed rejoin, unpaired), the device goes to SLEEP as usual, and the next wake tries to report again.
+
+A wake usually finds the battery low already at BOOT: the cell drains during the sleep. BOOT does not end the wake
+there, because the device needs the network to report it. So it rejoins, and the first check in ACTIVE ends the
+wake. 3.5 V leaves plenty for a few rejoins.
+
+**Latched low**: low and reported. This implies that the panel already shows *Battery dead* and Z2M already has the
+report. If BOOT finds the battery still low, it takes a shortcut to LOW_BATTERY, effectively doing nothing. If BOOT
+finds restored power (USB or at least `BATTERY_LOW_EXIT_MV` (3.7 V)), the latch is cleared and booting continues
+normally.
+
+Why 3.7 V and not 3.5 V to leave the latch: the low reading may be taken under load, but BOOT measures at rest,
+when a nearly empty LiPo reads tens of mV higher. Resting must not count as charging.
+
+How the voltage and USB power are read, and the console's overrides for bench tests:
+[firmware.md](firmware.md#battery-and-usb-power). How the battery is reported over Zigbee:
+[zigbee.md](zigbee.md#battery).
 
 ## Failure modes
 
