@@ -163,8 +163,9 @@ while it no longer wakes. So the battery has three states:
 
 ```mermaid
 stateDiagram-v2
-    state "Latched low" as Latched
+    %% The order in which states first appear sets the layout: Normal on top, Latched low at the bottom.
     Normal --> Low: below 3.5 V
+    state "Latched low" as Latched
     Low --> Normal: 3.5 V or more, or USB power
     Low --> Latched: Z2M confirms the report
     Latched --> Normal: BOOT finds 3.7 V or more, or USB power
