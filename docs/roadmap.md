@@ -41,14 +41,11 @@ As of 2026-11-11, working end to end on the bench, with the device in the lobby:
 ## Future work
 
 **Hardware**: the PCB, whose soldered display GND fixes the BUSY hang ([hardware.md](hardware.md#busy-hang)); the
-sleep current measured on the battery, including whether the panel module's LDO (about 90 uA if it stays on) is
-off while RST is held low; the dividers on the PCB ([hardware.md](hardware.md#power-and-battery)).
-
-**USB sense divider values** (decide after the sleep current is measured): on battery the XIAO's 5V pin sits at
-about 0.33 V from a stiff leak (about 20k behind it), so the USB sense divider draws about 1.2 uA in deep sleep
-with 100k/150k. 1M/1.5M would cut that to about 0.14 uA and still read a clean low (about 0.2 V on GPIO7); the
-cost is a USB reading that lingers a few seconds after unplugging. Worth it only if the measured sleep current
-is in the single-digit uA.
+sleep current measured on the battery; the dividers on the PCB ([hardware.md](hardware.md#power-and-battery)).
+The panel module should be off in deep sleep, because RST low cuts its supply
+([hardware.md](hardware.md#power-and-battery)). To confirm in deep sleep: about 0 V at the RT9193's VIN (pin 1) and
+EN (pin 3), or about 0 uA in series with the module's VCC wire (short the meter while the board is awake: a
+refresh draws mA).
 
 **Reserved attributes** (0xFC8A; append-only ids, so they can be added without a re-pair; each also needs a line
 in the converter):

@@ -88,6 +88,7 @@ generated bitmaps instead of u8g2 fonts.
 | Retained RAM for the dataset and view | NVS survives a battery change too, and one write per wake is negligible wear |
 | USB sense on D2 as LOW_BATTERY's only wake source | D2 is the only free header pin with both ADC and deep-sleep wake, and the battery measurement needs the ADC; USB sense moved to D7, and LOW_BATTERY wakes by timer instead (2026-11-08) |
 | Bulk capacitor (100 uF + 100 nF) at the display's VCC/GND | planned as part of the BUSY hang fix (2026-10-15) from rule of thumb, no source; on the PCB C2/C3 are not fitted ([hardware.md](hardware.md#busy-hang), 2026-11-10) |
+| USB sense divider 1M/1.5M instead of 100k/150k | on battery the XIAO's 5V pin sits at about 0.33 V from a leak (about 20k behind it), so 100k/150k draws about 1.2 uA in deep sleep, 1M/1.5M about 0.14 uA. Against an estimated sleep budget of about 49 uA (LiPo self-discharge about 27 uA, XIAO about 15 uA, protection circuit, PIR, battery divider; not measured), that saves about 2-3 % of battery life, 2-5 weeks over about 2 years; the cost is a USB reading that lingers a few seconds after unplugging (2026-11-14) |
 | Holding view writes in Z2M while asleep | parked, not rejected: [roadmap.md](roadmap.md#future-work) |
 
 ## E-paper driver

@@ -147,8 +147,15 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
   to a PCB pad (J2), like the battery's (J1). The firmware reads it without pulls, and LOW_BATTERY deep-sleeps
   until it goes high ([firmware.md](firmware.md#battery-and-usb-power)). On the breadboard (82k/140k) it read 0.2 V
   on battery, awake and asleep, and high on USB, and a USB plug-in woke LOW_BATTERY. The 5V pin is not quite 0 V on
-  battery: about 0.33 V from a leak, so the divider draws about 1.2 uA ([roadmap.md](roadmap.md#future-work)). The
+  battery: about 0.33 V from a leak, so the divider draws about 1.2 uA (why not larger values: [history.md](history.md#rejected-options)). The
   protection circuit is the last cutoff.
+- Panel module power: the module switches its own supply with RST (Waveshare's
+  [4.2" schematic](https://files.waveshare.com/upload/9/97/4.2inch_e-Paper_Schematic.pdf); the sheet has no
+  revision mark, ours is rev 2.2). RST high turns on a P-MOSFET (Q31) from the VCC pin to the RT9193 LDO and the
+  level shifter, and drives the LDO's EN through 1k. RST low, as in deep sleep, turns both off: the LDO (about
+  90 uA when on) and the panel get no power, and only the MOSFET's leakage remains. Not yet measured
+  ([roadmap.md](roadmap.md#future-work)). The panel loses its RAM; this does not matter, because each wake starts
+  with a clear, which rewrites both RAMs ([E-paper panel](#e-paper-panel)).
 - On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
 
 ## USB console and deep sleep
