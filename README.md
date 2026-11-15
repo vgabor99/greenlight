@@ -23,9 +23,6 @@ target of one charge a year or less, so both the hardware and the software are d
 - Firmware: ESP-IDF v6.1 (C, CMake), a Zigbee sleepy end device.
 - Home Assistant side: Zigbee2MQTT with the external converter in `z2m/`, templates and an automation in `ha/`.
 
-The texts on the screen and the state words HA sends are Hungarian
-([docs/uispec/ui-spec.md](docs/uispec/ui-spec.md)). The docs are in English.
-
 ## Status
 
 Works end to end on a breadboard, with real deep sleep and real battery and USB sensing. The PCB is designed but
@@ -44,21 +41,54 @@ docs/        design, history, roadmap and research notes, UI spec and mockups (s
 CLAUDE.md    build environment and conventions
 ```
 
-`CLAUDE.md` and the skills in `.claude/` describe the maintainer's setup: serial ports, install paths, the MQTT
-broker's address and the Home Assistant entity names are those of one home. Change them to match yours.
+## Building
 
-## Build and flash
+### Before you start
 
-You need ESP-IDF v6.1 and a Seeed XIAO ESP32-C6. Activate ESP-IDF (on the maintainer's Windows and Mac machines:
-see [CLAUDE.md](CLAUDE.md)), then:
+This is a personal project tailored to my own needs, development environment, and home.
+
+`CLAUDE.md` and the skills in `.claude/` describe my setup. Serial ports, installation paths, the MQTT broker's address,
+and Home Assistant entity names all belong to one particular home. Change them to match yours. Development and testing
+work best when an AI agent has access to your Home Assistant instance and MQTT broker.
+
+The code and documentation are in English, but because the project was built for a Hungarian home,
+you'll find a bit of Hungarian here and there, mostly in the screen texts
+([docs/uispec/ui-spec.md](docs/uispec/ui-spec.md)). If you feel like learning Hungarian, godspeed!
+
+### Firmware build and flash
+
+You need ESP-IDF v6.1 and a Seeed XIAO ESP32-C6. Activate ESP-IDF ([CLAUDE.md](CLAUDE.md) shows how on my Windows and
+Mac machines), then run:
 
 ```
 idf.py build
 idf.py -p <port> flash
 ```
 
-To use it, you also need Home Assistant with Zigbee2MQTT: load the converter from `z2m/` and the files from `ha/`
-([docs/home-assistant.md](docs/home-assistant.md)).
+### Zigbee2MQTT
+
+Load `z2m/greenlight.mjs` into Zigbee2MQTT as an external converter
+([docs/zigbee.md](docs/zigbee.md#external-converter)).
+
+### Home Assistant
+
+Copy the template from `ha/custom_templates/` and the package from `ha/packages/` into the same folders of your Home
+Assistant configuration ([docs/home-assistant.md](docs/home-assistant.md)).
+
+### Testing
+
+The bench test (`tools/paced_write_test.py`) talks to the MQTT broker, so its MQTT user needs read access to the bridge
+and read-write access to the device. For example, in a Mosquitto `acl_file`:
+
+```
+user claude
+topic read zigbee2mqtt/bridge/#
+topic read zigbee2mqtt/gf_lobby_greenlight/#
+topic write zigbee2mqtt/gf_lobby_greenlight/set
+```
+
+Before running the test, disable the `Greenlight push` automation
+([docs/home-assistant.md](docs/home-assistant.md#push-automation)) so that real data does not interfere with it.
 
 ## Documentation
 
