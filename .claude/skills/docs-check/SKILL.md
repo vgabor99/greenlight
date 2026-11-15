@@ -25,7 +25,8 @@ No dependencies; exits 1 and prints `file:line: problem` lines if anything is wr
 - **Doc references**: every `docs/<file>.md#<heading>` in code comments, skills and docs (also the
   `, #other-heading` list form after a reference) points to an existing heading.
 - **Code names in the design docs** (not docs/history.md or docs/research/, which describe the past): file paths,
-  `name()` functions and `UPPER_CASE` names in backticks exist in the repo / code.
+  `name()` functions and `UPPER_CASE` names in backticks exist in the repo / code (the schematic's net labels
+  count as code).
 - **Tables that mirror the code**: docs/firmware.md#source-layout lists every `main/` file;
   docs/firmware.md#persistent-state matches the `STORE_KEY_*` strings; docs/firmware.md#build-switches matches
   `main/CMakeLists.txt`; every custom attribute id in `zigbee_internal.h` is in docs/zigbee.md, and the custom

@@ -209,7 +209,7 @@ How the voltage and USB power are read, and the console's overrides for bench te
 | Device dies silently | `awake` stays on in HA, but HA stops pushing 90 s after the last report ([awake gate](home-assistant.md#push-automation)). |
 | Zigbee stack does not start | After `STACK_START_TIMEOUT_MS` the device shuts down with the *Unknown error* screen. |
 | Pairing fails | Back to UNPAIRED with the *Pairing* screen; still factory new. |
-| Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it (to verify, [roadmap.md](roadmap.md)). |
+| Frame counter | Must persist across deep sleep or the parent rejects the device. The SDK persists it (to verify, [roadmap.md](roadmap.md#remaining-checks)). |
 | Cold boot (battery change) | Dataset and view are in NVS and survive; the next wake is a normal wake. |
 | Battery low | *Battery dead* screen, `battery_low` reported when joined; once Z2M confirms it, LOW_BATTERY until USB power, else the next wake reports again. |
 | Wake counter report lost | HA does not push in this wake; the screen keeps the last view, stale. Seen once in 39 wakes. Next wake is normal. |

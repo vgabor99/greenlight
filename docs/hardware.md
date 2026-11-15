@@ -36,8 +36,8 @@ after these defines.
 | MTDO pad (GPIO7), underside | **USB sense** (`VBUS_SENSE_PIN`), digital input with no pulls; LOW_BATTERY's wake pin ([Power and battery](#power-and-battery)) |
 
 The panel pins are held low before power-off; that works on any GPIO. D6 and D7 are free. MTMS and MTDI (GPIO4/5)
-are strapping pins, read at reset: not for a signal that may be high at power-on. A button wired straight to GND
-(or any load on D1/D2) shows up as `inputs at boot: ... =0` in the log.
+are strapping pins, read at reset: not for a signal that may be high at power-on. A load that pulls D1 low (a
+held or miswired pair button) shows up as `pair(D1)=0` in the `inputs at boot:` line of the log.
 
 ## Board
 

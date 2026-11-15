@@ -110,9 +110,8 @@ contract; the names exist only in Z2M. A numeric key with an explicit type (`{"4
 
 ### View push
 
-**All four `view_*` attributes in one write, one frame** (28 bytes of ZCL payload, 4 records of 7 bytes). HA
-sends it on every wake, whenever its view changes while the device is awake, and every 5 s while awake. The
-device collects the four values and applies them once the whole frame has been processed (`deliver_view()`,
+**All four `view_*` attributes in one write, one frame** (28 bytes of ZCL payload, 4 records of 7 bytes). When
+HA sends it: [home-assistant.md](home-assistant.md#push-automation). The device collects the four values and applies them once the whole frame has been processed (`deliver_view()`,
 deferred to the Zigbee task's next turn, after the frame), so the order of the records does not matter:
 
 - `view_id` = 0 or not all four attributes arrived: **incomplete**. Ignored, apart from the log and the debug
@@ -128,7 +127,7 @@ deferred to the Zigbee task's next turn, after the frame), so the order of the r
 ### Dataset sync
 
 **Rare: one `ds_entry` part per write, then `ds_commit`.** HA writes the entries of lines 0 to count-1 (any
-order, 100 ms apart), then the commit.
+order, paced: [home-assistant.md](home-assistant.md#push-automation)), then the commit.
 
 - Each entry write is at most 40 bytes of payload (a 36-character string plus the 4-byte record header), so it
   carries at most 26 bytes of text. A line up to 26 bytes is one entry (part 0, no "more"). A longer line is
@@ -205,7 +204,7 @@ Z2M needs a *definition* for each device model: how to recognise it, which entit
 Zigbee messages into state and MQTT commands into Zigbee frames. For unknown devices it builds a generic one
 from the *standard* clusters, but that cannot publish attributes of a **custom cluster** (and broke occupancy on
 this device, [history.md](history.md)). So the repo has its own: `z2m/greenlight.mjs`, written against Z2M
-2.12.1, zigbee-herdsman-converters 26.76 and zigbee-herdsman 10.6. It:
+2.12, zigbee-herdsman-converters 26.76 and zigbee-herdsman 10.6. It:
 
 - declares 0xFC8A as the custom cluster `greenlight` (`deviceAddCustomCluster`) with every attribute (inputs
   writable, state read-only);

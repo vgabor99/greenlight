@@ -161,6 +161,12 @@ def code_corpus():
     return "\n".join(read(p) for p in FILES if Path(p).suffix in exts or p.endswith("CMakeLists.txt"))
 
 
+def schematic_net_names():
+    """Net labels in the KiCad schematics: the nets are named after the board.h defines (docs/hardware.md#pins)."""
+    label = re.compile(r'\((?:label|global_label|hierarchical_label) "([^"]+)"')
+    return {name for p in FILES if p.endswith(".kicad_sch") for name in label.findall(read(p))}
+
+
 def path_exists(token, doc_rel):
     token = token.rstrip("/")
     for base in ("", "main/", Path(doc_rel).parent.as_posix() + "/"):
@@ -171,7 +177,7 @@ def path_exists(token, doc_rel):
 
 def check_code_names():
     corpus = code_corpus()
-    words = set(re.findall(r"\w+", corpus))
+    words = set(re.findall(r"\w+", corpus)) | schematic_net_names()
     for rel in design_docs():
         for n, line in iter_lines_outside_code(rel):
             for tok in re.findall(r"`([^`]+)`", line):
