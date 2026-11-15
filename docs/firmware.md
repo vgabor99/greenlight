@@ -73,8 +73,7 @@ drawn through a callback into the framebuffer, never for the panel. The top-leve
 
 `sdkconfig` is generated and git-ignored; `sdkconfig.defaults` (from `idf.py save-defconfig`: target,
 USB-Serial-JTAG primary console, Zigbee end device) holds the non-default settings, so rerun `save-defconfig`
-after changing `menuconfig`. `sdkconfig.ci` holds CI-only overrides (currently empty). `.devcontainer/` defines an
-ESP-IDF QEMU container; `.clangd` strips `-f*` / `-m*` flags so clangd copes with the RISC-V GCC flags in
+after changing `menuconfig`. `sdkconfig.ci` holds CI-only overrides (currently empty). `.clangd` strips `-f*` / `-m*` flags so clangd copes with the RISC-V GCC flags in
 `compile_commands.json`.
 
 ## Tasks and data flow
