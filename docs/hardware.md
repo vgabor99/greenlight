@@ -9,7 +9,7 @@ The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) 
 | **MCU**               | Seeed XIAO ESP32-C6 (ESP-IDF target `esp32c6`)                                                       | Low-power<br>Supports deep sleep<br>Supports Zigbee<br>Has battery management<br>Sufficient GPIOs and peripherals<br>Supports an external antenna if needed |
 | **Panel**             | 4.2" 400x300 1-bit e-paper, Waveshare V2 rev 2.2, SSD1683 controller; driver `main/panel/epaper.c` | Low-power<br>Supports partial updates (~0.5s)<br>Sufficient size and resolution for glanceability                                                       |
 | **PIR**               | Panasonic EKMB1205111 (2 uA, dT=4°C, 36°x150°) on 3V3                                                | Ultra low-power<br>High sensitivity<br>Wide lens fits the shape of the room<br>Voltage levels compatible with the 3.3V board                             |
-| **Pair button**       | Right-angle tactile switch (AliExpress, generic, sold as 6x6x5): body 7.5 x 7 mm, SPST, through hole, Ø3.5 actuator centred 4 mm above the PCB, its tip 5 mm in front of the switch pins; footprint `SW_Tactile_SPST_Angled_PTS645Vx31-2LFS` (same pin layout), its peg holes widened on the board from 1.3 to 1.5 mm for the snap-in legs | User facing button for (re-) pairing<br>Right angle: hidden inside the enclosure, pressed with a pin through its bottom                                       |
+| **Pair button**       | Right-angle tactile switch (AliExpress, generic, sold as 6x6x5): body 7.5 x 7 mm, SPST, through hole, Ø3.5 actuator centred 4 mm above the PCB, its tip 5 mm in front of the switch pins; footprint `SW_Tactile_SPST_Angled_PTS645Vx31-2LFS` (same pin layout), its peg holes widened on the board from 1.3 to 1.5 mm for the snap-in legs, which are soldered to GND | User facing button for (re-) pairing<br>Right angle: hidden inside the enclosure, pressed with a pin through its bottom                                       |
 | **Resistors, capacitors** | SMD, 0603 (C2 1206); values and LCSC part numbers in the schematic, uses in [Pins](#pins) and [Power and battery](#power-and-battery) | JLCPCB basic parts, placed by JLCPCB ([Board](#board))                                                                                   |
 | **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
 
@@ -53,7 +53,8 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - Heights: the room for parts on the front depends on the area, named by where it lies relative to the battery.
   On the battery (59 x 37 mm, behind the panel) there is none: the battery fills the gap. Right of it and above
   it, under the panel, the gap is 6 mm, but nothing goes above it, where the panel has parts on its back, and right
-  of it only flat SMD parts. Below the battery there is no panel, so the gap is 8 mm. The PIR sticks out of the enclosure; keep its 27 x 14 mm lens (centred on it) clear. KiCad rule areas mark the
+  of it only flat SMD parts. Below the battery there is no panel, so the gap is 8 mm. The PIR sticks out of the enclosure; its 27 x 14 mm lens (centred on it) sits high enough for flat SMD
+  parts under it (R6, C4, C5), nothing taller. KiCad rule areas mark the
   battery and the area above it; that one is L-shaped, leaving a strip left of the panel wire holes for flat SMD
   parts (C2, C3, not fitted: [BUSY hang](#busy-hang)).
 - Antenna: the XIAO lies entirely below the panel, its chip antenna at the left end (marked in the Fusion
@@ -76,6 +77,10 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
 - Routed with Freerouting, then tidied by hand in KiCad; ground fill on both layers. Tracks 0.3 mm, +3V3 and GND
   0.5 mm. The rules follow JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting
   narrows tracks between the XIAO's pads).
+- Vias: all 0.6 mm with a 0.3 mm drill, JLCPCB's smallest standard drill (no extra cost), tented. GND stitching
+  vias tie the two ground fills together, so the radio does not see two loosely joined plates: a 10 mm grid,
+  and a 2.5 mm row along the bottom strip's edges and left of the antenna keep-out. The rule areas keep them out
+  of the battery area, the antenna, the edge bands and the mounting holes.
 - Assembly: JLCPCB places the SMD resistors and capacitors (economic assembly, basic parts only, top side; their
   part numbers are in each symbol's LCSC field), except those marked DNP (C2, C3). The XIAO, the PIR, the button
   and the wires are soldered by hand.
@@ -149,6 +154,10 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
   on battery, awake and asleep, and high on USB, and a USB plug-in woke LOW_BATTERY. The 5V pin is not quite 0 V on
   battery: about 0.33 V from a leak, so the divider draws about 1.2 uA (why not larger values: [history.md](history.md#rejected-options)). The
   protection circuit is the last cutoff.
+- PIR supply: the PIR gets +3V3 through R6 (0 Ω), with C4 (100 nF) and C5 (10 uF) to GND at the sensor (net
+  `PIR_VDD`). Noise on a PIR's supply can trip it, for example the radio's current bursts. If the board shows
+  false triggers, R6 becomes a resistor (about 100 Ω to 1 kΩ) and forms a low-pass filter with C5; at the PIR's
+  2 uA it drops at most 2 mV.
 - Panel module power: the module switches its own supply with RST (Waveshare's
   [4.2" schematic](https://files.waveshare.com/upload/9/97/4.2inch_e-Paper_Schematic.pdf); the sheet has no
   revision mark, ours is rev 2.2). RST high turns on a P-MOSFET (Q31) from the VCC pin to the RT9193 LDO and the

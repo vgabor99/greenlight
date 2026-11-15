@@ -15,7 +15,8 @@ copy the files again from a newer commit and change the commit above.
 
 - `XIAO-ESP32-C6-Header` (footprint): Seeed's `XIAO-ESP32-C6-DIP` without the SMD pads (they stick out 0.8 mm
   past the XIAO's long edges), without its 3D models (they belong to other XIAO boards) and with one pin-1 dot
-  instead of two (the outer one sat on the board edge). It draws the XIAO's bottom pads (15-24, from
+  instead of two (the outer one sat on the board edge), and with 1 mm holes instead of 0.889 mm (pads unchanged,
+  1.524 mm). It draws the XIAO's bottom pads (15-24, from
   `XIAO-ESP32-C6-SMD`) on F.Fab with their names, only as a guide: they are not pads. The board uses it.
 - `XIAO-ESP32-C6-DIP` (symbol): Seeed's `XIAO-ESP32-C6-SMD` symbol without the bottom pads 15-24, to match the
   header-pin footprint.
