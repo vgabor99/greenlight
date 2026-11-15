@@ -74,7 +74,7 @@ stored view (*Synchronizing* when there is none). A failure screen stays until t
 ## Debug screen
 
 For RnD, built with `idf.py -DDEBUG_SCREEN=1 build` instead of the proper screen (macro `RENDER_DEBUG_SCREEN`;
-`=0` switches back, CMake caches the value). u8g2 font `t0_16b_te` (Terminus Bold, 49 columns x 16 px rows; 1 px
+`=0` switches back, CMake caches the value). u8g2 font `t0_16b_te` (UW ttyp0 Bold, 49 columns x 16 px rows; 1 px
 fonts are too faint on this panel), the same in every state; rows show the raw `II|name|state` text:
 
 ```

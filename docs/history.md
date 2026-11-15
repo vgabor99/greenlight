@@ -125,6 +125,6 @@ What was tried on the SSD1683 panel and did not work (what works is in
   ("Invalid external converter ... was ignored").
 - **A full hex framebuffer dump took 3 s per frame** on the console and made HA's dataset commits time out;
   `SCREEN_DUMP` prints only the non-white runs and is off in normal builds.
-- **1 px fonts are too faint on this panel**: the debug screen uses Terminus Bold.
+- **1 px fonts are too faint on this panel**: the debug screen uses UW ttyp0 Bold.
 - **Bench writes need the serial log running first**, and the dataset hash must come from the device, not an
   old log: 20 views with a stale hash were all out of sync, unnoticed (2026-10-27).
