@@ -17,7 +17,7 @@
 		)
 	)
 	(property "Value" "XIAO-ESP32-C6-Header"
-		(at 0 0 0)
+		(at 0 4.5 0)
 		(unlocked yes)
 		(layer "F.Fab")
 		(uuid "79cabf23-4ebc-4d37-9172-bb2cf4ea975f")
@@ -257,6 +257,236 @@
 		(uuid "f1bda1b0-c6a9-4930-b2ed-d175257d4cca")
 	)
 	
+	(fp_circle
+		(center 8.6415 -1.2734)
+		(end 9.4915 -1.2734)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "0b891d5e-1323-430c-adc0-1fbfc5918478")
+	)
+	(fp_text user "MTDI"
+		(at 8.6415 -1.2734 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "0b0971ca-544f-40ab-9b86-f91af6f5d873")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 8.6415 1.2666)
+		(end 9.4915 1.2666)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "2bd63e6e-4627-49d1-aa10-194730331569")
+	)
+	(fp_text user "MTDO"
+		(at 8.6415 1.2666 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "e211c6ab-8b8d-4758-bd8e-551169e6777f")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 6.1015 -1.2734)
+		(end 6.9515 -1.2734)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "c237eb80-0f7d-4f4b-bacf-6a909f2647fb")
+	)
+	(fp_text user "EN"
+		(at 6.1015 -1.2734 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "90e00b56-5546-4efa-805c-81bf7b4112ec")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 6.1015 1.2666)
+		(end 6.9515 1.2666)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "94c95cd1-09ff-4d20-897e-5de373a77c0a")
+	)
+	(fp_text user "GND"
+		(at 6.1015 1.2666 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "5a81d1e2-5bd4-4d65-8bac-2d615b46a94b")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 3.5615 -1.2734)
+		(end 4.4115 -1.2734)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "a90b09d6-9ab0-469b-a647-29bd2b5d7cbf")
+	)
+	(fp_text user "MTMS"
+		(at 3.5615 -1.2734 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "3c4ef997-d829-429d-b5d7-9a61f37afce8")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 3.5615 1.2666)
+		(end 4.4115 1.2666)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "ac86790d-0433-4e25-8ae1-50b9db54ad14")
+	)
+	(fp_text user "MTCK"
+		(at 3.5615 1.2666 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "bc2be889-76a0-4401-b6f8-e19b83832e78")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 1.0215 -1.2734)
+		(end 1.8715 -1.2734)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "81e48b14-eb34-409a-b130-24836e37e3a7")
+	)
+	(fp_text user "BOOT"
+		(at 1.0215 -1.2734 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "d5f784e7-390a-4952-beff-daec8b381e54")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_circle
+		(center 1.0783 1.174)
+		(end 1.9283 1.174)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "a48972b6-30e0-4ac1-a64b-155a4752946f")
+	)
+	(fp_text user "3V3"
+		(at 1.0783 1.174 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "eb3f2905-cbe9-4177-a3e0-8e97f4985862")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_rect
+		(start -6.7817 -2.3314)
+		(end -4.2817 -1.2314)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "7f41de54-9ab1-4e2b-b718-95d39554cc52")
+	)
+	(fp_text user "VBAT"
+		(at -5.5317 -1.7814 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "c825af95-9c97-4de9-bd75-f9cf700a0d80")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
+	(fp_rect
+		(start -6.7817 0.2086)
+		(end -4.2817 1.3086)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "3b4f3fc9-f84f-4a73-b9a4-4143ba32b55d")
+	)
+	(fp_text user "GND"
+		(at -5.5317 0.7586 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "f08efe17-fa18-48bf-a952-3f0ad293c94c")
+		(effects
+			(font
+				(size 0.35 0.35)
+				(thickness 0.06)
+			)
+		)
+	)
 	(pad "1" thru_hole circle
 		(at 7.62 -7.62 90)
 		(size 1.524 1.524)
