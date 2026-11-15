@@ -29,7 +29,7 @@ Build and coding conventions are in [CLAUDE.md](../CLAUDE.md).
 ## How-to
 
 Procedures are Claude Code skills in [.claude/skills/](../.claude/skills/), plain markdown that people can follow
-as well:
+as well. They are written for the maintainer's bench and home: adapt the ports, paths and names to yours.
 
 | Skill | For |
 |---|---|

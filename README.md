@@ -23,6 +23,9 @@ target of one charge a year or less, so both the hardware and the software are d
 - Firmware: ESP-IDF v6.1 (C, CMake), a Zigbee sleepy end device.
 - Home Assistant side: Zigbee2MQTT with the external converter in `z2m/`, templates and an automation in `ha/`.
 
+The texts on the screen and the state words HA sends are Hungarian
+([docs/uispec/ui-spec.md](docs/uispec/ui-spec.md)). The docs are in English.
+
 ## Status
 
 Works end to end on a breadboard, with real deep sleep and real battery and USB sensing. The PCB is designed but
@@ -41,16 +44,32 @@ docs/        design, history, roadmap and research notes, UI spec and mockups (s
 CLAUDE.md    build environment and conventions
 ```
 
+`CLAUDE.md` and the skills in `.claude/` describe the maintainer's setup: serial ports, install paths, the MQTT
+broker's address and the Home Assistant entity names are those of one home. Change them to match yours.
+
 ## Build and flash
 
-Activate ESP-IDF v6.1 first (see [CLAUDE.md](CLAUDE.md) for the Windows and Mac variants), then:
+You need ESP-IDF v6.1 and a Seeed XIAO ESP32-C6. Activate ESP-IDF (on the maintainer's Windows and Mac machines:
+see [CLAUDE.md](CLAUDE.md)), then:
 
 ```
 idf.py build
-idf.py -p COM5 flash
+idf.py -p <port> flash
 ```
+
+To use it, you also need Home Assistant with Zigbee2MQTT: load the converter from `z2m/` and the files from `ha/`
+([docs/home-assistant.md](docs/home-assistant.md)).
 
 ## Documentation
 
 [docs/README.md](docs/README.md) is the index: architecture, device behaviour, data model, Zigbee interface,
 Home Assistant side, display, hardware, firmware layout, history and roadmap.
+
+## License
+
+- Firmware, tools, and the Home Assistant and Zigbee2MQTT files: [MIT](LICENSE).
+- Hardware (`hardware/`): [CERN-OHL-P-2.0](hardware/LICENSE). Exception: the Seeed Studio XIAO library files in
+  `hardware/lib/` and the parts derived from them are CC BY-SA 4.0 ([hardware/lib/README.md](hardware/lib/README.md)).
+- Documentation and mockup images (`docs/`): [CC BY 4.0](docs/LICENSE).
+
+Fonts, icons and libraries by others: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

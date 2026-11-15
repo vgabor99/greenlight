@@ -7,11 +7,11 @@
     "idf.customExtraVars": {
       "IDF_TARGET": "esp32c6"
     },
-    "clangd.path": "/Users/gvarga/.espressif/tools/esp-clangd/esp-21.1.3_20260408/esp-clangd/bin/clangd",
+    "clangd.path": "${userHome}/.espressif/tools/esp-clangd/esp-21.1.3_20260408/esp-clangd/bin/clangd",
     "clangd.arguments": [
       "--background-index",
       "--query-driver=**",
-      "--compile-commands-dir=/Users/gvarga/work/greenlight/build"
+      "--compile-commands-dir=${workspaceFolder}/build"
     ],
     "idf.flashType": "JTAG"
 }
