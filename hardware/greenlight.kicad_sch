@@ -1069,6 +1069,164 @@
 		)
 		(embedded_fonts no)
 	)
+	(symbol "Connector_Generic:Conn_01x02"
+		(pin_names
+			(offset 1.016)
+			(hide yes)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(duplicate_pin_numbers_are_jumpers no)
+		(property "Reference" "J"
+			(at 0 2.54 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "Conn_01x02"
+			(at 0 -5.08 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_keywords" "connector"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_fp_filters" "Connector*:*_1x??_*"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(symbol "Conn_01x02_1_1"
+			(rectangle
+				(start -1.27 1.27)
+				(end 1.27 -3.81)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type background)
+				)
+			)
+			(rectangle
+				(start -1.27 0.127)
+				(end 0 -0.127)
+				(stroke
+					(width 0.1524)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(rectangle
+				(start -1.27 -2.413)
+				(end 0 -2.667)
+				(stroke
+					(width 0.1524)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(pin passive line
+				(at -5.08 0 0)
+				(length 3.81)
+				(name "Pin_1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at -5.08 -2.54 0)
+				(length 3.81)
+				(name "Pin_2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+		)
+		(embedded_fonts no)
+	)
 		(symbol "Connector_Generic:Conn_01x01"
 		(pin_names
 			(offset 1.016)
@@ -2429,7 +2587,7 @@
 		(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
 		(uuid "447e989c-f375-498a-aae3-794b8e33ead3")
 		(property "Reference" "J1" (at 203.2 133.35 0) (effects (font (size 1.27 1.27)) (justify left)))
-		(property "Value" "VBAT wire" (at 203.2 135.89 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(property "Value" "BAT+ wire" (at 203.2 135.89 0) (effects (font (size 1.27 1.27)) (justify left)))
 		(property "Footprint" "TestPoint:TestPoint_THTPad_D2.0mm_Drill1.0mm" (at 200.66 134.62 0) (hide yes) (effects
 				(font
 					(size 1.27 1.27)
@@ -2460,7 +2618,7 @@
 	)
 	(wire (pts (xy 195.58 134.62) (xy 190.5 134.62)) (stroke (width 0) (type default)) (uuid "82d5f9a4-23a3-4888-8c88-e680d44aba96"))
 	(label "VBAT" (at 190.5 134.62 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "cd382d79-49b5-458f-8b18-8609e9ad34b0"))
-	(text "Planned: the battery is soldered to the XIAO's bottom pads VBAT and GND,\nnot to the PCB. J1: PCB pad for a wire from the XIAO's VBAT pad, for the battery sense.\nJ2: PCB pad for a wire from the XIAO's MTDO pad (GPIO7), for the USB sense (a deep-sleep wake pin)." (exclude_from_sim no) (at 152.4 152.4 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "47ca97ac-fe5a-4604-9cdb-7300e731e742"))
+	(text "Planned: the battery plugs into a JST SH pigtail, soldered into J3 (pin 1 = +). The XIAO's BAT+ pad is wired to the PCB:\nJ1 from BAT+ (battery current and the battery sense); the return is the XIAO's GND pin.\nJ2: PCB pad for a wire from the XIAO's MTDO pad (GPIO7), for the USB sense (a deep-sleep wake pin)." (exclude_from_sim no) (at 152.4 157.48 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "47ca97ac-fe5a-4604-9cdb-7300e731e742"))
 	(symbol
 		(lib_id "Device:R")
 		(at 50.8 147.32 0)
@@ -3051,6 +3209,41 @@
 		(property "ki_keywords" "flag power" (at 35.56 55.88 0) (hide yes) (effects (font (size 1.27 1.27))))
 		(pin "1" (uuid "a219d3a3-b4d6-4fe3-a762-567c5cf9da13"))
 		(instances (project "greenlight" (path "/3d0b2fcc-90bb-41cd-8ef9-05277aff7ad7" (reference "#FLG23") (unit 1))))
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x02")
+		(at 200.66 147.32 0)
+		(unit 1)
+		(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+		(uuid "76c944b8-9df8-463d-9438-9ce5d7bb3dd2")
+		(property "Reference" "J3" (at 203.2 146.05 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(property "Value" "Battery wires" (at 203.2 148.59 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" (at 200.66 147.32 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Datasheet" "" (at 200.66 147.32 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Description" "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)" (at 200.66 147.32 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "ki_keywords" "connector" (at 200.66 147.32 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "ki_fp_filters" "Connector*:*_1x??_*" (at 200.66 147.32 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(pin "1" (uuid "38375e8d-149c-4bf1-9938-21acc49d1af8"))
+		(pin "2" (uuid "dec37989-102e-4b39-be78-4a22dc4a7b6c"))
+		(instances (project "greenlight" (path "/3d0b2fcc-90bb-41cd-8ef9-05277aff7ad7" (reference "J3") (unit 1))))
+	)
+	(wire (pts (xy 195.58 147.32) (xy 190.5 147.32)) (stroke (width 0) (type default)) (uuid "597be1a3-5400-41e3-9f38-5857f7450d63"))
+	(label "VBAT" (at 190.5 147.32 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "c5ef8c8f-43fe-488a-b9df-1ab89f6a52ae"))
+	(wire (pts (xy 195.58 149.86) (xy 190.5 149.86)) (stroke (width 0) (type default)) (uuid "6f4ebc5d-d6c8-4799-9d7c-0bd63e155789"))
+	(symbol
+		(lib_id "power:GND")
+		(at 190.5 149.86 0)
+		(unit 1)
+		(exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+		(uuid "9fd6a795-4245-4104-95af-11a16cc45d0b")
+		(property "Reference" "#PWR25" (at 190.5 156.21 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Value" "GND" (at 190.5 153.67 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "" (at 190.5 149.86 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Datasheet" "" (at 190.5 149.86 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground" (at 190.5 149.86 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "ki_keywords" "global power" (at 190.5 149.86 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(pin "1" (uuid "de1520a6-2a52-4684-92ef-e3cabaaa3ae3"))
+		(instances (project "greenlight" (path "/3d0b2fcc-90bb-41cd-8ef9-05277aff7ad7" (reference "#PWR25") (unit 1))))
 	)
 	(sheet_instances (path "/" (page "1")))
 	(embedded_fonts no)

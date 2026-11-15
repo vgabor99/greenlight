@@ -11,7 +11,7 @@ The schematic and the board are a KiCad 10 project in [hardware/](../hardware/) 
 | **PIR**               | Panasonic EKMB1205111 (2 uA, dT=4°C, 36°x150°) on 3V3                                                | Ultra low-power<br>High sensitivity<br>Wide lens fits the shape of the room<br>Voltage levels compatible with the 3.3V board                             |
 | **Pair button**       | Right-angle tactile switch (AliExpress, generic, sold as 6x6x5): body 7.5 x 7 mm, SPST, through hole, Ø3.5 actuator centred 4 mm above the PCB, its tip 5 mm in front of the switch pins; footprint `SW_Tactile_SPST_Angled_PTS645Vx31-2LFS` (same pin layout), its peg holes widened on the board from 1.3 to 1.5 mm for the snap-in legs, which are soldered to GND | User facing button for (re-) pairing<br>Right angle: hidden inside the enclosure, pressed with a pin through its bottom                                       |
 | **Resistors, capacitors** | SMD, 0603 (C2 1206); values and LCSC part numbers in the schematic, uses in [Pins](#pins) and [Power and battery](#power-and-battery) | JLCPCB basic parts, placed by JLCPCB ([Board](#board))                                                                                   |
-| **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit                                                         | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
+| **Battery** (planned) | 1000 mAh LiPo cell with a protection circuit and a JST SH plug                                       | Long battery life<br>Protect the battery from under- and overvoltage<br>Not burning my home down                                                        |
 
 The battery voltage and USB power are measured on the breadboard
 ([firmware.md](firmware.md#battery-and-usb-power)); the PCB is not built yet.
@@ -62,9 +62,10 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   under its antenna end, 7 mm left of it and up to 0.8 mm above the top pin row; tracks reach the XIAO from
   above. The footprint is a header-only copy of Seeed's (`XIAO-ESP32-C6-Header`): Seeed's also has the SMD pads,
   which stick out 0.8 mm past the XIAO's long edges.
-- The battery is soldered to the XIAO's BAT pads; a wire from BAT+ comes up to J1 above the XIAO for the
-  battery measurement. The dividers (R2-R5, C1) sit above the XIAO too, not under it, where the battery wires
-  are.
+- The battery plugs into a JST SH pigtail (SH has no through-hole parts), its two wires soldered into J3 right
+  of the battery. Pin 1 (square pad) is +, marked on the silkscreen: SH cells and pigtails come wired either
+  way, so check both before plugging in. A wire from the XIAO's BAT+ pad comes up to J1 above the XIAO. The
+  dividers (R2-R5, C1) sit above the XIAO too, not under it, where the battery wire is.
 - The panel connects by 8 wires soldered into a row of holes at the right edge, labelled on the silkscreen
   (VCC at the bottom, BUSY at the top), so the panel and the board open like a book.
 - Four M3 holes for standoffs.
@@ -73,7 +74,7 @@ enclosure's Fusion 360 sketch, exported as [hardware/mechanical/pcb-layout.dxf](
   holes no tracks or vias within 3 mm of the left, top and right edges (2.6 mm on the right, beside the panel wire
   holes); below them 0.5 mm, as Freerouting does not know JLCPCB's 0.3 mm copper-to-edge rule.
 - Silkscreen: the battery's outline, the PIR lens (a dashed 27 x 14 mm rectangle), a 6 mm circle around each
-  mounting hole, the panel wire names, BAT+, and "Greenlight v1 / Gabor Varga 2026" above the pair button.
+  mounting hole, the panel wire names, BAT+, + and - at the battery wires (J3), and "Greenlight v1 / Gabor Varga 2026" above the pair button.
 - Routed with Freerouting, then tidied by hand in KiCad; ground fill on both layers. Tracks 0.3 mm, +3V3 and GND
   0.5 mm. The rules follow JLCPCB's limits: 0.3 mm copper to the board edge, 0.15 mm minimum track (Freerouting
   narrows tracks between the XIAO's pads).
@@ -140,9 +141,10 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
 
 - The ESP32-C6 cannot switch itself off; deep sleep is its floor. On the XIAO the cell, the charger and the
   system share the BAT pad, so a switch that cuts the system would also stop charging.
-- The battery (planned) is soldered to the XIAO's BAT pads on its underside, not to the PCB: the XIAO sits on
-  header pins, so those pads do not reach the board. A thin wire from the BAT+ pad to a PCB pad (J1 in the
-  schematic) feeds the battery measurement.
+- The battery (planned) plugs into a JST SH pigtail soldered to the PCB (J3), so it can be unplugged or swapped without
+  soldering, and fitted last. The XIAO sits on header pins, so its BAT+ pad on the underside does not reach the
+  board: a wire takes it to a PCB pad (J1). It carries the battery's current (charging and the system); the
+  return goes through the XIAO's GND header pin. The battery measurement taps VBAT on the PCB.
 - Battery measurement: the XIAO ESP32-C6 has no battery sense path of its own. VBAT goes through a 1M/1M divider
   (about 2 uA) with 100 nF at the pin to D2. When it is measured: [behaviour.md](behaviour.md#low-battery);
   how: [firmware.md](firmware.md#battery-and-usb-power). Any two equal resistors keep the ratio; a meter
