@@ -17,7 +17,7 @@ the PNG into docs/uispec/mockups/ once it is accepted.
 screens.json maps a screen name (the screen_kind_t value, house_* for the house screens) to one of:
   {"layout": "problems", "rows": [[icon, name, state], ...], "stale": bool}   up to 6 rows
   {"layout": "ok", "title": str, "lines": [str, str], "stale": bool}
-  {"layout": "device", "icon": str, "text": str}
+  {"layout": "device", "icon": str, "text": str, "hint": str}                  hint is optional
   {"layout": "unpaired", "icon": str, "title": str, "lines": [str, str]}
 Icons are MDI names without the "mdi-" prefix.
 """
@@ -51,7 +51,7 @@ ROW_HEIGHT, ROW_ICON_X, ROW_ICON_PX, ROW_NAME_X, ROW_RIGHT_X, ROW_BASELINE_DY = 
 NAME_FONT, STATE_FONT = (600, 24), (400, 22)
 OK_ICON, OK_ICON_PX, OK_TITLE, OK_LINES, OK_TITLE_FONT, OK_LINE_FONT = (125, 22), 150, 214, (248, 274), (700, 32), (400, 18)
 BADGE_CENTER, BADGE_RADIUS, BADGE_RING, BADGE_ICON_PX = (ROW_RIGHT_X - 17, 25), 17, 4, 24
-DEVICE_ICON_TOP, DEVICE_ICON_PX, DEVICE_TEXT, DEVICE_FONT = 38, 150, 240, (700, 30)
+DEVICE_ICON_TOP, DEVICE_ICON_PX, DEVICE_TEXT, DEVICE_FONT, DEVICE_HINT, DEVICE_HINT_LIFT = 38, 150, 240, (700, 30), 250, 24
 PAIR_ICON_TOP, PAIR_ICON_PX, PAIR_TITLE, PAIR_LINES, PAIR_LINE_FONT = 24, 120, 180, (218, 250), (400, 22)
 
 
@@ -122,8 +122,12 @@ def all_ok(screen):
 
 
 def device(screen):
-    return [icon(screen["icon"], (WIDTH - DEVICE_ICON_PX) // 2, DEVICE_ICON_TOP, DEVICE_ICON_PX),
-            text(screen["text"], WIDTH // 2, DEVICE_TEXT, DEVICE_FONT, "middle")]
+    lift = DEVICE_HINT_LIFT if "hint" in screen else 0  # with a hint line, the icon and text move up
+    out = [icon(screen["icon"], (WIDTH - DEVICE_ICON_PX) // 2, DEVICE_ICON_TOP - lift, DEVICE_ICON_PX),
+           text(screen["text"], WIDTH // 2, DEVICE_TEXT - lift, DEVICE_FONT, "middle")]
+    if "hint" in screen:
+        out.append(text(screen["hint"], WIDTH // 2, DEVICE_HINT, PAIR_LINE_FONT, "middle"))
+    return out
 
 
 def unpaired(screen):

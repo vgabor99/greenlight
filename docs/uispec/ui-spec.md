@@ -82,18 +82,19 @@ no badge.
 
 A large outline icon, centred, with one line of bold text below; no header and no stale badge. Outline icons keep
 these screens apart from the solid check of *All OK*, and the single centred line keeps them apart from the problem
-list. The *Pairing* screen adds two instruction lines under the title, with a slightly smaller icon, because it is
-the one screen that asks the user to act.
+list. The two pairing steps add a small hint line under the text: *Network search* says what the user must do,
+*Connecting* that it worked and is almost done. The *Pairing* screen has its own layout: two instruction lines
+under the title, with a slightly smaller icon.
 
 | Screen | Situation | Icon | Text |
 |---|---|---|---|
 | Pairing | not paired: out of the box, and after a failed pairing attempt | `gesture-tap-hold` | Párosítás / Engedélyezd a csatlakozást / Nyomd a gombot 3 mp-ig (Pairing / Allow joining / Hold the button for 3 s) |
-| Network search | Zigbee pairing | `access-point` | Hálózatkeresés (searching for network) |
-| Connecting | Zigbee interview | `access-point` | Csatlakozás (joining) |
+| Network search | Zigbee pairing | `access-point` | Hálózatkeresés / Engedélyezd a csatlakozást (Searching for network / Allow joining) |
+| Connecting | Zigbee interview | `access-point` | Csatlakozva / Mindjárt kész (Connected / Almost done) |
 | Synchronizing | waiting for data from HA | `sync` | Szinkronizálás (syncing) |
-| Join failed | a paired device failed to rejoin its network | `alert-outline` | Csatlakozási hiba (connection error) |
-| Battery dead | battery dead | `battery-outline` | Akkumulátor lemerült (battery dead) |
-| Unknown error | any other failure | `alert-outline` | Ismeretlen hiba (unknown error) |
+| Join failed | a paired device failed to rejoin its network | `alert-outline` | Csatlakozási hiba (Connection error) |
+| Battery dead | battery dead | `battery-outline` | Akkumulátor lemerült (Battery dead) |
+| Unknown error | any other failure | `alert-outline` | Ismeretlen hiba (Unknown error) |
 
 A failed pairing attempt goes back to *Pairing*, which says what to do; *Join failed* is only for a paired device.
 
@@ -140,8 +141,11 @@ Material Design Icons 7.4.47.
 
 | Element | Type / size | Position |
 |---|---|---|
-| Icon | 150 px, outline | centred on x 200, box top y 38 |
-| Text | Inter Bold (700) 30 px | centred, baseline 240 |
+| Icon | 150 px, outline | centred on x 200, box top y 38 (14 with a hint line) |
+| Text | Inter Bold (700) 30 px | centred, baseline 240 (216 with a hint line) |
+| Hint line (*Network search*, *Connecting*) | Inter Regular (400) 22 px | centred, baseline 250 |
+
+With a hint line, the icon and the text move up 24 px, so that the content stays centred vertically.
 
 **Pairing**
 

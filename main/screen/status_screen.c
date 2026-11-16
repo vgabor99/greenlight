@@ -29,8 +29,10 @@
 #define BADGE_RADIUS 17  /* stale badge: black disc 34 px across, right edge at ROW_RIGHT_X, centred on the */
 #define BADGE_RING   4   /* first row's icon, with a white ring around it, 4.5 px wide (docs/data-model.md#staleness-flag) */
 
-#define DEVICE_ICON_Y        112  /* device screens: icon and one line */
+#define DEVICE_ICON_Y        112  /* device screens: icon, one line and an optional hint line */
 #define DEVICE_TEXT_BASELINE 240
+#define DEVICE_HINT_BASELINE 250  /* with a hint line, the icon and text move up by DEVICE_HINT_LIFT */
+#define DEVICE_HINT_LIFT     24
 
 #define PAIR_ICON_Y          94   /* "Párosítás": a smaller icon, the title and two instruction lines */
 #define PAIR_TITLE_BASELINE  180
@@ -134,12 +136,17 @@ static void draw_house(const screen_content_t *content)
     }
 }
 
-/* ---- Device screens: a large icon and one line, no header ("Párosítás" adds two instruction lines) ---- */
+/* ---- Device screens: a large icon and one line, no header; some add a small hint line ("Párosítás" has its own
+ * layout with two instruction lines) ---- */
 
-static void draw_device_screen(const bitmap_icon_t *icon, const char *text)
+static void draw_device_screen(const bitmap_icon_t *icon, const char *text, const char *hint)
 {
-    bitmap_draw_icon(icon, FRAMEBUFFER_WIDTH / 2, DEVICE_ICON_Y);
-    bitmap_text_draw_centered(&bitmap_font_big, DEVICE_TEXT_BASELINE, text);
+    int lift = hint ? DEVICE_HINT_LIFT : 0;
+    bitmap_draw_icon(icon, FRAMEBUFFER_WIDTH / 2, DEVICE_ICON_Y - lift);
+    bitmap_text_draw_centered(&bitmap_font_big, DEVICE_TEXT_BASELINE - lift, text);
+    if (hint) {
+        bitmap_text_draw_centered(&bitmap_font_hint, DEVICE_HINT_BASELINE, hint);
+    }
 }
 
 static void draw_unpaired(void)
@@ -156,11 +163,13 @@ void status_screen_draw(const screen_content_t *content)
     case SCREEN_BLANK:       break;
     case SCREEN_HOUSE:       draw_house(content); break;
     case SCREEN_UNPAIRED:    draw_unpaired(); break;
-    case SCREEN_SEARCHING:   draw_device_screen(&bitmap_icon_access_point, "Hálózatkeresés"); break;
-    case SCREEN_JOINING:     draw_device_screen(&bitmap_icon_access_point, "Csatlakozás"); break;
-    case SCREEN_SYNCING:     draw_device_screen(&bitmap_icon_sync, "Szinkronizálás"); break;
-    case SCREEN_JOIN_FAILED: draw_device_screen(&bitmap_icon_alert_outline, "Csatlakozási hiba"); break;
-    case SCREEN_BATTERY_DEAD: draw_device_screen(&bitmap_icon_battery_outline, "Akkumulátor lemerült"); break;
-    case SCREEN_ERROR:       draw_device_screen(&bitmap_icon_alert_outline, "Ismeretlen hiba"); break;
+    case SCREEN_SEARCHING:
+        draw_device_screen(&bitmap_icon_access_point, "Hálózatkeresés", "Engedélyezd a csatlakozást");
+        break;
+    case SCREEN_JOINING:     draw_device_screen(&bitmap_icon_access_point, "Csatlakozva", "Mindjárt kész"); break;
+    case SCREEN_SYNCING:     draw_device_screen(&bitmap_icon_sync, "Szinkronizálás", NULL); break;
+    case SCREEN_JOIN_FAILED: draw_device_screen(&bitmap_icon_alert_outline, "Csatlakozási hiba", NULL); break;
+    case SCREEN_BATTERY_DEAD: draw_device_screen(&bitmap_icon_battery_outline, "Akkumulátor lemerült", NULL); break;
+    case SCREEN_ERROR:       draw_device_screen(&bitmap_icon_alert_outline, "Ismeretlen hiba", NULL); break;
     }
 }
