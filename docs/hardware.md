@@ -102,6 +102,11 @@ What works on this panel (what was tried and failed is in [history.md](history.m
   buffers after each update, so `drive_pass()` rewrites both every pass with old = inverse of new. Re-triggering
   without rewriting RAM inverts the screen.
 - Black is weak and a small amount of grain on the white background is normal.
+- **The enclosure mounts the panel upside down.** The controller rotates the image by 180°
+  (`PANEL_ROTATED_180` in `main/board/board.h`): data entry mode `0x11 = 0x00` (X and Y count down), and the RAM
+  windows and counters start at the last address. X-decrement also reverses the pixels inside each byte (SSD1683
+  datasheet Rev 1.0, section 8.2), so the frame bytes go out unchanged. The framebuffer and the screen dumps stay
+  upright. `0x21` has no source-direction bit, and `0x01` `TB` would only turn the gate scan around.
 - Every clear and refresh logs a `panel: ...` line (duration, BUSY level before, black and changed pixel counts):
   a clear takes 500 ms, a partial 470 ms however many pixels change (tested up to about 22,600 black pixels per
   frame). Reading these lines: the `panel-troubleshoot` skill.

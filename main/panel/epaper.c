@@ -1,6 +1,7 @@
 /* Driver for the Waveshare 4.2" e-paper module (400x300, SSD1683 controller).
  * Partial refresh follows Waveshare's EPD_4IN2_V2 example code. The panel's own full-refresh waveform
- * hangs (BUSY never releases), so epaper_clear() emulates it with repeated partial updates. */
+ * hangs (BUSY never releases), so epaper_clear() emulates it with repeated partial updates.
+ * With PANEL_ROTATED_180 the controller rotates the image: RAM is written from its last address down. */
 
 #include <string.h>
 #include "board/board.h"
@@ -32,6 +33,22 @@ static const char *TAG = "epd";
 
 #define UPDATE_PARTIAL 0xFF  /* load temp+LUT, display mode 2 (partial waveform), ~440 ms */
 #define WHITE_PASSES   1     /* passes to white in epaper_clear(); more passes make the white grainier */
+
+/* RAM addressing. Rotated by 180 degrees, X and Y count down from the last address; X-decrement also reverses
+ * the pixels within each byte (SSD1683 datasheet 8.2), so the frame bytes are sent unchanged. */
+#if PANEL_ROTATED_180
+#define ENTRY_MODE 0x00  /* X-, Y- */
+#define X_FIRST    ((EPAPER_WIDTH - 1) / 8)
+#define X_LAST     0
+#define Y_FIRST    (EPAPER_HEIGHT - 1)
+#define Y_LAST     0
+#else
+#define ENTRY_MODE 0x03  /* X+, Y+ */
+#define X_FIRST    0
+#define X_LAST     ((EPAPER_WIDTH - 1) / 8)
+#define Y_FIRST    0
+#define Y_LAST     (EPAPER_HEIGHT - 1)
+#endif
 
 static spi_device_handle_t spi;
 static uint8_t             old_ram[EPAPER_FRAME_BYTES];
@@ -143,18 +160,17 @@ esp_err_t epaper_init(void)
     send_command_with_data(CMD_TEMPERATURE_SENSOR, (uint8_t[]){0x80}, 1);       /* the internal one */
     send_command_with_data(CMD_DISPLAY_UPDATE_CONTROL_1, (uint8_t[]){0x40, 0x00}, 2);
     send_command_with_data(CMD_BORDER_WAVEFORM, (uint8_t[]){0x05}, 1);
-    send_command_with_data(CMD_DATA_ENTRY_MODE, (uint8_t[]){0x03}, 1);          /* X+, Y+ */
-    send_command_with_data(CMD_RAM_X_RANGE, (uint8_t[]){0x00, (EPAPER_WIDTH - 1) / 8}, 2);
-    send_command_with_data(CMD_RAM_Y_RANGE, (uint8_t[]){0x00, 0x00, (EPAPER_HEIGHT - 1) & 0xFF, (EPAPER_HEIGHT - 1) >> 8},
-                           4);
+    send_command_with_data(CMD_DATA_ENTRY_MODE, (uint8_t[]){ENTRY_MODE}, 1);
+    send_command_with_data(CMD_RAM_X_RANGE, (uint8_t[]){X_FIRST, X_LAST}, 2);
+    send_command_with_data(CMD_RAM_Y_RANGE, (uint8_t[]){Y_FIRST & 0xFF, Y_FIRST >> 8, Y_LAST & 0xFF, Y_LAST >> 8}, 4);
     return wait_while_busy();
 }
 
 /* Reset the RAM address counter; it does not reliably wrap after a full write. */
 static void reset_ram_cursor(void)
 {
-    send_command_with_data(CMD_RAM_X_COUNTER, (uint8_t[]){0x00}, 1);
-    send_command_with_data(CMD_RAM_Y_COUNTER, (uint8_t[]){0x00, 0x00}, 2);
+    send_command_with_data(CMD_RAM_X_COUNTER, (uint8_t[]){X_FIRST}, 1);
+    send_command_with_data(CMD_RAM_Y_COUNTER, (uint8_t[]){Y_FIRST & 0xFF, Y_FIRST >> 8}, 2);
 }
 
 /* Run the update sequence that `mode` selects and wait for it. */

@@ -10,6 +10,9 @@
 #define EPAPER_PIN_RST  23  /* D5 */
 #define EPAPER_PIN_BUSY 21  /* D3 */
 
+/* The enclosure mounts the panel upside down: epaper.c rotates the image by 180 degrees in the controller. */
+#define PANEL_ROTATED_180 1
+
 /* "Somebody is around" input: Panasonic EKMB PIR output (active high, floats when idle; external 100k
  * pull-down to GND, which keeps the output current under the sensor's 100 uA). Set PIR_ACTIVE_LEVEL to 0
  * for a push button to GND instead: the pin then gets the internal pull-up. Deep-sleep wake pin. */
