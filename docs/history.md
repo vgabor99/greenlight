@@ -70,6 +70,9 @@ generated bitmaps instead of u8g2 fonts.
   after that update had none to show.
 - 2026-11-12: a panel that fails at boot ends the wake and the device sleeps. It used to stop in BOOT, awake with
   the radio on until a reset, which would have emptied the battery.
+- 2026-11-22: a wake loads the frame the panel went to sleep with (kept in RTC memory) into the controller,
+  instead of clearing the panel. The boot clear was there only to give the controller a known previous frame for
+  partial updates; it made the screen flash at every wake and cost about 0.5 s of panel drive.
 
 ## Rejected options
 

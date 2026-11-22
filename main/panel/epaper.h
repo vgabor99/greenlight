@@ -20,6 +20,9 @@ esp_err_t epaper_clear(void);
 /* Show the frame with a partial refresh: ~0.45 s, no flash, ghosting accumulates. */
 esp_err_t epaper_refresh_partial(const uint8_t *frame);
 
+/* Tell the controller that the panel shows this frame: writes both RAMs, no update (~60 ms of SPI). */
+void epaper_load_frame(const uint8_t *frame);
+
 /* The BUSY line: 1 while the controller works (for the log). */
 int epaper_busy_level(void);
 

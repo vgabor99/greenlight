@@ -14,12 +14,14 @@ Every clear and refresh logs one line (`main/panel/panel.c`; don't change the fo
 
 ```
 panel: clear (<reason>) <ms> ms, busy before <0|1>[, FAILED]
+panel: load (sleep frame) <ms> ms, busy before <0|1>, partials <n>
 panel: refresh #<partials since clear> (<label>) <ms> ms, busy before <0|1>, black <n>, changed <n>[, FAILED]
 ```
 
 | Seen | Meaning |
 |---|---|
 | clear about 500 ms, refresh about 470 ms | normal, whatever the pixel count |
+| `load (sleep frame)` at boot instead of `clear (boot)` | normal after a deep sleep: the frame from the last wake went into the controller, no update. `clear (boot)` after a power-on, flash, crash or panel failure |
 | `busy before 1` | the controller is still stuck from an earlier hang: every command fails until a hardware reset |
 | `timeout waiting for BUSY` (tag `epd`) and `, FAILED` after 10 s | a refresh never finished: a BUSY hang |
 | `busy before 0` at boot followed by a timeout | the panel failed at init; a reboot usually clears it. The wake ends at once (`panel failed: ending the wake`, `BOOT -> SHUTDOWN`), so the next wake retries |

@@ -6,7 +6,8 @@
 /* Keeps the panel showing the application state (docs/display.md): takes snapshots of it (app/app_state.h), has the
  * UI draw them (screen/render.h) and sends the frames to the panel (panel/panel.h). */
 
-/* Power the panel up and clear it, at boot (in parallel with the Zigbee start-up). False if the panel failed. */
+/* Power the panel up at boot (in parallel with the Zigbee start-up): it continues from the frame it went to sleep
+ * with, or is cleared (panel_power_on()). False if the panel failed. */
 bool display_power_on(void);
 
 /* End of the wake: clear the panel, draw the state on it and power it off (only power it off if display_power_on()

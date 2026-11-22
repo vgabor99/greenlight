@@ -101,6 +101,10 @@ What works on this panel (what was tried and failed is in [history.md](history.m
 - Mode 2 only drives pixels where new RAM (`0x24`) != old RAM (`0x26`), and the controller scrambles its
   buffers after each update, so `drive_pass()` rewrites both every pass with old = inverse of new. Re-triggering
   without rewriting RAM inverts the screen.
+- **Loading a frame without an update** (`epaper_load_frame()`): writing the same frame to both RAMs changes
+  nothing on the screen (only `0x20` starts an update), and the next partial drives only the pixels that differ
+  from it. A wake does this with the frame the panel went to sleep with, instead of a clear
+  ([behaviour.md](behaviour.md#panel-on-each-wake)).
 - Black is weak and a small amount of grain on the white background is normal.
 - **The enclosure mounts the panel upside down.** The controller rotates the image by 180°
   (`PANEL_ROTATED_180` in `main/board/board.h`): data entry mode `0x11 = 0x00` (X and Y count down), and the RAM
@@ -108,7 +112,7 @@ What works on this panel (what was tried and failed is in [history.md](history.m
   datasheet Rev 1.0, section 8.2), so the frame bytes go out unchanged. The framebuffer and the screen dumps stay
   upright. `0x21` has no source-direction bit, and `0x01` `TB` would only turn the gate scan around.
 - Every clear and refresh logs a `panel: ...` line (duration, BUSY level before, black and changed pixel counts):
-  a clear takes 500 ms, a partial 470 ms however many pixels change (tested up to about 22,600 black pixels per
+  a clear takes 500 ms, a load about 60 ms, a partial 470 ms however many pixels change (tested up to about 22,600 black pixels per
   frame). Reading these lines: the `panel-troubleshoot` skill.
 
 ### BUSY hang

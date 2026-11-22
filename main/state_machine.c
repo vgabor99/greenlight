@@ -125,8 +125,9 @@ static bool start_stack_and_panel(void)
     };
     zigbee_start(&callbacks, &initial);
 
-    /* MVP: full clear on every wake (docs/behaviour.md#panel-on-each-wake), in parallel with the stack start-up. A
-     * failed panel ends the wake, with no recovery: the failure stays visible (docs/behaviour.md#failure-modes). */
+    /* The panel continues from its sleep frame or is cleared (docs/behaviour.md#panel-on-each-wake), in parallel with
+     * the stack start-up. A failed panel ends the wake, with no recovery: the failure stays visible
+     * (docs/behaviour.md#failure-modes). */
     if (!display_power_on()) {
         ESP_LOGE(TAG, "e-paper init failed");
         return false;

@@ -233,6 +233,18 @@ esp_err_t epaper_refresh_partial(const uint8_t *frame)
     return run_update(UPDATE_PARTIAL);
 }
 
+/* Both RAMs get the frame, with no update: nothing changes on the panel. The controller then takes the frame as the
+ * image on the panel, and the next partial refresh drives only the pixels that differ from it. */
+void epaper_load_frame(const uint8_t *frame)
+{
+    reset_ram_cursor();
+    send_command(CMD_WRITE_RAM_NEW);
+    send_data(frame, EPAPER_FRAME_BYTES);
+    reset_ram_cursor();
+    send_command(CMD_WRITE_RAM_OLD);
+    send_data(frame, EPAPER_FRAME_BYTES);
+}
+
 int epaper_busy_level(void)
 {
     return gpio_get_level(EPAPER_PIN_BUSY);

@@ -81,7 +81,8 @@ Rules that keep it simple:
 
 - One timer per state, no hidden state elsewhere. The only things that survive SLEEP are the retained
   data in NVS (stored dataset and view, `pair_now`, the wake counter, the battery latch), the staleness
-  deadline in RTC memory and the Zigbee network in NVS ([firmware.md](firmware.md#persistent-state)).
+  deadline and the frame on the panel in RTC memory, and the Zigbee network in NVS
+  ([firmware.md](firmware.md#persistent-state)).
 - The pair button is only acted on in UNPAIRED, REJOIN and ACTIVE, always as a 3 s hold. In every other state it
   is ignored, apart from waking the device.
 - A failed pairing never erases anything; the device stays factory new.
@@ -110,12 +111,17 @@ Rules that keep it simple:
 
 ## Panel on each wake
 
-On every wake (BOOT) the panel gets a full clear, then the stored view is rendered right away, in parallel with
-the rejoin. The clear is needed so that the controller has a valid previous frame for partial updates
-([hardware.md](hardware.md#e-paper-panel)), and it makes the screen flash once per wake. The stored view is
-normally stale by then, so it carries the stale badge; HA's wake push removes it with one partial refresh.
-SHUTDOWN ends with a clear and a final render of the current view. Between those, every redraw is a partial refresh
-([display.md](display.md#refresh-policy)).
+Partial updates need the controller to know the frame on the screen ([hardware.md](hardware.md#e-paper-panel)).
+RTC memory keeps that frame through deep sleep (`main/panel/panel.c`). On a wake from deep sleep (or the restart of
+the simulated sleep), BOOT loads it into the controller without an update: no clear, no flash. Then the stored view
+is rendered right away, in parallel with the rejoin, as a partial refresh. The stored view is normally stale by
+then, so it carries the stale badge; HA's wake push removes it with one more partial refresh.
+
+The frame is kept only when the previous wake put the panel to sleep with no failed clear or refresh. After a
+power-on, a flash, a crash or a panel failure, BOOT clears the panel instead (about 0.5 s; the screen flashes once).
+
+SHUTDOWN ends with a clear and a final render of the current view, so ghosting starts from zero at every wake.
+Between those, every redraw is a partial refresh ([display.md](display.md#refresh-policy)).
 
 ## Deep sleep
 

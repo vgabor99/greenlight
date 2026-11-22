@@ -67,7 +67,6 @@ in the converter):
 470 ms), and count recoveries in the log or in `panel_error`.
 
 **Panel optimizations**:
-- Do not touch the panel on wake if nothing changed (clear lazily, only when a redraw is needed).
 - Skip the final clean refresh at SHUTDOWN when no partial update happened since the last one.
 
 **Screens rendered on the PC.** Build the screen code (`main/screen/`: `status_screen.c`, `render.c`,

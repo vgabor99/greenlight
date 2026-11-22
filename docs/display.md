@@ -13,8 +13,9 @@ The code: `main/app/screen_content.c` decides from the application state which s
 - 400x300, 1 bit. Refresh and clear times: [hardware.md](hardware.md#e-paper-panel).
 - A frame identical to the one on the panel is not sent, so writes that change nothing on the screen cost no
   refresh.
-- BOOT and SHUTDOWN clear the panel ([behaviour.md](behaviour.md#panel-on-each-wake)); in between every redraw is
-  a partial refresh, with a full clear every `PARTIALS_BETWEEN_CLEARS` (50) partials against ghosting
+- SHUTDOWN clears the panel; BOOT continues from the frame the panel went to sleep with, and clears it only when
+  that frame is not known ([behaviour.md](behaviour.md#panel-on-each-wake)). In between every redraw is a partial
+  refresh, with a full clear every `PARTIALS_BETWEEN_CLEARS` (50) partials against ghosting
   (`main/panel/panel.c`).
 - The Zigbee callbacks update the application state; the state loops wait with `display_wait_ms()`, which
   redraws when the screen would change, so a burst of writes is drawn as it arrives. Writes during a refresh
