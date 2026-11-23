@@ -28,6 +28,9 @@ icon. Nothing is listed by hand; the label `exclude_from_alerts` keeps an entity
 
 - Each line is `II|<entity name>|<state word>` ([line format](data-model.md#line-format)); the name is cut so
   the line fits 64 UTF-8 bytes.
+- The name is `entity_name(entity_id, fallback=true)`: the name from the entity registry. A device's main
+  entity has no name of its own and gets the device name. Not the state object's `.name`: it comes from the
+  `friendly_name` attribute, which HA 2026.11 deprecates.
 - The icon is the entity's own `mdi:` icon when it is one of the [line icons](data-model.md#line-icons) (an
   `-alert` variant counts as its base icon: `thermometer-alert` shows `thermometer`), else the rule's fallback
   (`greenlight_line_icon`). Templates only see an icon set on the entity, by the user or the integration, not

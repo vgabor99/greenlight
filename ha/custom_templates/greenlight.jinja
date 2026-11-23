@@ -49,9 +49,9 @@
   {%- set found = namespace(items=[]) -%}
   {%- for alarm in states.alarm_control_panel | rejectattr('entity_id', 'in', excluded) | sort(attribute='entity_id') -%}
     {%- set found.items = found.items + [
-          {'icon': line_icon(alarm, '09'), 'name': alarm.name, 'state': 'kikapcsolva',
+          {'icon': line_icon(alarm, '09'), 'name': entity_name(alarm.entity_id, fallback=true), 'state': 'kikapcsolva',
            'members': [[alarm.entity_id, 'disarmed']]},
-          {'icon': line_icon(alarm, '09'), 'name': alarm.name, 'state': 'ismeretlen',
+          {'icon': line_icon(alarm, '09'), 'name': entity_name(alarm.entity_id, fallback=true), 'state': 'ismeretlen',
            'members': [[alarm.entity_id, 'alarm_unknown']]}] -%}
   {%- endfor -%}
   {%- set binary_sensors = states.binary_sensor | rejectattr('entity_id', 'in', excluded)
@@ -60,18 +60,21 @@
                                                 ('lock', '08', 'nyitva'), ('door', '02', 'nyitva'),
                                                 ('window', '04', 'nyitva')] -%}
     {%- for sensor in binary_sensors | selectattr('attributes.device_class', 'eq', device_class) -%}
-      {%- set found.items = found.items + [{'icon': line_icon(sensor, icon), 'name': sensor.name,
+      {%- set found.items = found.items + [{'icon': line_icon(sensor, icon),
+                                            'name': entity_name(sensor.entity_id, fallback=true),
                                             'state': problem_state, 'members': [[sensor.entity_id, 'on']]}] -%}
     {%- endfor -%}
   {%- endfor -%}
   {#- light groups carry an entity_id attribute; their members are listed anyway -#}
   {%- for light in states.light | rejectattr('entity_id', 'in', excluded) | rejectattr('attributes.entity_id', 'defined')
                    | sort(attribute='entity_id') -%}
-    {%- set found.items = found.items + [{'icon': line_icon(light, '0D'), 'name': light.name, 'state': 'be',
+    {%- set found.items = found.items + [{'icon': line_icon(light, '0D'),
+                                          'name': entity_name(light.entity_id, fallback=true), 'state': 'be',
                                           'members': [[light.entity_id, 'on']]}] -%}
   {%- endfor -%}
   {%- for remote in states.remote | rejectattr('entity_id', 'in', excluded) | sort(attribute='entity_id') -%}
-    {%- set found.items = found.items + [{'icon': line_icon(remote, '13'), 'name': remote.name, 'state': 'be',
+    {%- set found.items = found.items + [{'icon': line_icon(remote, '13'),
+                                          'name': entity_name(remote.entity_id, fallback=true), 'state': 'be',
                                           'members': [[remote.entity_id, 'not_off']]}] -%}
   {%- endfor -%}
 
