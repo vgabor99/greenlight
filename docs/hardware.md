@@ -174,8 +174,9 @@ fitted (DNP), and get soldered on only if the board shows supply trouble. Reason
   revision mark, ours is rev 2.2). RST high turns on a P-MOSFET (Q31) from the VCC pin to the RT9193 LDO and the
   level shifter, and drives the LDO's EN through 1k. RST low, as in deep sleep, turns both off: the LDO (about
   90 uA when on) and the panel get no power, and only the MOSFET's leakage remains. Not yet measured
-  ([roadmap.md](roadmap.md#future-work)). The panel loses its RAM; this does not matter, because each wake starts
-  with a clear, which rewrites both RAMs ([E-paper panel](#e-paper-panel)).
+  ([roadmap.md](roadmap.md#future-work)). The panel loses its RAM; this does not matter, because each wake rewrites
+  both RAMs, with the frame the panel went to sleep with or with a clear
+  ([behaviour.md](behaviour.md#panel-on-each-wake)).
 - On USB the sleep current means nothing (the XIAO's regulator and charger); measure it on the battery.
 
 ## USB console and deep sleep
